@@ -1,0 +1,680 @@
+extends Node
+## Пиксель-арт, нарисованный кодом: тайлы, предметы, персонажи, портреты, враги.
+## Уровни цвета: 0 фон, 1..6 зелёные от тёмного к светлому, 7..9 красные.
+
+const BAYER := [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+const TW := 32
+const TH := 16
+
+var colors: Array = []
+var cache := {}
+
+
+func _ready() -> void:
+	colors = [Pal.BG, Pal.G0, Pal.G1, Pal.G2, Pal.G3, Pal.G4, Pal.G5, Pal.R1, Pal.R2, Pal.R3]
+
+
+class Canvas:
+	const BAYER := [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+	var w: int
+	var h: int
+	var px: PackedInt32Array
+
+	func _init(width: int, height: int) -> void:
+		w = width
+		h = height
+		px = PackedInt32Array()
+		px.resize(w * h)
+		px.fill(-1)
+
+	func put(x: int, y: int, c: int) -> void:
+		if x >= 0 and y >= 0 and x < w and y < h:
+			px[y * w + x] = c
+
+	func get_px(x: int, y: int) -> int:
+		if x >= 0 and y >= 0 and x < w and y < h:
+			return px[y * w + x]
+		return -1
+
+	## Уровень с учётом освещения сверху-слева и точечного дизеринга.
+	func lit(base: int, t: float, x: int, y: int) -> int:
+		if base < 0:
+			return -1
+		var b: float = (BAYER[(y % 4) * 4 + (x % 4)] / 16.0) - 0.5
+		var v := base + int(round(t * 1.4 + b))
+		if base >= 7:
+			return clampi(v, 7, 9)
+		return clampi(v, 1, 6)
+
+	func ellipse(cx: float, cy: float, rx: float, ry: float, base: int, shade := true) -> void:
+		for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
+			for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
+				var ox := (x + 0.5 - cx) / rx
+				var oy := (y + 0.5 - cy) / ry
+				if ox * ox + oy * oy <= 1.0:
+					var t := -(ox * 0.6 + oy * 0.8) if shade else 0.0
+					put(x, y, lit(base, t, x, y))
+
+	func rect(x0: int, y0: int, rw: int, rh: int, base: int, shade := true) -> void:
+		for y in range(y0, y0 + rh):
+			for x in range(x0, x0 + rw):
+				var t := 0.0
+				if shade:
+					t = -(((x - x0) / maxf(1.0, rw - 1.0)) * 2.0 - 1.0) * 0.5 - (((y - y0) / maxf(1.0, rh - 1.0)) * 2.0 - 1.0) * 0.4
+				put(x, y, lit(base, t, x, y))
+
+	func poly(points: PackedVector2Array, base: int, shade := true) -> void:
+		var r := Rect2(points[0], Vector2.ZERO)
+		for pt in points:
+			r = r.expand(pt)
+		for y in range(int(r.position.y), int(r.end.y) + 1):
+			for x in range(int(r.position.x), int(r.end.x) + 1):
+				if Geometry2D.is_point_in_polygon(Vector2(x + 0.5, y + 0.5), points):
+					var t := 0.0
+					if shade:
+						t = -(((x - r.position.x) / maxf(1.0, r.size.x)) * 2.0 - 1.0) * 0.5 - (((y - r.position.y) / maxf(1.0, r.size.y)) * 2.0 - 1.0) * 0.5
+					put(x, y, lit(base, t, x, y))
+
+	func line(x0: float, y0: float, x1: float, y1: float, c: int, thick := 1) -> void:
+		var n := int(maxf(absf(x1 - x0), absf(y1 - y0))) + 1
+		for i in n + 1:
+			var t := i / float(n)
+			var x := int(round(lerpf(x0, x1, t)))
+			var y := int(round(lerpf(y0, y1, t)))
+			for dy in thick:
+				for dx in thick:
+					put(x + dx, y + dy, c)
+
+	## Тёмный контур вокруг заполненных пикселей.
+	func outline(c: int = 0) -> void:
+		var src := px.duplicate()
+		for y in h:
+			for x in w:
+				if src[y * w + x] != -1:
+					continue
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var xx: int = x + d.x
+					var yy: int = y + d.y
+					if xx >= 0 and yy >= 0 and xx < w and yy < h and src[yy * w + xx] != -1 and src[yy * w + xx] != c:
+						px[y * w + x] = c
+						break
+
+
+func to_tex(cv: Canvas) -> ImageTexture:
+	var img := Image.create(cv.w, cv.h, false, Image.FORMAT_RGBA8)
+	for y in cv.h:
+		for x in cv.w:
+			var c := cv.px[y * cv.w + x]
+			img.set_pixel(x, y, Color(0, 0, 0, 0) if c < 0 else colors[c])
+	return ImageTexture.create_from_image(img)
+
+
+func cached(key: String, maker: Callable) -> Texture2D:
+	if not cache.has(key):
+		cache[key] = maker.call()
+	return cache[key]
+
+
+# ---------------- Тайлы ----------------
+
+func _in_diamond(x: int, y: int) -> bool:
+	return absf(x + 0.5 - TW / 2.0) / (TW / 2.0) + absf(y + 0.5 - TH / 2.0) / (TH / 2.0) <= 1.0
+
+
+func floor_tex(kind: String, variant: int = 0) -> Texture2D:
+	return cached("floor_%s_%d" % [kind, variant], func(): return _floor(kind, variant))
+
+
+func _floor(kind: String, variant: int) -> ImageTexture:
+	var cv := Canvas.new(TW, TH)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(kind) + variant * 7919
+	for y in TH:
+		for x in TW:
+			if not _in_diamond(x, y):
+				continue
+			var c := 2
+			# координаты вдоль осей изометрии
+			var u := x / 2 + y
+			var v := x / 2 - y + 16
+			match kind:
+				"metal":
+					c = 2
+					if u % 8 == 0 or v % 8 == 0:
+						c = 1
+					elif (u + v) % 4 == 0 and rng.randf() < 0.3:
+						c = 3
+				"concrete":
+					c = 2 if rng.randf() > 0.12 else (1 if rng.randf() < 0.6 else 3)
+					if variant == 1 and (u % 16 == 0):
+						c = 1
+				"tile":
+					c = 3 if ((u / 8) + (v / 8)) % 2 == 0 else 2
+					if u % 8 == 0 or v % 8 == 0:
+						c = 1
+				"sand":
+					c = 3
+					var n := sin(x * 0.4 + variant) + cos(y * 0.9 + variant * 2.0)
+					if n > 1.1:
+						c = 4
+					elif n < -1.2:
+						c = 2
+					if rng.randf() < 0.05:
+						c = 4
+				"ash":
+					c = 2
+					if rng.randf() < 0.15:
+						c = 3
+					if rng.randf() < 0.06:
+						c = 1
+				"rug":
+					c = 7 if (u % 6 < 3) != (v % 6 < 3) else 2
+					if u < 2 or v < 2 or u > 29 or v > 29:
+						c = 3
+			cv.put(x, y, c)
+	return to_tex(cv)
+
+
+## Блок стены: ширина 32, высота 16 + hgt.
+func wall_tex(kind: String, hgt: int = 22, variant: int = 0) -> Texture2D:
+	return cached("wall_%s_%d_%d" % [kind, hgt, variant], func(): return _wall(kind, hgt, variant))
+
+
+func _wall(kind: String, hgt: int, variant: int) -> ImageTexture:
+	var cv := Canvas.new(TW, TH + hgt)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = variant * 31 + hgt
+	var top_l := 4
+	var left_l := 2
+	var right_l := 3
+	if kind == "ruin":
+		top_l = 3
+		left_l = 1
+		right_l = 2
+	for y in TH + hgt:
+		for x in TW:
+			var cx := x + 0.5 - TW / 2.0
+			# верхняя грань — ромб в [0, TH]
+			if absf(cx) / (TW / 2.0) + absf(y + 0.5 - TH / 2.0) / (TH / 2.0) <= 1.0:
+				var c := top_l
+				if kind == "ruin" and rng.randf() < 0.2:
+					c = 2
+				cv.put(x, y, c)
+				continue
+			# боковые грани
+			var edge := TH / 2.0 + (TW / 2.0 - absf(cx)) / 2.0  # нижний край ромба
+			if y + 0.5 >= edge and y + 0.5 <= edge + hgt:
+				var depth := y + 0.5 - edge
+				var c2 := left_l if cx < 0 else right_l
+				# кирпичная кладка / панели
+				if kind == "brick" or kind == "ruin":
+					if int(depth) % 5 == 0:
+						c2 -= 1
+					elif (int(absf(cx)) + (int(depth) / 5) * 4) % 8 == 0:
+						c2 -= 1
+				elif kind == "panel":
+					if int(absf(cx)) % 8 == 0 or int(depth) == 3:
+						c2 -= 1
+					if int(depth) == hgt - 4 and int(absf(cx)) % 4 == 1:
+						c2 += 1
+				if kind == "ruin" and rng.randf() < 0.08:
+					c2 = 1
+				cv.put(x, y, clampi(c2, 1, 6))
+	if kind == "ruin":
+		# обломанный верх
+		for i in 6:
+			var bx := rng.randi_range(2, TW - 3)
+			var by := rng.randi_range(0, 6)
+			for yy in range(by, by + 4):
+				for xx in range(bx - 2, bx + 2):
+					if cv.get_px(xx, yy) == top_l or cv.get_px(xx, yy) == 2:
+						cv.put(xx, yy, -1)
+	cv.outline(0)
+	return to_tex(cv)
+
+
+# ---------------- Предметы обстановки ----------------
+
+func prop_tex(kind: String) -> Texture2D:
+	return cached("prop_" + kind, func(): return _prop(kind))
+
+
+func _prop(kind: String) -> ImageTexture:
+	var cv: Canvas
+	match kind:
+		"counter":
+			cv = Canvas.new(32, 30)
+			cv.poly(PackedVector2Array([Vector2(16, 6), Vector2(31, 13), Vector2(16, 21), Vector2(1, 13)]), 4)
+			cv.poly(PackedVector2Array([Vector2(1, 13), Vector2(16, 21), Vector2(16, 29), Vector2(1, 21)]), 2)
+			cv.poly(PackedVector2Array([Vector2(16, 21), Vector2(31, 13), Vector2(31, 21), Vector2(16, 29)]), 3)
+			cv.line(4, 12, 10, 9, 6)
+		"bed":
+			cv = Canvas.new(32, 24)
+			cv.poly(PackedVector2Array([Vector2(16, 4), Vector2(31, 11), Vector2(16, 19), Vector2(1, 11)]), 3)
+			cv.poly(PackedVector2Array([Vector2(1, 11), Vector2(16, 19), Vector2(16, 23), Vector2(1, 15)]), 1)
+			cv.poly(PackedVector2Array([Vector2(16, 19), Vector2(31, 11), Vector2(31, 15), Vector2(16, 23)]), 2)
+			cv.ellipse(22, 9, 5, 3, 5)
+			cv.poly(PackedVector2Array([Vector2(4, 11), Vector2(16, 5), Vector2(20, 7), Vector2(9, 14)]), 7)
+		"crate":
+			cv = Canvas.new(20, 22)
+			cv.poly(PackedVector2Array([Vector2(10, 1), Vector2(19, 5), Vector2(10, 9), Vector2(1, 5)]), 4)
+			cv.poly(PackedVector2Array([Vector2(1, 5), Vector2(10, 9), Vector2(10, 21), Vector2(1, 16)]), 2)
+			cv.poly(PackedVector2Array([Vector2(10, 9), Vector2(19, 5), Vector2(19, 16), Vector2(10, 21)]), 3)
+			cv.line(1, 5, 10, 21, 1)
+			cv.line(19, 5, 10, 21, 1)
+		"barrel":
+			cv = Canvas.new(14, 20)
+			cv.rect(1, 3, 12, 15, 3)
+			cv.ellipse(7, 3, 6, 2.5, 4, false)
+			cv.ellipse(7, 18, 6, 2, 2, false)
+			cv.line(1, 8, 12, 8, 1)
+			cv.line(1, 13, 12, 13, 1)
+			cv.put(5, 3, 8)
+			cv.put(6, 3, 8)
+		"lamp":
+			cv = Canvas.new(12, 34)
+			cv.ellipse(6, 5, 5, 5, 5, false)
+			cv.ellipse(6, 5, 3, 3, 6, false)
+			cv.line(6, 9, 6, 32, 2, 1)
+			cv.line(4, 32, 8, 32, 2)
+		"table":
+			cv = Canvas.new(26, 20)
+			cv.poly(PackedVector2Array([Vector2(13, 2), Vector2(25, 7), Vector2(13, 12), Vector2(1, 7)]), 4)
+			cv.line(4, 8, 4, 18, 2)
+			cv.line(22, 8, 22, 18, 2)
+			cv.line(13, 12, 13, 19, 2)
+			cv.ellipse(12, 6, 2, 1, 6, false)
+		"terminal":
+			cv = Canvas.new(18, 28)
+			cv.rect(2, 2, 14, 24, 2)
+			cv.rect(4, 5, 10, 8, 5, false)
+			for i in 3:
+				cv.line(5, 7 + i * 2, 5 + (i * 3 + 4) % 8, 7 + i * 2, 6)
+			cv.put(6, 18, 8)
+			cv.put(9, 18, 4)
+			cv.put(12, 18, 4)
+		"gate":
+			cv = Canvas.new(40, 56)
+			cv.rect(2, 4, 36, 50, 2)
+			cv.rect(6, 10, 28, 44, 1, false)
+			for i in 6:
+				cv.line(7, 14 + i * 7, 33, 14 + i * 7, 3)
+			cv.line(20, 10, 20, 53, 0)
+			cv.ellipse(20, 6, 3, 2, 9, false)
+		"pipe":
+			cv = Canvas.new(12, 40)
+			cv.rect(3, 0, 6, 40, 3)
+			cv.rect(2, 10, 8, 3, 4)
+			cv.rect(2, 28, 8, 3, 4)
+		"tree":
+			cv = Canvas.new(28, 40)
+			cv.line(14, 39, 14, 12, 2, 2)
+			cv.line(14, 20, 5, 10, 2)
+			cv.line(14, 16, 24, 6, 2)
+			cv.line(5, 10, 3, 3, 2)
+			cv.line(24, 6, 26, 2, 2)
+			cv.line(14, 12, 12, 2, 2)
+		"rocks":
+			cv = Canvas.new(24, 14)
+			cv.ellipse(8, 8, 7, 5, 3)
+			cv.ellipse(17, 9, 6, 4, 2)
+			cv.ellipse(12, 5, 4, 3, 4)
+		"bones":
+			cv = Canvas.new(20, 10)
+			cv.line(2, 7, 16, 3, 5)
+			cv.ellipse(3, 7, 2, 1.5, 6, false)
+			cv.ellipse(16, 3, 2, 1.5, 6, false)
+			cv.ellipse(12, 7, 3, 2, 5)
+		"wreck":
+			cv = Canvas.new(40, 30)
+			cv.poly(PackedVector2Array([Vector2(4, 14), Vector2(26, 4), Vector2(38, 10), Vector2(16, 22)]), 3)
+			cv.poly(PackedVector2Array([Vector2(4, 14), Vector2(16, 22), Vector2(16, 28), Vector2(4, 20)]), 1)
+			cv.poly(PackedVector2Array([Vector2(16, 22), Vector2(38, 10), Vector2(38, 16), Vector2(16, 28)]), 2)
+			cv.ellipse(10, 23, 3, 3, 1, false)
+			cv.ellipse(30, 17, 3, 3, 1, false)
+			cv.line(14, 12, 26, 8, 8)
+		"cache":
+			cv = Canvas.new(20, 22)
+			cv.poly(PackedVector2Array([Vector2(10, 1), Vector2(19, 5), Vector2(10, 9), Vector2(1, 5)]), 5)
+			cv.poly(PackedVector2Array([Vector2(1, 5), Vector2(10, 9), Vector2(10, 21), Vector2(1, 16)]), 3)
+			cv.poly(PackedVector2Array([Vector2(10, 9), Vector2(19, 5), Vector2(19, 16), Vector2(10, 21)]), 4)
+			cv.rect(4, 10, 3, 3, 8, false)
+			cv.line(5, 9, 5, 14, 9)
+			cv.line(3, 11, 7, 11, 9)
+		"pot":
+			cv = Canvas.new(20, 24)
+			cv.ellipse(10, 15, 8, 7, 2)
+			cv.ellipse(10, 9, 8, 2.5, 5, false)
+			cv.line(6, 6, 6, 1, 4)
+			cv.line(11, 5, 12, 0, 4)
+			cv.line(15, 6, 15, 2, 4)
+		"shelf":
+			cv = Canvas.new(26, 34)
+			cv.rect(1, 2, 24, 31, 1, false)
+			for i in 4:
+				cv.line(1, 9 + i * 7, 24, 9 + i * 7, 3)
+				for j in 5:
+					if (i + j) % 3 != 0:
+						cv.rect(3 + j * 4, 4 + i * 7, 3, 5, 3 + (i * j) % 3)
+		"sign":
+			cv = Canvas.new(30, 14)
+			cv.rect(1, 1, 28, 12, 1, false)
+			cv.rect(2, 2, 26, 10, 2, false)
+			cv.line(5, 7, 24, 7, 8)
+		_:
+			cv = Canvas.new(8, 8)
+			cv.rect(0, 0, 8, 8, 4)
+	cv.outline(0)
+	return to_tex(cv)
+
+
+# ---------------- Человечки на карте ----------------
+
+## look: {hair, coat, skin, accent, race, hat}
+func person_tex(look: Dictionary, frame: int = 0) -> Texture2D:
+	var key := "person_%s_%d" % [str(look.hash()), frame]
+	return cached(key, func(): return _person(look, frame))
+
+
+func _person(look: Dictionary, frame: int) -> ImageTexture:
+	var cv := Canvas.new(16, 28)
+	var coat: int = look.get("coat", 3)
+	var skin: int = look.get("skin", 5)
+	var hair: int = look.get("hair", 2)
+	var race: String = look.get("race", "Человек")
+	# тень
+	for x in range(3, 13):
+		cv.put(x, 27, 0)
+	# ноги
+	var l1 := 0
+	var l2 := 0
+	if frame == 1:
+		l1 = -1
+		l2 = 1
+	cv.rect(5 + l1, 19, 2, 7, 1, false)
+	cv.rect(9 + l2, 19, 2, 7, 1, false)
+	# туловище
+	cv.rect(4, 11, 8, 9, coat)
+	cv.line(8, 11, 8, 19, coat - 1)
+	# руки
+	cv.rect(2, 12, 2, 7, coat - 1, false)
+	cv.rect(12, 12, 2, 7, coat - 1, false)
+	cv.put(2, 19, skin)
+	cv.put(13, 19, skin)
+	if look.has("accent"):
+		cv.line(4, 13, 11, 13, look.accent)
+	# голова
+	if race == "Машина":
+		cv.rect(4, 3, 8, 8, 3)
+		cv.line(5, 6, 10, 6, 9)
+	elif race == "Инсектид":
+		cv.ellipse(8, 7, 4, 4.5, 3)
+		cv.put(6, 6, 9)
+		cv.put(10, 6, 9)
+		cv.line(6, 3, 4, 0, 3)
+		cv.line(10, 3, 12, 0, 3)
+	else:
+		cv.ellipse(8, 7, 3.6, 4, skin)
+		cv.put(7, 7, 1)
+		cv.put(10, 7, 1)
+		# волосы
+		if look.get("hat", false):
+			cv.rect(3, 2, 10, 3, coat + 1)
+		elif race == "Флореанин":
+			cv.ellipse(8, 3.5, 5, 2.5, 4)
+			cv.put(3, 2, 5)
+			cv.put(13, 2, 5)
+		else:
+			cv.ellipse(8, 4, 4, 2.4, hair)
+			if look.get("long", false):
+				cv.rect(4, 4, 2, 7, hair, false)
+				cv.rect(11, 4, 2, 7, hair, false)
+		if race == "Крысолюд":
+			cv.ellipse(4, 3, 1.5, 1.5, skin - 1, false)
+			cv.ellipse(12, 3, 1.5, 1.5, skin - 1, false)
+		if race == "Ангел":
+			cv.ellipse(8, 0.8, 3, 0.8, 6, false)
+	cv.outline(0)
+	return to_tex(cv)
+
+
+# ---------------- Портреты для сцен-новелл ----------------
+
+## Портрет 48x56. look: sex, race, hair, coat, skin, traits[], extra
+func portrait_tex(look: Dictionary) -> Texture2D:
+	return cached("portrait_" + str(look.hash()), func(): return _portrait(look))
+
+
+func _portrait(look: Dictionary) -> ImageTexture:
+	var cv := Canvas.new(48, 56)
+	var traits: Array = look.get("traits", [])
+	var race: String = look.get("race", "Человек")
+	var sex: String = look.get("sex", "М")
+	var skin: int = look.get("skin", 4)
+	var hair: int = look.get("hair", 2)
+	var coat: int = look.get("coat", 2)
+	if "Пепельная кожа" in traits or "Белый рецидив" in traits:
+		skin = 5
+	if "Красная кожа" in traits:
+		skin = 8
+	var head_ry := 13.0
+	var head_cy := 24.0
+	if "Большой лоб" in traits:
+		head_ry = 14.5
+		head_cy = 23.0
+	var head_rx := 10.5 if sex == "Ж" else 11.5
+	if "Тонкие кости" in traits or "Истощение" in traits:
+		head_rx -= 1.0
+	if "Полнота" in traits or "Толстые кости" in traits:
+		head_rx += 1.5
+
+	# плечи и одежда
+	cv.poly(PackedVector2Array([Vector2(4, 56), Vector2(8, 44), Vector2(18, 39), Vector2(30, 39), Vector2(40, 44), Vector2(44, 56)]), coat)
+	cv.poly(PackedVector2Array([Vector2(18, 39), Vector2(24, 48), Vector2(30, 39)]), coat + 2)
+	if look.has("collar"):
+		cv.line(18, 40, 24, 48, look.collar)
+		cv.line(30, 40, 24, 48, look.collar)
+	# шея
+	cv.rect(20, 34, 8, 7, skin - 1, false)
+
+	if race == "Машина":
+		cv.rect(13, 10, 22, 26, 3)
+		cv.rect(15, 19, 18, 5, 0, false)
+		cv.line(16, 21, 31, 21, 9)
+		cv.line(17, 22, 30, 22, 8)
+		for i in 4:
+			cv.line(17 + i * 4, 28, 17 + i * 4, 33, 2)
+		cv.line(24, 10, 24, 4, 3)
+		cv.ellipse(24, 3, 2, 2, 9, false)
+		cv.outline(0)
+		return to_tex(cv)
+
+	if race == "Инсектид":
+		cv.ellipse(24, 24, 11, 13, 3)
+		cv.ellipse(18, 21, 4, 5, 8)
+		cv.ellipse(30, 21, 4, 5, 8)
+		cv.put(17, 19, 9)
+		cv.put(29, 19, 9)
+		cv.line(20, 33, 17, 38, 4, 2)
+		cv.line(28, 33, 31, 38, 4, 2)
+		cv.line(19, 12, 12, 1, 4)
+		cv.line(29, 12, 36, 1, 4)
+		cv.outline(0)
+		return to_tex(cv)
+
+	# уши
+	if race == "Крысолюд" or "Уши крысолюда" in traits:
+		cv.ellipse(12, 12, 5, 6, skin - 1)
+		cv.ellipse(36, 12, 5, 6, skin - 1)
+		cv.ellipse(12, 12, 2.5, 3.5, 7, false)
+		cv.ellipse(36, 12, 2.5, 3.5, 7, false)
+	elif "Большие уши" in traits:
+		cv.ellipse(12, 24, 3.5, 5, skin - 1)
+		cv.ellipse(36, 24, 3.5, 5, skin - 1)
+	else:
+		cv.ellipse(13.5, 25, 2, 3, skin - 1)
+		cv.ellipse(34.5, 25, 2, 3, skin - 1)
+	# крылья ангела
+	if race == "Ангел" or "Крылья" in traits:
+		cv.poly(PackedVector2Array([Vector2(8, 44), Vector2(0, 20), Vector2(3, 18), Vector2(12, 38)]), 5)
+		cv.poly(PackedVector2Array([Vector2(40, 44), Vector2(48, 20), Vector2(45, 18), Vector2(36, 38)]), 5)
+
+	# голова
+	cv.ellipse(24, head_cy, head_rx, head_ry, skin)
+
+	# волосы
+	var red_hair: bool = "Рыжие волосы" in traits or look.get("red", false)
+	var hc := hair
+	if red_hair:
+		hc = 8
+	elif "Белые волосы" in traits:
+		hc = 6
+	if race == "Флореанин":
+		for i in 7:
+			var a := PI + i * PI / 6.0
+			cv.ellipse(24 + cos(a) * 11, head_cy - 6 + sin(a) * 9, 4, 3, 4 + i % 2)
+	elif look.get("bald", false):
+		pass
+	elif look.get("helmet", false):
+		cv.ellipse(24, head_cy - 6, head_rx + 2, 9, 3)
+		cv.rect(12, int(head_cy) - 6, 25, 3, 2)
+	else:
+		cv.ellipse(24, head_cy - 9, head_rx + 1, 7, hc)
+		cv.rect(int(24 - head_rx), int(head_cy) - 10, 4, 6, hc)
+		cv.rect(int(24 + head_rx) - 3, int(head_cy) - 10, 4, 6, hc)
+		if sex == "Ж" or look.get("long", false):
+			cv.rect(int(24 - head_rx) - 1, int(head_cy) - 6, 4, 20, hc)
+			cv.rect(int(24 + head_rx) - 2, int(head_cy) - 6, 4, 20, hc)
+	if race == "Ангел":
+		cv.ellipse(24, head_cy - head_ry - 3, 9, 2, 6, false)
+		cv.ellipse(24, head_cy - head_ry - 3, 6, 0.8, -1, false)
+
+	# глаза
+	var ey := int(head_cy) + 1
+	var eye_c := 1
+	if "Белые глаза" in traits:
+		eye_c = 6
+	for ex in [19, 29]:
+		cv.rect(ex - 2, ey, 4, 2, 6, false)
+		cv.put(ex, ey, eye_c)
+		cv.put(ex - 1, ey + 1, eye_c)
+		if "Змеиные глаза" in traits:
+			cv.rect(ex - 2, ey, 4, 2, 5, false)
+			cv.line(ex, ey - 1, ex, ey + 2, 0)
+		cv.line(ex - 2, ey - 2, ex + 2, ey - 2, hc if not red_hair else 7)
+	if race == "Крысолюд":
+		cv.put(19, ey, 8)
+		cv.put(29, ey, 8)
+	if look.get("glasses", false):
+		cv.line(15, ey - 1, 33, ey - 1, 1)
+		cv.rect(16, ey - 1, 6, 4, -1, false)
+		cv.line(16, ey + 3, 21, ey + 3, 1)
+		cv.line(27, ey + 3, 32, ey + 3, 1)
+	# нос и рот
+	cv.line(24, ey + 2, 23, ey + 6, skin - 1)
+	var mouth_y := ey + 9
+	cv.line(21, mouth_y, 27, mouth_y, 7 if sex == "Ж" else skin - 2)
+	if race == "Крысолюд" or "Зубы крысолюда" in traits:
+		cv.rect(23, mouth_y + 1, 2, 2, 6, false)
+	if look.get("beard", false):
+		cv.ellipse(24, mouth_y + 3, 7, 5, hair)
+		cv.line(21, mouth_y, 27, mouth_y, skin - 2)
+	if look.get("mask", false):
+		cv.rect(16, ey + 4, 17, 9, 5, false)
+		cv.line(16, ey + 4, 12, ey + 1, 4)
+		cv.line(32, ey + 4, 36, ey + 1, 4)
+	# черты
+	if "Веснушки на коже" in traits or look.get("freckles", false):
+		for f in [Vector2i(17, 31), Vector2i(19, 32), Vector2i(29, 31), Vector2i(31, 32), Vector2i(21, 31), Vector2i(27, 32)]:
+			cv.put(f.x, ey + (f.y - 30), 7 if red_hair else skin - 2)
+	if "Ножевые шрамы" in traits or look.get("scar", false):
+		cv.line(28, ey - 5, 33, ey + 8, 8)
+	if "Запутанные шрамы" in traits:
+		cv.line(15, ey - 6, 20, ey + 4, 9)
+		cv.line(20, ey + 4, 17, ey + 9, 9)
+	if "Пулевые шрамы" in traits:
+		cv.ellipse(31, ey + 6, 1.5, 1.5, 7, false)
+	if "Ожоги шрамы" in traits:
+		for i in 10:
+			cv.put(14 + (i * 7) % 8, ey - 2 + (i * 5) % 9, 7)
+	if "Морщины" in traits or look.get("old", false):
+		cv.line(18, ey + 5, 19, ey + 8, skin - 1)
+		cv.line(30, ey + 5, 29, ey + 8, skin - 1)
+		cv.line(20, int(head_cy) - 6, 28, int(head_cy) - 6, skin - 1)
+	if "Металлический протез" in traits:
+		cv.rect(26, ey - 3, 9, 8, 3)
+		cv.ellipse(30, ey + 1, 2, 2, 9, false)
+	if "Растительная кожа" in traits:
+		cv.line(15, 32, 19, 38, 4)
+		cv.line(33, 30, 30, 37, 4)
+	if "Чешуйчатая кожа" in traits:
+		for i in 6:
+			cv.put(15 + i, 33 + (i % 2), skin - 2)
+	cv.outline(0)
+	return to_tex(cv)
+
+
+# ---------------- Враги для экрана боя ----------------
+
+## Возвращает {tex, parts: {имя части: Rect2}} — прямоугольники для подсветки цели.
+func enemy_art(kind: String) -> Dictionary:
+	if cache.has("enemy_" + kind):
+		return cache["enemy_" + kind]
+	var cv := Canvas.new(64, 64)
+	var parts := {}
+	match kind:
+		"dog":
+			cv.ellipse(30, 36, 18, 10, 3)
+			for lx in [16, 22, 36, 42]:
+				cv.line(lx, 42, lx - 2 + (lx % 3), 58, 2, 3)
+			cv.line(12, 32, 4, 26, 2, 2)
+			cv.ellipse(50, 28, 9, 8, 3)
+			cv.poly(PackedVector2Array([Vector2(52, 30), Vector2(63, 33), Vector2(60, 40), Vector2(50, 37)]), 8)
+			for i in 4:
+				cv.put(53 + i * 2, 33, 6)
+				cv.put(53 + i * 2, 37, 6)
+			cv.line(46, 21, 44, 15, 3, 2)
+			for i in 5:
+				cv.line(20 + i * 5, 27, 22 + i * 5, 31, 2)
+			parts = {"Голова": Rect2(41, 19, 15, 14), "Туловище": Rect2(13, 26, 34, 20),
+				"Пасть": Rect2(50, 29, 14, 12), "Лапы": Rect2(12, 44, 34, 16)}
+		"raider":
+			cv.ellipse(32, 12, 7, 8, 4)
+			cv.rect(25, 4, 14, 4, 2)
+			cv.rect(27, 11, 10, 3, 0, false)
+			cv.put(29, 12, 9)
+			cv.put(34, 12, 9)
+			cv.poly(PackedVector2Array([Vector2(20, 22), Vector2(44, 22), Vector2(42, 44), Vector2(22, 44)]), 2)
+			cv.line(22, 30, 42, 30, 8)
+			cv.line(32, 22, 32, 44, 1)
+			cv.line(20, 23, 10, 36, 3, 4)
+			cv.line(10, 36, 16, 40, 3, 3)
+			cv.rect(14, 37, 9, 4, 1, false)
+			cv.line(44, 23, 54, 34, 3, 4)
+			cv.line(54, 34, 58, 18, 5, 3)
+			cv.rect(24, 44, 6, 18, 1)
+			cv.rect(34, 44, 6, 18, 1)
+			parts = {"Голова": Rect2(24, 3, 16, 18), "Туловище": Rect2(20, 22, 24, 23),
+				"Правая рука": Rect2(8, 22, 16, 22), "Левая рука": Rect2(42, 16, 18, 22)}
+		"warped":
+			cv.ellipse(32, 40, 16, 18, 2)
+			cv.ellipse(32, 18, 10, 11, 4)
+			cv.line(22, 22, 24, 30, 1)
+			for i in 5:
+				var a := 0.4 + i * 0.55
+				cv.line(32 + cos(a) * 12, 46, 32 + cos(a) * 30, 60 - sin(a * 2.0) * 6, 3, 2)
+			cv.line(18, 32, 4, 20, 3, 2)
+			cv.line(46, 32, 60, 24, 3, 2)
+			cv.line(4, 20, 2, 10, 3, 2)
+			for e in [Vector2(27, 15), Vector2(37, 15), Vector2(32, 10), Vector2(24, 36), Vector2(38, 42)]:
+				cv.ellipse(e.x, e.y, 2.5, 2, 6, false)
+				cv.put(int(e.x), int(e.y), 8)
+			cv.line(26, 23, 38, 23, 8)
+			for i in 6:
+				cv.put(27 + i * 2, 24, 6)
+			parts = {"Лицо": Rect2(22, 7, 20, 22), "Туловище": Rect2(16, 28, 32, 26),
+				"Щупальца": Rect2(0, 18, 64, 46), "Глаза": Rect2(23, 8, 18, 10)}
+	cv.outline(0)
+	var res := {"tex": to_tex(cv), "parts": parts}
+	cache["enemy_" + kind] = res
+	return res

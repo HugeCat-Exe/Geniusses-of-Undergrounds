@@ -1,0 +1,499 @@
+extends Control
+## Бой в духе Fear and Hunger: пошаговый, удары по частям тела, раны, рассудок, монетка.
+
+var enemy_id: String
+var on_end: Callable
+var E: Dictionary
+var parts: Array = []
+var view: Control
+var art: Dictionary
+var log_box: RichTextLabel
+var status: RichTextLabel
+var actions: GridContainer
+var hover_part := ""
+var analyzed := false
+var defending := false
+var busy := false
+var finished := false
+var scale_k := 3.0
+
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	E = D.ENEMIES[enemy_id]
+	for p in E.parts:
+		var c: Dictionary = p.duplicate()
+		c.max = p.hp
+		parts.append(c)
+	art = Art.enemy_art(E.sprite)
+
+	var bg := ColorRect.new()
+	bg.color = Pal.BG
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(bg)
+	var stripe := ColorRect.new()
+	stripe.color = Pal.R1
+	stripe.position = Vector2(0, 0)
+	stripe.size = Vector2(640, 3)
+	add_child(stripe)
+
+	var title := Pal.label(E.name.to_upper(), Pal.R3, 14, true)
+	title.position = Vector2(24, 10)
+	add_child(title)
+	var frame := Panel.new()
+	frame.position = Vector2(20, 34)
+	frame.size = Vector2(224, 206)
+	add_child(frame)
+	view = Control.new()
+	view.position = Vector2(36, 40)
+	view.size = Vector2(192, 192)
+	view.draw.connect(_draw_view)
+	add_child(view)
+
+	var st_panel := PanelContainer.new()
+	st_panel.position = Vector2(20, 246)
+	st_panel.size = Vector2(224, 100)
+	add_child(st_panel)
+	status = Pal.rich("", 9)
+	st_panel.add_child(status)
+
+	var log_panel := PanelContainer.new()
+	log_panel.position = Vector2(256, 34)
+	log_panel.size = Vector2(372, 178)
+	add_child(log_panel)
+	log_box = Pal.rich("", 9)
+	log_box.fit_content = false
+	log_box.scroll_active = true
+	log_box.scroll_following = true
+	log_panel.add_child(log_box)
+
+	var act_panel := PanelContainer.new()
+	act_panel.position = Vector2(256, 218)
+	act_panel.size = Vector2(372, 128)
+	add_child(act_panel)
+	actions = GridContainer.new()
+	actions.columns = 2
+	actions.add_theme_constant_override("h_separation", 4)
+	actions.add_theme_constant_override("v_separation", 3)
+	act_panel.add_child(actions)
+
+	_log("[color=%s]%s[/color]" % [Pal.hex(Pal.G3), E.intro])
+	_start()
+
+
+func _start() -> void:
+	busy = true
+	if E.horror > 0:
+		var m := G.hurt(E.horror, "mind")
+		_log("[color=%s]От одного вида рассудок трещит: -%d ООР.[/color]" % [Pal.hex(Pal.R3), m])
+		_check_mind()
+	if E.speed > G.speed():
+		_log("%s быстрее вас (Внимание %d против %d) и атакует первым!" % [E.name, E.speed, G.speed()])
+		await _wait(0.7)
+		await _enemy_turn()
+	else:
+		_log("Ваше Внимание выше (%d против %d). Вы действуете первым." % [G.speed(), E.speed])
+	busy = false
+	_menu()
+
+
+# ---------- вывод ----------
+
+func _log(s: String) -> void:
+	log_box.append_text(s + "\n")
+
+
+func _wait(t: float) -> void:
+	await get_tree().create_timer(t).timeout
+
+
+func _bar(v: int, mx: int, n: int = 8) -> String:
+	var f := clampi(ceili(float(v) / maxf(1.0, mx) * n), 0, n)
+	return "█".repeat(f) + "░".repeat(n - f)
+
+
+func _update_status() -> void:
+	var p := G.p
+	var s := "[b]%s[/b]\n" % p.callsign
+	s += "[color=%s]ООЗ %s %d/%d[/color]\n" % [Pal.hex(Pal.R3), _bar(p.hp, G.max_hp()), maxi(0, p.hp), G.max_hp()]
+	s += "[color=%s]ООР %s %d/%d[/color]\n" % [Pal.hex(Pal.G5), _bar(p.mind, G.max_mind()), maxi(0, p.mind), G.max_mind()]
+	if p.weapon != "":
+		s += "%s: %d в магазине, запас %d\n" % [p.weapon, p.mag, G.ammo_left() - p.mag]
+	s += "Ближний бой: %s · Защита %d" % [p.melee, G.phys_def()]
+	if p.wounds.size() > 0:
+		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
+	status.text = s
+	view.queue_redraw()
+
+
+func _draw_view() -> void:
+	view.draw_texture_rect(art.tex, Rect2(Vector2.ZERO, Vector2(192, 192)), false)
+	for p in parts:
+		var r: Rect2 = art.parts.get(p.name, Rect2())
+		var rr := Rect2(r.position * scale_k, r.size * scale_k)
+		if p.hp <= 0:
+			view.draw_rect(rr, Color(Pal.R1, 0.45))
+			view.draw_line(rr.position, rr.end, Pal.R2, 2.0)
+			view.draw_line(Vector2(rr.position.x, rr.end.y), Vector2(rr.end.x, rr.position.y), Pal.R2, 2.0)
+		if p.name == hover_part:
+			view.draw_rect(rr, Pal.R3, false, 2.0)
+
+
+func _clear_actions() -> void:
+	for c in actions.get_children():
+		c.queue_free()
+
+
+func _act(label: String, cb: Callable, enabled := true) -> Button:
+	var b := Pal.button(label, cb, 9)
+	b.custom_minimum_size = Vector2(178, 18)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.disabled = not enabled or busy
+	actions.add_child(b)
+	return b
+
+
+# ---------- ход игрока ----------
+
+func _menu() -> void:
+	_update_status()
+	_clear_actions()
+	hover_part = ""
+	if finished:
+		return
+	var p := G.p
+	if p.weapon != "":
+		_act("Выстрел: %s (%d)" % [p.weapon, p.mag], _pick_target.bind(false), p.mag > 0)
+	else:
+		_act("Выстрел: нет огнестрела", func(): pass, false)
+	_act("Удар: %s" % p.melee, _pick_target.bind(true))
+	var w_ok: bool = p.weapon != "" and p.mag < D.ITEMS[p.weapon].mag and G.has(D.ITEMS[p.weapon].ammo)
+	_act("Перезарядка", _reload, w_ok)
+	_act("Анализ [ВСП]" if not analyzed else "Анализ: проведён", _analyze, not analyzed)
+	_act("Самозащита [ТЕЛ]", _defend)
+	_act("Предмет", _items_menu)
+	_act("Подбросить монетку (бежать)", _flee)
+
+
+func _attack_bonus(melee: bool, part: Dictionary) -> int:
+	var b := D.check_mod(G.stat("ТЕЛ" if melee else "ЛВК")) + int(part.mod)
+	if analyzed:
+		b += 2
+	if "Руки" in G.p.wounds:
+		b -= 2
+	if part.name == "Глаза" and G.flag("emirra_tip"):
+		b += 2
+	return b
+
+
+func _pick_target(melee: bool) -> void:
+	_clear_actions()
+	for p in parts:
+		if p.hp <= 0:
+			continue
+		var ch := G.chance(_attack_bonus(melee, p), E.evade)
+		var hp_txt := "%d/%d" % [p.hp, p.max] if analyzed else _bar(p.hp, p.max, 5)
+		var b := _act("%s %s · %d%%" % [p.name, hp_txt, ch], _attack.bind(melee, p))
+		b.mouse_entered.connect(_set_hover.bind(p.name))
+		b.mouse_exited.connect(_set_hover.bind(""))
+	_act("< Назад", _menu)
+
+
+func _set_hover(n: String) -> void:
+	hover_part = n
+	view.queue_redraw()
+
+
+func _attack(melee: bool, part: Dictionary) -> void:
+	busy = true
+	_clear_actions()
+	var p := G.p
+	var wname: String = p.melee if melee else p.weapon
+	var base: float = D.ITEMS[wname].dmg
+	if melee:
+		base += maxi(0, D.check_mod(G.stat("ТЕЛ"))) * 2
+	else:
+		p.mag -= 1
+	var d := randi_range(1, 20)
+	var bonus := _attack_bonus(melee, part)
+	var hit: bool = (d + bonus >= E.evade or d == 20) and d != 1
+	var verb := "бьёте" if melee else "стреляете"
+	if not hit:
+		_log("Вы %s в «%s» (%s): к20=%d %+d против %d — [color=%s]мимо[/color]." % [verb, part.name, wname, d, bonus, E.evade, Pal.hex(Pal.G2)])
+	else:
+		var dmg := int(round(base * randf_range(0.85, 1.15)))
+		if d == 20:
+			dmg *= 2
+		dmg = maxi(1, dmg - int(E.def))
+		part.hp -= dmg
+		var crit := " [color=%s]КРИТ![/color]" % Pal.hex(Pal.R3) if d == 20 else ""
+		_log("Вы %s в «%s» (%s): к20=%d %+d — [color=%s]попадание, %d урона[/color].%s" % [verb, part.name, wname, d, bonus, Pal.hex(Pal.G5), dmg, crit])
+		if not part.get("kill", false):
+			for q in parts:
+				if q.name == "Туловище":
+					q.hp -= int(dmg * 0.35)
+		_flash()
+		if part.hp <= 0:
+			_log("[color=%s]«%s» уничтожено.[/color]" % [Pal.hex(Pal.R3), part.name])
+			for a in part.get("disables", []):
+				_log("%s больше не может использовать «%s»." % [E.name, a])
+	_update_status()
+	if _enemy_dead():
+		await _wait(0.5)
+		_victory()
+		return
+	await _wait(0.6)
+	await _enemy_turn()
+	_after_enemy()
+
+
+func _reload() -> void:
+	busy = true
+	_log(G.reload())
+	await _wait(0.4)
+	await _enemy_turn()
+	_after_enemy()
+
+
+func _analyze() -> void:
+	busy = true
+	var r := G.roll("Анализ", 12)
+	if r.ok:
+		analyzed = true
+		var weak := ""
+		for p in parts:
+			if p.get("kill", false) and (weak == "" or p.mod < -3):
+				weak = p.name
+		_log("%s Вы видите слабые места: точные цифры повреждений и +2 к попаданию." % G.roll_text(r))
+		var dis: Array = []
+		for p in parts:
+			if p.has("disables"):
+				dis.append("%s → %s" % [p.name, ", ".join(p.disables)])
+		_log("[color=%s]Без этих частей враг лишится атак: %s.[/color]" % [Pal.hex(Pal.G3), "; ".join(dis)])
+	else:
+		_log("%s Враг двигается слишком хаотично." % G.roll_text(r))
+	await _wait(0.5)
+	await _enemy_turn()
+	_after_enemy()
+
+
+func _defend() -> void:
+	busy = true
+	var r := G.roll("Самозащита", 10)
+	defending = r.ok
+	_log("%s %s" % [G.roll_text(r), "Вы закрываетесь — урон этого хода вдвое меньше." if r.ok else "Вы не успеваете закрыться."])
+	await _wait(0.5)
+	await _enemy_turn()
+	defending = false
+	_after_enemy()
+
+
+func _items_menu() -> void:
+	_clear_actions()
+	var any := false
+	for it in G.p.inv.keys():
+		var t: String = D.ITEMS[it].type
+		if t in ["heal", "calm", "food"]:
+			any = true
+			_act("%s ×%d" % [it, G.p.inv[it]], _use_item.bind(it))
+	if not any:
+		_act("Нечего использовать", func(): pass, false)
+	_act("< Назад", _menu)
+
+
+func _use_item(it: String) -> void:
+	busy = true
+	_log(G.use_item(it))
+	_update_status()
+	await _wait(0.4)
+	await _enemy_turn()
+	_after_enemy()
+
+
+func _flee() -> void:
+	busy = true
+	var legs_gone := false
+	for p in parts:
+		if p.hp <= 0 and p.name in ["Лапы", "Ноги", "Щупальца"]:
+			legs_gone = true
+	if legs_gone:
+		_log("Враг не может преследовать. Вы спокойно уходите.")
+		await _wait(0.6)
+		_end("fled")
+		return
+	var dc := 12 + (4 if "Ноги" in G.p.wounds else 0)
+	var r := G.roll("Акробатика", dc)
+	_log("Вы подбрасываете монетку... %s" % G.roll_text(r))
+	if r.ok:
+		_log("[color=%s]Орёл. Вы вырываетесь и бежите.[/color]" % Pal.hex(Pal.G5))
+		await _wait(0.6)
+		_end("fled")
+		return
+	_log("[color=%s]Решка. Путь отрезан.[/color]" % Pal.hex(Pal.R3))
+	await _wait(0.5)
+	await _enemy_turn()
+	_after_enemy()
+
+
+# ---------- ход врага ----------
+
+func _available_attacks() -> Array:
+	var off: Array = []
+	for p in parts:
+		if p.hp <= 0:
+			off.append_array(p.get("disables", []))
+	var res: Array = []
+	for a in E.attacks:
+		if not (a.name in off):
+			res.append(a)
+	return res
+
+
+func _enemy_turn() -> void:
+	if finished:
+		return
+	var atks := _available_attacks()
+	if atks.is_empty():
+		_log("%s корчится, но больше не может атаковать." % E.name)
+		return
+	var a: Dictionary = atks.pick_random()
+	var roll_w := randf()
+	var target := "Туловище"
+	if roll_w < 0.15:
+		target = "Голова"
+	elif roll_w < 0.38:
+		target = "Руки"
+	elif roll_w < 0.6:
+		target = "Ноги"
+	var d := randi_range(1, 20)
+	var evade := 10 + maxi(0, D.check_mod(G.stat("ЛВК"))) + (4 if defending else 0)
+	if a.kind == "mind":
+		evade = 10 + maxi(0, D.check_mod(G.stat("ВСП")))
+	var hit := (d + 4 >= evade or d == 20) and d != 1
+	var where := target.to_lower() if a.kind == "body" else "ваш разум"
+	if a.kind == "mind":
+		where = "вас"
+	if not hit:
+		_log("%s %s %s — [color=%s]промах[/color]." % [E.name, a.text, where if a.kind == "mind" else _acc(target), Pal.hex(Pal.G3)])
+		return
+	var dmg := float(a.dmg) * randf_range(0.85, 1.15)
+	if target == "Голова" and a.kind == "body":
+		dmg *= 1.3
+	if defending:
+		dmg *= 0.5
+	var dealt := G.hurt(int(round(dmg)), a.kind)
+	_shake()
+	if a.kind == "mind":
+		_log("%s %s вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
+		_check_mind()
+	else:
+		_log("%s %s %s. [color=%s]-%d ООЗ.[/color]" % [E.name, a.text, _acc(target), Pal.hex(Pal.R3), dealt])
+		if target == "Голова":
+			var m := G.hurt(3, "mind")
+			_log("В глазах темнеет: -%d ООР." % m)
+			_check_mind()
+		if (d >= 18) and target != "Туловище" and not (target in G.p.wounds):
+			G.p.wounds.append(target)
+			_log("[color=%s]Рана: %s. Нужен хирург.[/color]" % [Pal.hex(Pal.R2), target.to_lower()])
+	_update_status()
+
+
+func _acc(part: String) -> String:
+	match part:
+		"Голова": return "голову"
+		"Руки": return "руку"
+		"Ноги": return "ногу"
+	return "туловище"
+
+
+func _check_mind() -> void:
+	if G.p.mind <= 0:
+		var tr := G.go_mad()
+		_log("[color=%s]Рассудок ломается. Новая черта: «%s».[/color]" % [Pal.hex(Pal.R2), tr])
+
+
+func _after_enemy() -> void:
+	if finished:
+		return
+	if G.p.hp <= 0:
+		await _death_saves()
+		return
+	busy = false
+	_menu()
+
+
+func _death_saves() -> void:
+	_clear_actions()
+	_log("\n[color=%s]Вы падаете. Три проверки Антисмерти...[/color]" % Pal.hex(Pal.R2))
+	await _wait(0.8)
+	var res := G.death_saves()
+	for r in res.rolls:
+		_log(G.roll_text(r))
+		await _wait(0.6)
+	if not res.alive:
+		_log("[color=%s]Сердце останавливается.[/color]" % Pal.hex(Pal.R2))
+		await _wait(1.2)
+		_end("dead")
+		return
+	if res.injury != "":
+		_log("[color=%s]Вы выжили, но останется травма: «%s».[/color]" % [Pal.hex(Pal.R3), res.injury])
+	else:
+		_log("[color=%s]Все три проверки пройдены. Вы выжили без последствий.[/color]" % Pal.hex(Pal.G5))
+	_log("%s теряет к вам интерес и уходит." % E.name)
+	finished = true
+	_update_status()
+	_clear_actions()
+	busy = false
+	_act("Очнуться", _end.bind("down"))
+
+
+# ---------- итоги ----------
+
+func _enemy_dead() -> bool:
+	for p in parts:
+		if p.get("kill", false) and p.hp <= 0:
+			return true
+	return false
+
+
+func _victory() -> void:
+	finished = true
+	_log("\n[color=%s]%s повержен.[/color]" % [Pal.hex(Pal.G5), E.name])
+	var su := randi_range(E.su[0], E.su[1])
+	if su > 0:
+		G.p.su += su
+		_log("Найдено: %d Су." % su)
+	for it in E.loot:
+		G.add_item(it)
+		_log("Найдено: %s." % it)
+	if E.loot.size() > 0:
+		var r := G.roll("Трофей", 11)
+		if r.ok:
+			G.add_item(E.loot[0])
+			_log("%s Аккуратная разделка: ещё один «%s»." % [G.roll_text(r), E.loot[0]])
+	G.say("Победа: %s." % E.name)
+	_update_status()
+	_clear_actions()
+	busy = false
+	_act("Вернуться", _end.bind("win"))
+
+
+func _end(result: String) -> void:
+	finished = true
+	queue_free()
+	if on_end.is_valid():
+		on_end.call(result)
+
+
+func _flash() -> void:
+	var tw := create_tween()
+	view.modulate = Color(2, 0.6, 0.6)
+	tw.tween_property(view, "modulate", Color.WHITE, 0.25)
+
+
+func _shake() -> void:
+	var tw := create_tween()
+	for i in 4:
+		tw.tween_property(self, "position", Vector2(randf_range(-4, 4), randf_range(-3, 3)), 0.04)
+	tw.tween_property(self, "position", Vector2.ZERO, 0.04)

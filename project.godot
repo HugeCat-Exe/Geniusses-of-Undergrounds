@@ -1,0 +1,38 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Гении Подземки"
+config/description="Гении Подземки: Кальдера"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+boot_splash/bg_color=Color(0.02, 0.05, 0.03, 1)
+boot_splash/show_image=false
+
+[autoload]
+
+Pal="*res://scripts/pal.gd"
+D="*res://scripts/data.gd"
+G="*res://scripts/game.gd"
+Art="*res://scripts/art.gd"
+
+[display]
+
+window/size/viewport_width=640
+window/size/viewport_height=360
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[gui]
+
+theme/default_font_antialiasing=1
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.02, 0.05, 0.03, 1)

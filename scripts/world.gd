@@ -1,0 +1,559 @@
+extends Node2D
+## Изометрическая карта: ходьба мышью и клавишами, NPC, предметы, монстры, HUD.
+
+const Maps := preload("res://scripts/maps.gd")
+const ArtLib := preload("res://scripts/art.gd")
+const WALLS := {"#": "panel", "B": "brick", "R": "ruin"}
+const FLOORS := {".": "metal", ",": "concrete", "_": "tile", "=": "rug", "s": "sand", "a": "ash"}
+const SPEED := 4.5
+
+var map: Dictionary
+var grid: Array
+var W := 0
+var H := 0
+var waste := false
+var light := 12.0
+var astar := AStarGrid2D.new()
+var floors: Array = []
+var walls: Array = []
+var objs: Array = []
+var mobs: Array = []
+var obj_at := {}
+
+var ppos := Vector2i.ZERO
+var pf := Vector2.ZERO
+var path: Array = []
+var pending = null
+var anim_t := 0.0
+var frame := 0
+var flip := false
+var mob_t := 0.0
+var cur_mob = null
+var cam: Camera2D
+
+var hud: Control
+var hud_text: RichTextLabel
+var log_text: RichTextLabel
+var hover: Label
+var place: Label
+
+
+func setup(map_name: String, spawn: String) -> void:
+	map = Maps.new().get_map(map_name)
+	grid = map.floor
+	H = grid.size()
+	W = grid[0].size()
+	waste = map.waste
+	light = map.light
+	astar.region = Rect2i(0, 0, W, H)
+	astar.cell_size = Vector2(1, 1)
+	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	astar.update()
+	var wall_h := 14 if waste else 22
+	for y in H:
+		for x in W:
+			var ch: String = grid[y][x]
+			if ch == " ":
+				astar.set_point_solid(Vector2i(x, y), true)
+			elif WALLS.has(ch):
+				astar.set_point_solid(Vector2i(x, y), true)
+				walls.append({"pos": Vector2i(x, y), "tex": Art.wall_tex(WALLS[ch], wall_h, (x * 7 + y * 3) % 4)})
+			else:
+				floors.append({"pos": Vector2i(x, y), "tex": Art.floor_tex(FLOORS.get(ch, "metal"), (x * 5 + y * 11) % 3)})
+	for o in map.objs:
+		if o.type == "mob":
+			if o.id in G.p.killed:
+				continue
+			var m: Dictionary = o.duplicate()
+			m.pos = Vector2i(o.x, o.y)
+			m.fpos = Vector2(o.x, o.y)
+			m.stun = 0.0
+			m.home = m.pos
+			mobs.append(m)
+			continue
+		var ob: Dictionary = o.duplicate()
+		ob.pos = Vector2i(o.x, o.y)
+		if ob.type == "npc":
+			ob.tex = Art.person_tex(ob.look)
+		else:
+			ob.tex = Art.prop_tex(o.tex)
+		objs.append(ob)
+		obj_at[ob.pos] = ob
+		if ob.block:
+			astar.set_point_solid(ob.pos, true)
+	if spawn != "" and map.spawns.has(spawn):
+		ppos = map.spawns[spawn]
+	else:
+		ppos = Vector2i(G.p.pos[0], G.p.pos[1])
+	pf = Vector2(ppos)
+	G.p.pos = [ppos.x, ppos.y]
+
+
+func _ready() -> void:
+	cam = Camera2D.new()
+	add_child(cam)
+	cam.position = iso(pf)
+	cam.position_smoothing_enabled = true
+	cam.position_smoothing_speed = 8.0
+	_build_hud()
+	G.changed.connect(_update_hud)
+	G.logged.connect(func(_t): _update_log())
+	_update_hud()
+	_update_log()
+	if not G.flag("intro"):
+		G.set_flag("intro")
+		G.main().open_dialogue.call_deferred("intro")
+	elif waste and not G.flag("waste_seen"):
+		G.set_flag("waste_seen")
+		G.say("Ветер несёт пепел. Где-то воют псы.")
+
+
+func iso(v: Vector2) -> Vector2:
+	return Vector2((v.x - v.y) * 16.0, (v.x + v.y) * 8.0)
+
+
+func to_grid(w: Vector2) -> Vector2i:
+	var gx := (w.x / 16.0 + w.y / 8.0) / 2.0
+	var gy := (w.y / 8.0 - w.x / 16.0) / 2.0
+	return Vector2i(roundi(gx), roundi(gy))
+
+
+func in_bounds(t: Vector2i) -> bool:
+	return t.x >= 0 and t.y >= 0 and t.x < W and t.y < H
+
+
+func walkable(t: Vector2i) -> bool:
+	return in_bounds(t) and not astar.is_point_solid(t)
+
+
+func set_paused(_v: bool) -> void:
+	path.clear()
+
+
+func blocked() -> bool:
+	return G.main().has_overlay()
+
+
+# ---------------- ввод ----------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if blocked():
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var t := to_grid(get_global_mouse_position())
+		if not in_bounds(t):
+			return
+		var target = _target_at(t)
+		if target != null:
+			pending = target
+			_path_near(target.pos, target.get("reach", 1))
+		elif walkable(t):
+			pending = null
+			_path_to(t)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_TAB:
+				G.main().open_pager(0)
+			KEY_ESCAPE:
+				G.main().open_pager(4)
+			KEY_I:
+				G.main().open_pager(1)
+			KEY_E, KEY_SPACE, KEY_ENTER:
+				_interact_near()
+
+
+func _target_at(t: Vector2i):
+	for m in mobs:
+		if m.pos == t:
+			return m
+	if obj_at.has(t):
+		var o: Dictionary = obj_at[t]
+		if o.type == "npc" or o.action != "":
+			return o
+	return null
+
+
+func _path_to(t: Vector2i) -> void:
+	var ids := astar.get_id_path(ppos, t)
+	path = []
+	for i in range(1, ids.size()):
+		path.append(ids[i])
+
+
+func _path_near(t: Vector2i, reach: int) -> void:
+	if _cheb(ppos, t) <= reach:
+		path.clear()
+		return
+	var best: Array = []
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var c := t + Vector2i(dx, dy)
+			if c == t or not walkable(c):
+				continue
+			var ids := astar.get_id_path(ppos, c)
+			if ids.size() > 0 and (best.is_empty() or ids.size() < best.size()):
+				best = ids
+	path = []
+	for i in range(1, best.size()):
+		path.append(best[i])
+
+
+func _cheb(a: Vector2i, b: Vector2i) -> int:
+	return maxi(absi(a.x - b.x), absi(a.y - b.y))
+
+
+func _interact_near() -> void:
+	var best = null
+	var bd := 99
+	for o in objs:
+		if o.type != "npc" and o.action == "":
+			continue
+		var d := _cheb(o.pos, ppos)
+		if d <= o.get("reach", 1) and d < bd:
+			bd = d
+			best = o
+	if best != null:
+		_interact(best)
+
+
+func _interact(o: Dictionary) -> void:
+	pending = null
+	path.clear()
+	flip = o.pos.x - o.pos.y < ppos.x - ppos.y
+	if o.type == "mob":
+		start_encounter(o)
+		return
+	G.main().open_dialogue(o.action)
+
+
+# ---------------- цикл ----------------
+
+func _process(delta: float) -> void:
+	var stop := blocked()
+	if not stop:
+		_move(delta)
+		mob_t += delta
+		if mob_t >= 0.38:
+			mob_t = 0.0
+			_mobs_think()
+	for m in mobs:
+		m.fpos = m.fpos.move_toward(Vector2(m.pos), delta * 3.5)
+		if m.stun > 0.0 and not stop:
+			m.stun -= delta
+	cam.position = iso(pf) + Vector2(0, -10)
+	_update_hover()
+	queue_redraw()
+
+
+func _move(delta: float) -> void:
+	if path.is_empty():
+		var dir := _key_dir()
+		if dir != Vector2i.ZERO:
+			var n := ppos + dir
+			var diag_ok := dir.x == 0 or dir.y == 0 or (walkable(ppos + Vector2i(dir.x, 0)) and walkable(ppos + Vector2i(0, dir.y)))
+			if walkable(n) and diag_ok:
+				path.append(n)
+				pending = null
+		elif pending != null:
+			var reach: int = pending.get("reach", 1)
+			if _cheb(ppos, pending.pos) <= reach:
+				_interact(pending)
+			else:
+				pending = null
+		return
+	var target: Vector2 = Vector2(path[0])
+	if (target - pf).x - (target - pf).y != 0:
+		flip = (target - pf).x - (target - pf).y < 0
+	pf = pf.move_toward(target, delta * SPEED)
+	anim_t += delta
+	if anim_t > 0.14:
+		anim_t = 0.0
+		frame = 1 - frame
+	if pf.distance_to(target) < 0.001:
+		ppos = path.pop_front()
+		G.p.pos = [ppos.x, ppos.y]
+		_on_step()
+		if path.is_empty():
+			frame = 0
+
+
+func _key_dir() -> Vector2i:
+	var d := Vector2i.ZERO
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		d += Vector2i(-1, -1)
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		d += Vector2i(1, 1)
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		d += Vector2i(-1, 1)
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		d += Vector2i(1, -1)
+	return Vector2i(clampi(d.x, -1, 1), clampi(d.y, -1, 1))
+
+
+func _on_step() -> void:
+	G.step(waste)
+	if G.p.hp <= 0:
+		G.main().game_over("Гений %s умер от голода. Пустошь не кормит тех, кто забывает о себе." % G.p.callsign)
+		return
+	for m in mobs:
+		if m.stun <= 0.0 and _cheb(m.pos, ppos) <= 1:
+			path.clear()
+			start_encounter(m)
+			return
+
+
+func _mobs_think() -> void:
+	for m in mobs:
+		if m.stun > 0.0:
+			continue
+		var d := _cheb(m.pos, ppos)
+		if d <= 1:
+			path.clear()
+			start_encounter(m)
+			return
+		var goal: Vector2i = m.home
+		if d <= m.aggro:
+			goal = ppos
+		if m.pos == goal:
+			continue
+		var ids := astar.get_id_path(m.pos, goal)
+		if ids.size() > 1:
+			var nxt: Vector2i = ids[1]
+			var free := nxt != ppos
+			for o in mobs:
+				if o != m and o.pos == nxt:
+					free = false
+			if free:
+				m.pos = nxt
+
+
+# ---------------- встречи ----------------
+
+func start_encounter(m: Dictionary) -> void:
+	if blocked():
+		return
+	cur_mob = m
+	if m.enemy == "padal" and not G.flag("talked_" + m.id):
+		G.set_flag("talked_" + m.id)
+		G.main().open_dialogue("raider_meet")
+		return
+	fight_current()
+
+
+func fight_current() -> void:
+	if cur_mob == null:
+		return
+	G.main().start_combat(cur_mob.enemy, _on_combat_end)
+
+
+## Моб уходит без боя (откупились или запугали).
+func spare_current() -> void:
+	if cur_mob == null:
+		return
+	G.p.killed.append(cur_mob.id)
+	mobs.erase(cur_mob)
+	cur_mob = null
+
+
+func _on_combat_end(result: String) -> void:
+	var m = cur_mob
+	cur_mob = null
+	match result:
+		"win":
+			if m != null:
+				G.p.killed.append(m.id)
+				mobs.erase(m)
+				if m.enemy == "pes":
+					G.p.flags["dogs"] = int(G.p.flags.get("dogs", 0)) + 1
+					if G.p.quests.get("dogs", "") == "active" and int(G.p.flags.dogs) >= 3:
+						G.quest("dogs", "done")
+						G.say("Задание Института: три пса убиты. Вернитесь к доске заданий.")
+		"fled":
+			if m != null:
+				m.stun = 6.0
+		"down":
+			var lost := int(G.p.su * 0.25)
+			G.p.su -= lost
+			G.say("Вы очнулись в пыли. Кто-то обчистил карманы: -%d Су." % lost)
+			if m != null:
+				m.stun = 20.0
+				m.pos = m.home
+		"dead":
+			G.main().game_over("Гений %s погиб в Пустоши. Тело так и не нашли." % G.p.callsign)
+			return
+	_update_hud()
+
+
+# ---------------- отрисовка ----------------
+
+func _shade(pos: Vector2) -> Color:
+	var d := pos.distance_to(pf)
+	var f := clampf(1.0 - maxf(0.0, d - light) / 7.0, 0.28, 1.0)
+	return Color(f, f, f, 1.0)
+
+
+func _draw() -> void:
+	for f in floors:
+		var p: Vector2i = f.pos
+		draw_texture(f.tex, iso(Vector2(p)) - Vector2(16, 8), _shade(Vector2(p)))
+	# подсветка клетки под курсором
+	var mt := to_grid(get_global_mouse_position())
+	if in_bounds(mt) and not blocked():
+		var c := iso(Vector2(mt))
+		var col := Pal.R2 if _target_at(mt) != null else Pal.G4
+		draw_polyline(PackedVector2Array([c + Vector2(0, -8), c + Vector2(16, 0), c + Vector2(0, 8), c + Vector2(-16, 0), c + Vector2(0, -8)]), Color(col, 0.6), 1.0)
+	if not path.is_empty():
+		for t in path:
+			draw_rect(Rect2(iso(Vector2(t)) - Vector2(1, 1), Vector2(2, 2)), Color(Pal.G5, 0.5))
+
+	var items: Array = []
+	var pdepth := pf.x + pf.y
+	for w in walls:
+		var p: Vector2i = w.pos
+		var a := 1.0
+		var dd := p.x + p.y - pdepth
+		if dd > 0.5 and dd <= 4.0 and absf((p.x - p.y) - (pf.x - pf.y)) <= 2.5:
+			a = 0.3
+		items.append([p.x + p.y, p.x, w.tex, iso(Vector2(p)) - Vector2(16, 8 + w.tex.get_height() - 16), a, Vector2(p), false])
+	for o in objs:
+		var p: Vector2i = o.pos
+		var tex: Texture2D = o.tex
+		var off := Vector2(-tex.get_width() / 2.0, 6 - tex.get_height())
+		if o.type == "npc":
+			off = Vector2(-8, 4 - 28)
+		items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), false])
+	for m in mobs:
+		var tex := _mob_tex(m)
+		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height()), 1.0, m.fpos, false])
+	var ptex := Art.person_tex(G.person_look(), frame)
+	items.append([pdepth + 0.05, pf.x, ptex, iso(pf) + Vector2(-8, 4 - 28), 1.0, pf, flip])
+	items.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	for it in items:
+		var col := _shade(it[5])
+		col.a = it[4]
+		if it[6]:
+			draw_texture_rect(it[2], Rect2(it[3] + Vector2(it[2].get_width(), 0), Vector2(-it[2].get_width(), it[2].get_height())), false, col)
+		else:
+			draw_texture(it[2], it[3], col)
+
+
+func _mob_tex(m: Dictionary) -> Texture2D:
+	match m.enemy:
+		"pes":
+			return Art.cached("mob_pes", func(): return _small_dog())
+		"padal":
+			return Art.person_tex(Maps.NPC_LOOKS.raider.person, frame)
+		_:
+			return Art.cached("mob_iskaz", func(): return _small_warped())
+
+
+func _small_dog() -> Texture2D:
+	var cv := ArtLib.Canvas.new(22, 16)
+	cv.ellipse(10, 9, 7, 3.5, 3)
+	cv.ellipse(17, 6, 3.5, 3, 3)
+	cv.put(20, 7, 8)
+	cv.put(19, 7, 8)
+	for lx in [5, 8, 12, 15]:
+		cv.line(lx, 11, lx, 15, 2)
+	cv.line(3, 8, 0, 5, 2)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+func _small_warped() -> Texture2D:
+	var cv := ArtLib.Canvas.new(20, 28)
+	cv.ellipse(10, 18, 7, 8, 2)
+	cv.ellipse(10, 8, 5, 5, 4)
+	cv.put(8, 7, 8)
+	cv.put(12, 7, 8)
+	cv.put(10, 5, 9)
+	cv.line(3, 16, 0, 26, 3)
+	cv.line(17, 16, 19, 27, 3)
+	cv.line(7, 25, 6, 27, 3)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+# ---------------- HUD ----------------
+
+func _build_hud() -> void:
+	hud = Control.new()
+	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	G.main().ui.add_child(hud)
+	var panel := PanelContainer.new()
+	panel.position = Vector2(4, 4)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(panel)
+	hud_text = Pal.rich("", 9)
+	hud_text.custom_minimum_size = Vector2(178, 0)
+	hud_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(hud_text)
+
+	place = Pal.label(map.name.to_upper(), Pal.G4, 10, true)
+	place.position = Vector2(420, 6)
+	place.size = Vector2(214, 14)
+	place.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hud.add_child(place)
+	var pb := Pal.button("ПЕЙДЖЕР [Tab]", func(): G.main().open_pager(0), 9)
+	pb.position = Vector2(536, 22)
+	pb.size = Vector2(98, 18)
+	hud.add_child(pb)
+
+	log_text = Pal.rich("", 8)
+	log_text.fit_content = false
+	log_text.position = Vector2(6, 316)
+	log_text.size = Vector2(560, 40)
+	log_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(log_text)
+
+	hover = Pal.label("", Pal.G5, 9)
+	hover.add_theme_color_override("font_outline_color", Pal.BG)
+	hover.add_theme_constant_override("outline_size", 4)
+	hover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(hover)
+
+
+func _bar(v: int, mx: int, n: int = 10) -> String:
+	var f := clampi(roundi(float(v) / maxf(1.0, mx) * n), 0, n)
+	return "█".repeat(f) + "░".repeat(n - f)
+
+
+func _update_hud() -> void:
+	if hud_text == null:
+		return
+	var p := G.p
+	var s := "[b]%s[/b]  [color=%s]%s[/color]\n" % [p.callsign, Pal.hex(Pal.G3), D.FACTIONS[p.faction].short]
+	s += "[color=%s]ООЗ %s %d/%d[/color]\n" % [Pal.hex(Pal.R3), _bar(p.hp, G.max_hp()), p.hp, G.max_hp()]
+	s += "[color=%s]ООР %s %d/%d[/color]\n" % [Pal.hex(Pal.G5), _bar(p.mind, G.max_mind()), p.mind, G.max_mind()]
+	s += "СЫТ %s %d\n" % [_bar(p.food, 100), p.food]
+	var wtxt := "—"
+	if p.weapon != "":
+		wtxt = "%s %d/%d" % [p.weapon, p.mag, G.ammo_left() - p.mag]
+	s += "Су %d   %s" % [p.su, wtxt]
+	if p.wounds.size() > 0:
+		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
+	hud_text.text = s
+
+
+func _update_log() -> void:
+	if log_text == null:
+		return
+	var lines: Array = G.log_lines.slice(maxi(0, G.log_lines.size() - 3))
+	log_text.text = "\n".join(lines)
+
+
+func _update_hover() -> void:
+	if blocked():
+		hover.text = ""
+		return
+	var t := to_grid(get_global_mouse_position())
+	var tg = _target_at(t)
+	var txt := ""
+	if tg != null:
+		txt = tg.title
+	elif obj_at.has(t):
+		txt = obj_at[t].title
+	hover.text = txt
+	hover.position = get_viewport().get_mouse_position() + Vector2(10, -4)
