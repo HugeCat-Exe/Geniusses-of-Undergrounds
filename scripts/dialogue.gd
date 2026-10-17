@@ -11,12 +11,14 @@ var closed := false
 var portrait: TextureRect
 var pframe: Panel
 var name_label: Label
+var rel_label: RichTextLabel
 var text: RichTextLabel
 var text_panel: PanelContainer
 var choices: VBoxContainer
 var choice_panel: PanelContainer
 var chars := 0.0
 var current_who := ""
+var current_id := ""
 var injury_result := ""
 
 
@@ -42,8 +44,15 @@ func _ready() -> void:
 	add_child(text_panel)
 	var tv := VBoxContainer.new()
 	text_panel.add_child(tv)
+	var head := HBoxContainer.new()
+	tv.add_child(head)
 	name_label = Pal.label("", Pal.G5, 11, true)
-	tv.add_child(name_label)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(name_label)
+	rel_label = Pal.rich("", 9)
+	rel_label.custom_minimum_size = Vector2(190, 0)
+	rel_label.fit_content = true
+	head.add_child(rel_label)
 	text = Pal.rich("", 10)
 	text.fit_content = false
 	text.scroll_active = true
@@ -59,6 +68,7 @@ func _ready() -> void:
 
 func start(id: String) -> void:
 	nodes = Story.nodes()
+	nodes.merge(G.temp_nodes, true)
 	_show(id)
 
 
@@ -92,24 +102,25 @@ func _show(id: String) -> void:
 	_fx(n.get("fx", []))
 	if closed:
 		return
+	current_id = id
 	current_who = n.get("who", "")
 	if current_who != "":
 		var who: Dictionary = Story.WHO[current_who]
-		var title: String = who.name
-		if current_who == "emirra" and not G.flag("emirra_named"):
-			title = "Рыжая незнакомка"
-		name_label.text = title
+		name_label.text = who.name
+		rel_label.text = _rel_text(current_who) if who.get("rel", false) else ""
 		portrait.texture = Art.portrait_tex(Maps.NPC_LOOKS[current_who].portrait)
 		_layout(true)
 	else:
 		name_label.text = ""
+		rel_label.text = ""
 		_layout(false)
-	text.text = _subst(n.text)
+	text.text = _board_text() if n.get("board", false) else _subst(n.get("text", ""))
 	text.visible_characters = 0
 	chars = 0.0
 	_clear_choices()
 	var i := 1
-	for ch in n.get("choices", []):
+	var list: Array = _dynamic_choices(n) + n.get("choices", [])
+	for ch in list:
 		if ch.has("if") and not _cond(ch["if"]):
 			continue
 		var label := "%d. %s" % [i, _subst(ch.t)]
@@ -120,6 +131,61 @@ func _show(id: String) -> void:
 		i += 1
 	if i == 1:
 		_add_choice("1. Далее", _show.bind(n.get("next", "end")))
+
+
+## Отношение собеседника к Гению: название ступени и полоска до следующей.
+func _rel_text(who: String) -> String:
+	var t := G.rel_tier(who)
+	var col: Color = Pal.R3 if t.idx < 0 else (Pal.G3 if t.idx == 0 else Pal.G5)
+	var bar := ""
+	if t.next > 0:
+		var lo: int = 0
+		for tier in D.REL_TIERS:
+			if t.pts >= tier[0]:
+				lo = maxi(tier[0], -30)
+		var f := clampi(int(6.0 * (t.pts - lo) / maxf(1.0, t.next - lo)), 0, 6)
+		bar = " " + "▮".repeat(f) + "▯".repeat(6 - f)
+	return "[right][color=%s]Отношение: %s%s[/color][/right]" % [Pal.hex(col), t.name, bar]
+
+
+## Выборы, которые зависят от состояния игры: сдача подработок, поиски, объявления.
+func _dynamic_choices(n: Dictionary) -> Array:
+	var res: Array = []
+	if n.get("hub", false) and current_who != "":
+		for j in G.p.jobs:
+			if j.giver == current_who and j.state == "done":
+				res.append({"t": "Сдать: %s%s" % [j.title, (" (+%d Су)" % j.su) if j.su > 0 else ""],
+					"fx": [["turn_in", j.id]], "next": "thanks_" + current_who if nodes.has("thanks_" + current_who) else current_id})
+	if n.has("poi"):
+		for j in G.p.jobs:
+			if j.kind == "find" and j.poi == n.poi and j.state == "active":
+				var risk: String = " (там %s)" % D.ENEMIES[j.guard].name.to_lower() if j.guard != "" else ""
+				res.append({"t": "Искать: %s%s" % [j.item, risk], "fx": [["find_job", j.id]], "next": "end"})
+	if n.get("board", false):
+		for j in G.p.jobs:
+			if j.giver == "board" and j.state == "done":
+				res.append({"t": "Получить оплату: %s (+%d Су)" % [j.title, j.su], "fx": [["turn_in", j.id]], "next": "board"})
+		if G.p.quests.get("dogs", "") == "done":
+			res.append({"t": "Получить 90 Су за заказ №117", "fx": [["su", 90], ["quest", "dogs", "closed"]], "next": "board"})
+		for o in G.board_offers():
+			var who := G.giver_name(o.giver)
+			res.append({"t": "Взять: %s — %s (%d Су)" % [o.title, who, o.su], "fx": [["take_offer", o]], "next": "board"})
+	return res
+
+
+func _board_text() -> String:
+	var s := "ДОСКА ОБЪЯВЛЕНИЙ · ЯРУС 2\nЗаписки на гвоздях, заказы Института под стеклом. Объявления меняются каждый день.\n"
+	var offers := G.board_offers()
+	if offers.is_empty():
+		s += "\nСегодня всё разобрали. Загляните завтра."
+	for o in offers:
+		s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5), o.title, o.text]
+	var mine := 0
+	for j in G.p.jobs:
+		mine += 1
+	if mine > 0:
+		s += "\n\n[color=%s]Ваших подработок: %d. Подробности — в пейджере, вкладка «Задачи».[/color]" % [Pal.hex(Pal.G3), mine]
+	return s
 
 
 func _clear_choices() -> void:
@@ -137,7 +203,8 @@ func _add_choice(label: String, cb: Callable) -> void:
 ## Сложность с поправкой на отношение фракции говорящего к Гению.
 func _dc(base: int) -> int:
 	if current_who != "" and Story.WHO[current_who].has("faction"):
-		return clampi(base - G.relation(Story.WHO[current_who].faction), 2, 30)
+		var personal: int = G.rel_tier(current_who).idx if Story.WHO[current_who].get("rel", false) else 0
+		return clampi(base - G.relation(Story.WHO[current_who].faction) - personal, 2, 30)
 	return base
 
 
@@ -157,6 +224,7 @@ func _resolve_check(ch: Dictionary, r: Dictionary) -> void:
 	text.visible_characters = -1
 	_clear_choices()
 	if r.ok:
+		_fx(ch.get("ok_fx", []))
 		_add_choice("1. Далее", _show.bind(ch.get("ok", ch.get("next", "end"))))
 	else:
 		var i := 1
@@ -250,7 +318,42 @@ func _cond(c: String) -> bool:
 			return G.p.got_phys.size() > 0 and G.p.su >= 120
 		"river_today":
 			return int(G.p.flags.get("river_day", -1)) == G.p.day
+		"den_today":
+			return int(G.p.flags.get("den_day", -1)) == G.p.day
+		"doc_hurt":
+			return G.p.hp < G.max_hp() and G.p.su >= _doc_cost()
+		"companion":
+			return G.p.get("companion", "") == "ryzhaya"
+		"ry_job_active":
+			for j in G.p.jobs:
+				if j.giver == "ryzhaya":
+					return true
+			return false
+		"ry_earring_day":
+			if G.flag("ry_earring_given") or int(G.p.flags.get("ry_errands", 0)) < 1 or _cond("ry_job_active"):
+				return false
+			return hash(str(G.p.seed) + "ear" + str(G.p.day)) % 2 == 0
+		"ry_test_ready":
+			return int(G.p.flags.get("ry_errands", 0)) >= 2 and not G.flag("ry_test_done") \
+				and int(G.p.flags.get("ry_test_day", -1)) != G.p.day
+	if c.begins_with("floor:"):
+		return G.p.map == "caldera" + c.substr(6)
+	if c.begins_with("errands>="):
+		return int(G.p.flags.get("ry_errands", 0)) >= int(c.substr(9))
+	if c.begins_with("errands="):
+		return int(G.p.flags.get("ry_errands", 0)) == int(c.substr(8))
+	if c.begins_with("rel:"):
+		var parts := c.substr(4).split(">=")
+		return G.rel_points(parts[0]) >= int(parts[1])
 	return false
+
+
+func _doc_heal() -> int:
+	return ceili((G.max_hp() - G.p.hp) / 2.0)
+
+
+func _doc_cost() -> int:
+	return _doc_heal()
 
 
 func _heal_cost() -> int:
@@ -262,7 +365,8 @@ func _heal_cost() -> int:
 func _subst(s: String) -> String:
 	return s.replace("{callsign}", G.p.callsign).replace("{faction}", D.FACTIONS[G.p.faction].name) \
 		.replace("{heal_cost}", str(_heal_cost())).replace("{dogs}", str(int(G.p.flags.get("dogs", 0)))) \
-		.replace("{injury_result}", injury_result)
+		.replace("{injury_result}", injury_result).replace("{doc_heal}", str(_doc_heal())).replace("{doc_cost}", str(_doc_cost())) \
+		.replace("{day}", str(G.p.day)).replace("{hour}", "%02d:00" % G.p.hour)
 
 
 func _fx(list: Array) -> void:
@@ -315,17 +419,16 @@ func _fx(list: Array) -> void:
 				G.calm(30)
 				G.p.will = G.max_will()
 				G.p.food = maxi(0, G.p.food - 10)
-				G.p.day += 1
-				G.changed.emit()
+				G.sleep_till_morning()
 			"accept_dogs":
 				G.quest("dogs", "active")
 				G.say("Новая задача: убить трёх пустынных псов.")
 				if int(G.p.flags.get("dogs", 0)) >= 3:
 					G.quest("dogs", "done")
-			"emirra_steal":
+			"ry_steal":
 				var r := G.roll("Шестое чувство", 13)
 				if r.ok:
-					G.set_flag("emirra_noticed")
+					G.set_flag("ry_noticed")
 				G.p.su = maxi(0, G.p.su - 25)
 				G.changed.emit()
 				if not r.ok:
@@ -350,3 +453,47 @@ func _fx(list: Array) -> void:
 				var m: String = f[1]
 				var sp: String = f[2]
 				after.append(func(): G.main().show_world(m, sp))
+			"rel":
+				G.rel_add(f[1], f[2])
+			"buy":
+				if G.p.su >= f[2]:
+					G.p.su -= f[2]
+					G.add_item(f[1])
+			"turn_in":
+				G.turn_in(f[1])
+			"take_offer":
+				G.take_job(f[1])
+			"ry_job":
+				var tpl: Dictionary = D.RY_EARRING if f[1] == "earring" else D.RY_JOBS[int(f[1])]
+				var rng := RandomNumberGenerator.new()
+				G.take_job(G._make_job(tpl, rng, "ry_%s" % str(f[1])))
+			"find_job":
+				var j = G.job_by_id(f[1])
+				if j != null:
+					G.temp_nodes["find_ok"] = {"who": "", "text": "Вы перерываете всё вокруг и находите то, что искали: [b]%s[/b].\n\n[color=#7ff07a](Отнесите находку: %s)[/color]" % [j.item, G.giver_name(j.giver, true)],
+						"choices": [{"t": "Забрать", "next": "end"}]}
+					if j.guard != "":
+						var jid: String = j.id
+						var en: String = j.guard
+						after.append(func(): G.main().battle(en, "find_ok", jid))
+					else:
+						G.job_found(j.id)
+						var nid := "find_ok"
+						after.append(func(): G.main().open_dialogue(nid))
+			"battle":
+				var en2: String = f[1]
+				var win: String = f[2] if f.size() > 2 else ""
+				after.append(func(): G.main().battle(en2, win))
+			"day_flag":
+				G.p.flags[f[1]] = G.p.day
+			"autodoc":
+				var h := _doc_heal()
+				G.p.su -= _doc_cost()
+				G.heal(h)
+			"companion":
+				G.p.companion = f[1]
+				G.changed.emit()
+				if f[1] == "" and G.main().world:
+					G.say("Рыжая возвращается в бар «Клык» на третьем ярусе.")
+			"time":
+				G.pass_hours(f[1])

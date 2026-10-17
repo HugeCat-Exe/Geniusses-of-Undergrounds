@@ -3,19 +3,8 @@ extends Control
 
 const ArtLib := preload("res://scripts/art.gd")
 
-## pos — в пикселях экрана 640×360. kind: town / zone / poi.
-const LOCS := {
-	"caldera": {"name": "Подземка «Кальдера»", "kind": "town", "pos": Vector2(170, 196),
-		"desc": "Город-трущоба, уходящий на много этажей вниз. Безопасно, есть еда, сон и хирург."},
-	"outskirts": {"name": "Пустошь у ворот", "kind": "zone", "pos": Vector2(300, 236),
-		"desc": "Руины, пустынные псы, разбитый караван. Здесь же тайник Клыков."},
-	"station": {"name": "Заброшенная заправка", "kind": "poi", "pos": Vector2(262, 92),
-		"desc": "Ржавые колонки и навес. Внутри могло что-то остаться.", "node": "poi_station"},
-	"river": {"name": "Река Лета", "kind": "poi", "pos": Vector2(430, 150),
-		"desc": "Вода течёт, значит, ей можно промыть раны.", "node": "poi_river"},
-	"tower": {"name": "Ретрансляционная вышка", "kind": "poi", "pos": Vector2(500, 270),
-		"desc": "Вышка Института. Говорят, она ещё ловит сигнал.", "node": "poi_tower"},
-}
+## Места карты лежат в data.gd (D.LOCS), чтобы их видели и прогулки по Пустоши.
+var LOCS: Dictionary = D.LOCS
 
 const SPEED := 40.0      # пикселей карты в час пешком
 const FOOD_PER_HOUR := 3
@@ -73,6 +62,10 @@ func _ready() -> void:
 	hud = Pal.label("", Pal.G4, 10)
 	tv.add_child(hud)
 
+	var eb := Pal.button("ИЗУЧАТЬ ОКРЕСТНОСТИ (2 ч)", _explore, 10)
+	eb.position = Vector2(4, 74)
+	add_child(eb)
+
 	var pb := Pal.button("ПЕЙДЖЕР [Tab]", _pager, 10)
 	pb.position = Vector2(540, 6)
 	add_child(pb)
@@ -103,6 +96,13 @@ func _ready() -> void:
 	G.logged.connect(_on_log)
 	_refresh_hud()
 	_on_log("Клик по точке — куда идти. Пешком тратится время и сытость, такси стоит Су.")
+
+
+func _explore() -> void:
+	if walking or G.main().has_overlay():
+		return
+	info.visible = false
+	G.main().explore()
 
 
 func _pager() -> void:
@@ -172,13 +172,13 @@ func taxi_cost(id: String) -> int:
 
 func has_marker(id: String) -> bool:
 	var q: Dictionary = G.p.quests
-	match id:
-		"outskirts":
-			return q.get("med", "") == "active" and not G.has("Ящик медикаментов") \
-				or q.get("dogs", "") == "active"
-		"caldera":
-			return G.has("Ящик медикаментов") and q.get("med", "") == "active" \
-				or q.get("dogs", "") == "done"
+	for j in G.p.jobs:
+		if j.state == "active" and j.kind == "find" and j.poi == id:
+			return true
+		if id == "caldera" and (j.state == "done" or j.kind == "kill"):
+			return true
+	if id == "caldera":
+		return q.get("med", "") == "active" or q.get("dogs", "") in ["active", "done"]
 	return false
 
 
@@ -234,10 +234,7 @@ func _close_info() -> void:
 
 
 func pass_time(h: int) -> void:
-	G.p.hour = int(G.p.hour) + h
-	while G.p.hour >= 24:
-		G.p.hour -= 24
-		G.p.day += 1
+	G.pass_hours(h)
 
 
 # ---------------- Перемещение ----------------
@@ -328,9 +325,7 @@ func enter(id: String) -> void:
 	info.visible = false
 	match id:
 		"caldera":
-			G.main().show_world("caldera", "gate")
-		"outskirts":
-			G.main().show_world("waste", "gate")
+			G.main().show_world("waste", "road")
 		_:
 			G.main().open_dialogue(LOCS[id].node, _refresh_hud)
 
@@ -427,5 +422,5 @@ func _terrain() -> ImageTexture:
 	# Кратер вокруг Кальдеры.
 	for a in 48:
 		var ang := a * TAU / 48.0
-		cv.put(85 + int(cos(ang) * 16), 98 + int(sin(ang) * 10), 4)
+		cv.put(95 + int(cos(ang) * 16), 105 + int(sin(ang) * 10), 4)
 	return Art.to_tex(cv)

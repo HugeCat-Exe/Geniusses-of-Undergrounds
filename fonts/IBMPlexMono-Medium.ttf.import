@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://d22jdmbv8iu50"
-path="res://.godot/imported/PressStart2P.ttf-5efcbd428e9d940ffb80085ffe21a152.fontdata"
+uid="uid://baavllslq3iww"
+path="res://.godot/imported/IBMPlexMono-Medium.ttf-24deeb382db036005d19d73a989a43d7.fontdata"
 
 [deps]
 
-source_file="res://fonts/PressStart2P.ttf"
-dest_files=["res://.godot/imported/PressStart2P.ttf-5efcbd428e9d940ffb80085ffe21a152.fontdata"]
+source_file="res://fonts/IBMPlexMono-Medium.ttf"
+dest_files=["res://.godot/imported/IBMPlexMono-Medium.ttf-24deeb382db036005d19d73a989a43d7.fontdata"]
 
 [params]
 

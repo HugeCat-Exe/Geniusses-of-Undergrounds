@@ -27,18 +27,15 @@ var theme: Theme
 
 func _ready() -> void:
 	var mono: FontFile = load("res://fonts/DejaVuSansMono.ttf")
-	var pix: FontFile = load("res://fonts/PixelifySans.ttf")
-	pix.fallbacks = [mono]
-	pix.hinting = TextServer.HINTING_NONE
-	font = pix
-	var bold := FontVariation.new()
-	bold.base_font = pix
-	bold.variation_opentype = {"wght": 700}
+	var plex: FontFile = load("res://fonts/IBMPlexMono-Medium.ttf")
+	plex.fallbacks = [mono]
+	plex.hinting = TextServer.HINTING_LIGHT
+	font = plex
+	var bold: FontFile = load("res://fonts/IBMPlexMono-Bold.ttf")
+	bold.fallbacks = [mono]
+	bold.hinting = TextServer.HINTING_LIGHT
 	font_bold = bold
-	var title: FontFile = load("res://fonts/PressStart2P.ttf")
-	title.fallbacks = [pix]
-	title.hinting = TextServer.HINTING_NONE
-	font_title = title
+	font_title = bold
 	theme = _make_theme()
 
 
@@ -112,9 +109,7 @@ func label(text: String, color: Color = G4, size: int = 10, bold: bool = false) 
 	l.add_theme_color_override("font_color", color)
 	l.add_theme_font_size_override("font_size", size)
 	if bold:
-		l.add_theme_font_override("font", font_title if size >= 12 else font_bold)
-		if size >= 12:
-			l.add_theme_font_size_override("font_size", int(size * 0.75))
+		l.add_theme_font_override("font", font_bold)
 	return l
 
 

@@ -122,6 +122,8 @@ func _update_status() -> void:
 	if p.weapon != "":
 		s += "%s: %d в магазине, запас %d\n" % [p.weapon, p.mag, G.ammo_left() - p.mag]
 	s += "Ближний бой: %s · Защита %d" % [p.melee, G.phys_def()]
+	if p.get("companion", "") == "ryzhaya":
+		s += "\n[color=%s]Рыжая рядом: стреляет сама[/color]" % Pal.hex(Pal.G5)
 	if p.wounds.size() > 0:
 		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
 	status.text = s
@@ -184,7 +186,7 @@ func _attack_bonus(melee: bool, part: Dictionary) -> int:
 		b += 2
 	if "Руки" in G.p.wounds:
 		b -= 2
-	if part.name == "Глаза" and G.flag("emirra_tip"):
+	if part.name == "Глаза" and G.flag("ry_tip"):
 		b += 2
 	return b
 
@@ -247,7 +249,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 		_victory()
 		return
 	await _wait(0.6)
-	await _enemy_turn()
+	await _round_end()
 	_after_enemy()
 
 
@@ -255,7 +257,7 @@ func _reload() -> void:
 	busy = true
 	_log(G.reload())
 	await _wait(0.4)
-	await _enemy_turn()
+	await _round_end()
 	_after_enemy()
 
 
@@ -277,7 +279,7 @@ func _analyze() -> void:
 	else:
 		_log("%s Враг двигается слишком хаотично." % G.roll_text(r))
 	await _wait(0.5)
-	await _enemy_turn()
+	await _round_end()
 	_after_enemy()
 
 
@@ -287,7 +289,7 @@ func _defend() -> void:
 	defending = r.ok
 	_log("%s %s" % [G.roll_text(r), "Вы закрываетесь — урон этого хода вдвое меньше." if r.ok else "Вы не успеваете закрыться."])
 	await _wait(0.5)
-	await _enemy_turn()
+	await _round_end()
 	defending = false
 	_after_enemy()
 
@@ -332,7 +334,7 @@ func _use_item(it: String) -> void:
 	_log(G.use_item(it))
 	_update_status()
 	await _wait(0.4)
-	await _enemy_turn()
+	await _round_end()
 	_after_enemy()
 
 
@@ -357,8 +359,52 @@ func _flee() -> void:
 		return
 	_log("[color=%s]Решка. Путь отрезан.[/color]" % Pal.hex(Pal.R3))
 	await _wait(0.5)
-	await _enemy_turn()
+	await _round_end()
 	_after_enemy()
+
+
+# ---------- спутница ----------
+
+## Конец раунда: сначала стреляет спутница (бесплатно), потом ходит враг.
+func _round_end() -> void:
+	if G.p.get("companion", "") == "ryzhaya" and not finished:
+		await _ally_turn()
+		if _enemy_dead():
+			await _wait(0.4)
+			_victory()
+			return
+	await _enemy_turn()
+
+
+func _ally_turn() -> void:
+	var alive: Array = parts.filter(func(q): return q.hp > 0)
+	if alive.is_empty():
+		return
+	var tier: int = G.rel_tier("ryzhaya").idx
+	# бьёт по той же части, что уже ранена сильнее всего, иначе по случайной
+	var target: Dictionary = alive[0]
+	for q in alive:
+		if float(q.hp) / q.max < float(target.hp) / target.max:
+			target = q
+	if randf() < 0.35:
+		target = alive.pick_random()
+	var ch := 0.55 + 0.07 * maxi(0, tier - 1) + 0.03 * int(target.mod)
+	if randf() > ch:
+		_log("[color=%s]Рыжая стреляет в «%s» — мимо. Ругается сквозь зубы.[/color]" % [Pal.hex(Pal.G3), target.name])
+		await _wait(0.4)
+		return
+	var dmg := maxi(1, randi_range(9, 15) + 2 * maxi(0, tier - 2) - int(E.def))
+	target.hp -= dmg
+	_log("[color=%s]Рыжая стреляет из револьвера в «%s»: %d урона.[/color]" % [Pal.hex(Pal.G5), target.name, dmg])
+	if not target.get("kill", false):
+		for q in parts:
+			if q.name == "Туловище":
+				q.hp -= int(dmg * 0.35)
+	if target.hp <= 0:
+		_log("[color=%s]«%s» уничтожено.[/color]" % [Pal.hex(Pal.R3), target.name])
+	_flash()
+	_update_status()
+	await _wait(0.5)
 
 
 # ---------- ход врага ----------
@@ -501,6 +547,7 @@ func _victory() -> void:
 			G.add_item(E.loot[0])
 			_log("%s Аккуратная разделка: ещё один «%s»." % [G.roll_text(r), E.loot[0]])
 	G.say("Победа: %s." % E.name)
+	G.on_kill(enemy_id)
 	_update_status()
 	_clear_actions()
 	busy = false

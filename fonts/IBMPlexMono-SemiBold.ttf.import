@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://0xtvaa23my1g"
-path="res://.godot/imported/PixelifySans.ttf-fc5a9a3e822b21581d248cfb12b28920.fontdata"
+uid="uid://crvr4nible2qo"
+path="res://.godot/imported/IBMPlexMono-SemiBold.ttf-0a5a699a541ae21c2776fbdca0bc0223.fontdata"
 
 [deps]
 
-source_file="res://fonts/PixelifySans.ttf"
-dest_files=["res://.godot/imported/PixelifySans.ttf-fc5a9a3e822b21581d248cfb12b28920.fontdata"]
+source_file="res://fonts/IBMPlexMono-SemiBold.ttf"
+dest_files=["res://.godot/imported/IBMPlexMono-SemiBold.ttf-0a5a699a541ae21c2776fbdca0bc0223.fontdata"]
 
 [params]
 

@@ -148,6 +148,10 @@ func show_world(map: String, spawn: String = "") -> void:
 	if map == "worldmap" or map == "map":
 		show_map()
 		return
+	if map == "caldera":
+		map = "caldera1"
+		if spawn == "":
+			spawn = "surface"
 	_clear()
 	G.p.map = map
 	world = World.new()
@@ -192,6 +196,59 @@ func start_combat(enemy_id: String, on_end: Callable) -> void:
 	overlay.add_child(cb)
 	if world:
 		world.set_paused(true)
+
+
+## Бой из сцены или с карты мира. После победы открывается узел win_node (если задан).
+func battle(enemy_id: String, win_node: String = "", job_id: String = "") -> void:
+	start_combat(enemy_id, _battle_end.bind(win_node, job_id))
+
+
+func _battle_end(result: String, win_node: String, job_id: String) -> void:
+	match result:
+		"dead":
+			game_over("Гений %s погиб в Пустоши. Тело так и не нашли." % G.p.callsign)
+			return
+		"down":
+			var lost := int(G.p.su * 0.25)
+			G.p.su -= lost
+			G.say("Гений очнулся в пыли. Кто-то обчистил карманы: −%d Су." % lost)
+		"win":
+			if job_id != "":
+				G.job_found(job_id)
+			if win_node != "":
+				open_dialogue(win_node)
+	if world:
+		world.set_paused(false)
+	G.changed.emit()
+
+
+## «Изучать пустошь»: прогулка с исходом — новое место, бой, находка или пусто.
+func explore() -> void:
+	if has_overlay():
+		return
+	var r := G.explore_roll()
+	var txt := ""
+	match r.kind:
+		"poi":
+			txt = "Гений бродит по барханам и выходит к месту, которого нет на старых картах: [b]%s[/b].\n\n%s\n\n[color=#7ff07a](Место отмечено на карте мира.)[/color]" % [D.LOCS[r.id].name, D.LOCS[r.id].desc]
+			G.say("Найдено новое место: %s." % D.LOCS[r.id].name)
+		"fight":
+			txt = "Через час ходьбы ветер доносит запах псины и пота. Из-за руин выходит %s." % D.ENEMIES[r.enemy].name.to_lower()
+			G.temp_nodes["explore"] = {"who": "", "text": txt,
+				"choices": [{"t": "К бою!", "fx": [["battle", r.enemy]], "next": "end"}]}
+			open_dialogue("explore")
+			return
+		"loot":
+			var w: Array = r.what
+			var what: String = "%d Су в чужом кошельке" % w[1] if w[0] == "su" else "%s ×%d" % [w[0], w[1]]
+			txt = "Под ржавым листом железа кто-то устроил тайник и не вернулся за ним.\n\n[color=#7ff07a](Найдено: %s)[/color]" % what
+			G.say("Найдено в Пустоши: %s." % what)
+		_:
+			txt = ["Два часа ходьбы, пепел на зубах и ничего нового. Пустошь умеет быть скучной.",
+				"Вы находите только старый указатель «КАЛЬДЕРА 2 КМ» и собственные следы.",
+				"Где-то далеко гремит. Небо над руинами на миг становится зелёным, потом снова серым."].pick_random()
+	G.temp_nodes["explore"] = {"who": "", "text": txt, "choices": [{"t": "Дальше", "next": "end"}]}
+	open_dialogue("explore")
 
 
 func game_over(text: String) -> void:

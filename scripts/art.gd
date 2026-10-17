@@ -171,6 +171,26 @@ func _floor(kind: String, variant: int) -> ImageTexture:
 					c = 7 if (u % 6 < 3) != (v % 6 < 3) else 2
 					if u < 2 or v < 2 or u > 29 or v > 29:
 						c = 3
+				"grate":
+					c = 3 if (u % 4 == 0 or v % 4 == 0) else 1
+					if u % 16 == 0 or v % 16 == 0:
+						c = 4
+				"stairs":
+					# ступени поперёк оси u: светлая кромка и тёмный подступенок
+					var st := u % 6
+					c = 4 if st == 0 else (3 if st < 3 else 2)
+					if v < 2 or v > 29:
+						c = 1
+				"asphalt":
+					c = 1 if rng.randf() > 0.1 else 2
+					if v >= 15 and v <= 16 and (u / 4) % 2 == 0:
+						c = 5 if variant != 2 else 1
+				"plaza":
+					c = 2
+					if (u % 8 == 0) != (v % 8 == 0):
+						c = 3
+					if rng.randf() < 0.05:
+						c = 1
 			cv.put(x, y, c)
 	return to_tex(cv)
 
@@ -361,6 +381,183 @@ func _prop(kind: String) -> ImageTexture:
 			cv.rect(1, 1, 28, 12, 1, false)
 			cv.rect(2, 2, 26, 10, 2, false)
 			cv.line(5, 7, 24, 7, 8)
+		"rail":
+			cv = Canvas.new(32, 18)
+			cv.line(1, 9, 16, 2, 4)
+			cv.line(16, 2, 31, 9, 4)
+			for px in [3, 9, 16, 23, 29]:
+				cv.line(px, 2 + absf(px - 16) / 2.0, px, 2 + absf(px - 16) / 2.0 + 7, 3)
+			cv.line(1, 15, 16, 8, 2)
+			cv.line(16, 8, 31, 15, 2)
+		"stairs_down":
+			cv = Canvas.new(32, 26)
+			cv.poly(PackedVector2Array([Vector2(16, 10), Vector2(31, 17), Vector2(16, 25), Vector2(1, 17)]), 1, false)
+			for i in 4:
+				var yy := 12 + i * 3
+				cv.line(8 + i * 2, yy, 24 - i * 2, yy + 1, 3 - (i / 2))
+			cv.rect(2, 0, 2, 16, 3)
+			cv.rect(28, 0, 2, 16, 3)
+			cv.line(2, 1, 29, 1, 4)
+			cv.rect(10, 3, 12, 5, 8, false)
+			cv.line(13, 5, 19, 5, 9)
+		"stairs_up":
+			cv = Canvas.new(32, 34)
+			for i in 6:
+				var yy := 30 - i * 4
+				cv.poly(PackedVector2Array([Vector2(4 + i, yy - 3), Vector2(28 - i, yy - 3), Vector2(28 - i, yy), Vector2(4 + i, yy)]), 3 + (i % 2))
+			cv.line(3, 30, 9, 6, 4)
+			cv.line(29, 30, 23, 6, 4)
+			cv.ellipse(16, 3, 3, 2, 9, false)
+		"lift":
+			cv = Canvas.new(30, 52)
+			cv.rect(1, 2, 28, 49, 1, false)
+			cv.rect(3, 6, 24, 43, 2)
+			for i in 7:
+				cv.line(3 + i * 4, 6, 3 + i * 4, 48, 3)
+			cv.line(3, 14, 26, 14, 3)
+			cv.line(3, 30, 26, 30, 3)
+			cv.rect(1, 0, 28, 4, 4)
+			cv.rect(12, 1, 6, 2, 8, false)
+		"shack":
+			cv = Canvas.new(40, 44)
+			cv.poly(PackedVector2Array([Vector2(1, 16), Vector2(20, 26), Vector2(20, 43), Vector2(1, 33)]), 2)
+			cv.poly(PackedVector2Array([Vector2(20, 26), Vector2(39, 16), Vector2(39, 33), Vector2(20, 43)]), 3)
+			cv.poly(PackedVector2Array([Vector2(0, 15), Vector2(20, 4), Vector2(40, 15), Vector2(20, 26)]), 4)
+			for i in 5:
+				cv.line(4 + i * 4, 18 + i * 2, 4 + i * 4, 34 + i * 2, 1)
+			cv.poly(PackedVector2Array([Vector2(25, 26), Vector2(32, 22), Vector2(32, 35), Vector2(25, 39)]), 1, false)
+			cv.put(30, 30, 9)
+			cv.line(8, 8, 28, 8, 3)
+		"tent":
+			cv = Canvas.new(34, 30)
+			cv.poly(PackedVector2Array([Vector2(17, 2), Vector2(33, 22), Vector2(17, 29), Vector2(1, 22)]), 3)
+			cv.poly(PackedVector2Array([Vector2(17, 2), Vector2(17, 29), Vector2(1, 22)]), 2)
+			cv.poly(PackedVector2Array([Vector2(17, 12), Vector2(22, 25), Vector2(17, 28)]), 1, false)
+			cv.line(17, 0, 17, 3, 4)
+		"laundry":
+			cv = Canvas.new(32, 40)
+			cv.line(2, 6, 2, 39, 2)
+			cv.line(30, 6, 30, 39, 2)
+			cv.line(2, 8, 30, 10, 3)
+			cv.rect(6, 9, 5, 8, 5)
+			cv.rect(13, 10, 6, 6, 8)
+			cv.rect(21, 10, 5, 10, 3)
+		"board":
+			cv = Canvas.new(30, 36)
+			cv.line(4, 14, 4, 35, 2, 2)
+			cv.line(25, 14, 25, 35, 2, 2)
+			cv.rect(1, 1, 28, 20, 2)
+			cv.rect(3, 3, 7, 8, 6, false)
+			cv.rect(12, 4, 6, 6, 5, false)
+			cv.rect(20, 3, 7, 9, 6, false)
+			cv.rect(6, 12, 8, 7, 5, false)
+			cv.rect(17, 13, 8, 6, 8, false)
+			for pin in [Vector2i(6, 3), Vector2i(15, 4), Vector2i(23, 3), Vector2i(10, 12), Vector2i(21, 13)]:
+				cv.put(pin.x, pin.y, 9)
+		"autodoc":
+			cv = Canvas.new(26, 42)
+			cv.rect(2, 8, 22, 33, 2)
+			cv.rect(5, 12, 16, 9, 1, false)
+			cv.line(7, 16, 10, 16, 5)
+			cv.line(10, 16, 12, 13, 5)
+			cv.line(12, 13, 14, 19, 5)
+			cv.line(14, 19, 19, 16, 5)
+			cv.rect(6, 25, 4, 3, 8, false)
+			cv.rect(12, 25, 4, 3, 4, false)
+			cv.line(13, 8, 13, 2, 3)
+			cv.line(13, 2, 22, 2, 3)
+			cv.line(22, 2, 22, 7, 4)
+			cv.put(22, 8, 9)
+		"gunrack":
+			cv = Canvas.new(28, 36)
+			cv.rect(1, 2, 26, 33, 1, false)
+			for i in 4:
+				cv.line(4 + i * 6, 6, 6 + i * 6, 30, 4)
+				cv.rect(3 + i * 6, 22, 4, 6, 3)
+			cv.line(1, 32, 26, 32, 3)
+		"clothes":
+			cv = Canvas.new(30, 36)
+			cv.line(2, 4, 28, 4, 4)
+			cv.line(3, 4, 3, 35, 2)
+			cv.line(27, 4, 27, 35, 2)
+			var cols := [3, 8, 5, 2, 4]
+			for i in 5:
+				cv.rect(4 + i * 5, 5, 4, 14 + (i % 2) * 6, cols[i])
+		"bar":
+			cv = Canvas.new(32, 34)
+			cv.poly(PackedVector2Array([Vector2(16, 10), Vector2(31, 17), Vector2(16, 25), Vector2(1, 17)]), 3)
+			cv.poly(PackedVector2Array([Vector2(1, 17), Vector2(16, 25), Vector2(16, 33), Vector2(1, 25)]), 1)
+			cv.poly(PackedVector2Array([Vector2(16, 25), Vector2(31, 17), Vector2(31, 25), Vector2(16, 33)]), 2)
+			for bx in [6, 10, 22]:
+				cv.rect(bx, 9, 2, 6, 5 if bx != 10 else 8, false)
+			cv.line(4, 26, 15, 31, 8)
+		"bottles":
+			cv = Canvas.new(26, 34)
+			cv.rect(1, 2, 24, 31, 1, false)
+			for i in 3:
+				cv.line(1, 11 + i * 9, 24, 11 + i * 9, 3)
+				for j in 6:
+					if (i * 3 + j) % 4 != 1:
+						cv.rect(3 + j * 4, 5 + i * 9, 2, 6, [5, 8, 4, 9][(i + j) % 4], false)
+		"stool":
+			cv = Canvas.new(12, 14)
+			cv.ellipse(6, 3, 5, 2, 4)
+			cv.line(3, 4, 2, 13, 2)
+			cv.line(9, 4, 10, 13, 2)
+		"neon":
+			cv = Canvas.new(34, 16)
+			cv.rect(1, 1, 32, 14, 1, false)
+			cv.rect(2, 2, 30, 12, 7, false)
+			# «БАР»
+			cv.line(6, 4, 11, 4, 9)
+			cv.line(6, 4, 6, 11, 9)
+			cv.line(6, 7, 10, 7, 9)
+			cv.line(6, 11, 10, 11, 9)
+			cv.line(11, 8, 11, 10, 9)
+			cv.line(14, 11, 17, 4, 9)
+			cv.line(17, 4, 20, 11, 9)
+			cv.line(15, 8, 19, 8, 9)
+			cv.line(23, 4, 23, 11, 9)
+			cv.line(23, 4, 27, 4, 9)
+			cv.line(27, 4, 27, 7, 9)
+			cv.line(23, 7, 27, 7, 9)
+		"vent":
+			cv = Canvas.new(22, 20)
+			cv.ellipse(11, 10, 10, 9, 2)
+			cv.ellipse(11, 10, 7, 6, 1, false)
+			cv.line(5, 10, 17, 10, 3)
+			cv.line(11, 4, 11, 16, 3)
+			cv.ellipse(11, 10, 2, 2, 4, false)
+		"hatch":
+			cv = Canvas.new(40, 40)
+			cv.poly(PackedVector2Array([Vector2(20, 18), Vector2(38, 27), Vector2(20, 36), Vector2(2, 27)]), 2)
+			cv.ellipse(20, 27, 12, 6, 1, false)
+			cv.ellipse(20, 27, 8, 4, 0, false)
+			for i in 3:
+				cv.line(14 + i * 6, 25, 14 + i * 6, 29, 3)
+			cv.rect(4, 2, 3, 26, 3)
+			cv.rect(33, 2, 3, 26, 3)
+			cv.line(4, 3, 35, 3, 4)
+			cv.rect(17, 0, 6, 3, 8, false)
+		"roadend":
+			cv = Canvas.new(34, 46)
+			cv.poly(PackedVector2Array([Vector2(4, 32), Vector2(20, 24), Vector2(32, 30), Vector2(26, 38), Vector2(12, 42)]), 1)
+			cv.line(8, 35, 24, 29, 5)
+			cv.line(17, 34, 17, 6, 3, 2)
+			cv.rect(6, 2, 22, 12, 7)
+			cv.rect(8, 4, 18, 8, 8, false)
+			cv.line(10, 8, 23, 8, 9)
+			cv.line(20, 6, 23, 8, 9)
+			cv.line(20, 10, 23, 8, 9)
+		"cable":
+			cv = Canvas.new(32, 40)
+			cv.line(2, 2, 2, 39, 2)
+			for i in 9:
+				var t := i / 8.0
+				cv.put(2 + int(t * 28), 4 + int(sin(t * PI) * 10), 3)
+			cv.line(30, 2, 30, 39, 2)
+			cv.put(10, 11, 8)
+			cv.put(22, 11, 9)
 		_:
 			cv = Canvas.new(8, 8)
 			cv.rect(0, 0, 8, 8, 4)

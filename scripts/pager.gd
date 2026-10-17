@@ -7,7 +7,7 @@ const QUESTS := {
 		"active": "Найти ящик с красным крестом у разбитого каравана на юго-востоке Пустоши и отнести хирургу Косту.",
 		"closed": "Выполнено. Кост заплатил 150 Су и обещал бесплатное лечение."},
 	"dogs": {"title": "Заказ №117",
-		"active": "Убить трёх пустынных псов у ворот Кальдеры. Убито: {dogs}/3.",
+		"active": "Убить трёх пустынных псов в Пустоши у Кальдеры. Убито: {dogs}/3.",
 		"done": "Три пса убиты. Вернуться к доске заданий Института за оплатой.",
 		"closed": "Выполнено. Институт перевёл 90 Су."},
 }
@@ -179,8 +179,19 @@ func _reload() -> void:
 
 
 func _quests() -> void:
-	if G.p.quests.is_empty():
-		content.add_child(Pal.label("Активных задач нет. Поговорите с жителями Кальдеры\nили загляните к доске заданий Института.", Pal.G3, 9))
+	if G.p.get("companion", "") == "ryzhaya":
+		content.add_child(Pal.rich("[color=%s][b]Спутница: Рыжая[/b] · отношение «%s»[/color]" % [Pal.hex(Pal.G5), G.rel_tier("ryzhaya").name], 9))
+		content.add_child(HSeparator.new())
+	for j in G.p.jobs:
+		var prog := ""
+		if j.kind == "kill":
+			prog = " Прогресс: %d/%d." % [j.have, j.need]
+		var st: String = "Выполнено, вернитесь к %s." % G.giver_name(j.giver, true) if j.state == "done" else "В работе." + prog
+		var who := G.giver_name(j.giver)
+		content.add_child(Pal.rich("[color=%s][b]%s[/b] · %s · %d Су\n%s\n%s[/color]" % [Pal.hex(Pal.G5), j.title, who, j.su, j.text, st], 9))
+		content.add_child(HSeparator.new())
+	if G.p.quests.is_empty() and G.p.jobs.is_empty():
+		content.add_child(Pal.label("Активных задач нет. Поговорите с жителями Кальдеры\nили загляните к доске объявлений на втором ярусе.", Pal.G3, 9))
 	for q in G.p.quests:
 		var st: String = G.p.quests[q]
 		var info: Dictionary = QUESTS.get(q, {"title": q})

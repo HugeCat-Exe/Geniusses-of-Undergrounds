@@ -4,10 +4,12 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.2"
+const VERSION := "0.3"
 const SLOTS := 3
 
 var p: Dictionary = {}
+## Узлы диалогов, собранные на лету (исходы прогулок и т. п.).
+var temp_nodes: Dictionary = {}
 var log_lines: Array = []
 
 
@@ -20,7 +22,8 @@ func new_character() -> Dictionary:
 		"inv": {}, "weapon": "", "melee": "Нож", "armor": "Футболка", "mag": 0,
 		"wounds": [], "mags": {}, "flags": {}, "quests": {}, "killed": [],
 		"map": "caldera", "pos": [0, 0], "steps": 0, "day": 1, "hour": 8,
-		"map_at": "caldera", "known": ["caldera", "outskirts"], "pity": {}, "seed": randi(),
+		"map_at": "caldera", "known": ["caldera"], "pity": {}, "seed": randi(),
+		"rel": {}, "jobs": [], "companion": "",
 	}
 
 
@@ -233,6 +236,196 @@ func step(in_wasteland: bool) -> void:
 		changed.emit()
 
 
+# ---------- Время ----------
+
+func pass_hours(h: int) -> void:
+	p.hour = int(p.hour) + h
+	while p.hour >= 24:
+		p.hour -= 24
+		p.day += 1
+		new_day()
+	changed.emit()
+
+
+## Сон до утра: следующий день, 8:00.
+func sleep_till_morning() -> void:
+	p.day += 1
+	p.hour = 8
+	new_day()
+	changed.emit()
+
+
+## Новый день: звери и падальщики возвращаются в Пустошь.
+func new_day() -> void:
+	var keep: Array = []
+	for id in p.killed:
+		if not (str(id).begins_with("pes_") or str(id).begins_with("padal_")):
+			keep.append(id)
+	p.killed = keep
+
+
+# ---------- Отношения ----------
+
+func rel_points(who: String) -> int:
+	if p.rel.has(who):
+		return int(p.rel[who])
+	var st: Dictionary = preload("res://scripts/story.gd").WHO.get(who, {})
+	if st.has("faction"):
+		return relation(st.faction) * 4
+	return 0
+
+
+func rel_add(who: String, n: int) -> void:
+	var before := rel_tier(who)
+	p.rel[who] = rel_points(who) + n
+	var after := rel_tier(who)
+	if after.name != before.name:
+		var nm: String = preload("res://scripts/story.gd").WHO.get(who, {}).get("name", who)
+		say("Отношения: %s — теперь «%s»." % [nm, after.name])
+	changed.emit()
+
+
+## {name, idx (−2..3), pts, next — очки до следующей ступени или −1}
+func rel_tier(who: String) -> Dictionary:
+	var pts := rel_points(who)
+	var res: Dictionary = {}
+	var nxt := -1
+	for i in D.REL_TIERS.size():
+		var t: Array = D.REL_TIERS[i]
+		if pts >= t[0]:
+			res = {"name": t[1], "idx": t[2], "pts": pts}
+			nxt = D.REL_TIERS[i + 1][0] if i + 1 < D.REL_TIERS.size() else -1
+	res["next"] = nxt
+	return res
+
+
+# ---------- Подработки ----------
+
+func _make_job(tpl: Dictionary, rng: RandomNumberGenerator, id: String) -> Dictionary:
+	var j: Dictionary = tpl.duplicate(true)
+	j["id"] = id
+	j["state"] = "active"
+	if j.kind == "kill":
+		var need: int = rng.randi_range(tpl.need[0], tpl.need[1])
+		j["need"] = need
+		j["have"] = 0
+		j["text"] = tpl.text % need
+		j["su"] = int(tpl.su * need / float(tpl.need[0]))
+	return j
+
+
+## Объявления на доске на сегодня (одни и те же весь день).
+func board_offers() -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(p.seed) + "board" + str(p.day))
+	var pool: Array = range(D.JOBS.size())
+	var res: Array = []
+	for i in 3:
+		var k: int = pool.pop_at(rng.randi() % pool.size())
+		var id := "d%d_%d" % [p.day, k]
+		var taken := false
+		for j in p.jobs:
+			if j.id == id or (j.giver == D.JOBS[k].giver and j.title == D.JOBS[k].title):
+				taken = true
+		if not taken and not flag("job_done_" + id):
+			res.append(_make_job(D.JOBS[k], rng, id))
+	return res
+
+
+func take_job(j: Dictionary) -> void:
+	p.jobs.append(j)
+	if j.kind == "find" and not (j.poi in p.known):
+		p.known.append(j.poi)
+		say("На карте отмечено: %s." % D.LOCS[j.poi].name)
+	say("Новая подработка: %s." % j.title)
+	changed.emit()
+
+
+func job_by_id(id: String):
+	for j in p.jobs:
+		if j.id == id:
+			return j
+	return null
+
+
+## Убит враг: засчитать во все подходящие подработки.
+func on_kill(enemy: String) -> void:
+	if enemy == "pes":
+		p.flags["dogs"] = int(p.flags.get("dogs", 0)) + 1
+		if p.quests.get("dogs", "") == "active" and int(p.flags.dogs) >= 3:
+			quest("dogs", "done")
+	for j in p.jobs:
+		if j.state == "active" and j.kind == "kill" and j.enemy == enemy:
+			j.have = int(j.have) + 1
+			if j.have >= j.need:
+				j.state = "done"
+				say("Подработка выполнена: %s. Вернитесь к %s." % [j.title, giver_name(j.giver, true)])
+	changed.emit()
+
+
+func job_found(id: String) -> void:
+	var j = job_by_id(id)
+	if j == null:
+		return
+	add_item(j.item)
+	j.state = "done"
+	say("Найдено: %s. Вернитесь к %s." % [j.item, giver_name(j.giver, true)])
+
+
+func giver_name(g: String, dative := false) -> String:
+	if g == "board":
+		return "доске заданий" if dative else "Доска заданий"
+	return preload("res://scripts/story.gd").WHO.get(g, {}).get("short" if dative else "name", g)
+
+
+func turn_in(id: String) -> void:
+	var j = job_by_id(id)
+	if j == null:
+		return
+	if j.kind == "find":
+		remove_item(j.item)
+	p.su += int(j.su)
+	if j.giver != "board" and int(j.rel) > 0:
+		rel_add(j.giver, int(j.rel))
+	if j.giver == "ryzhaya":
+		p.flags["ry_errands"] = int(p.flags.get("ry_errands", 0)) + 1
+	set_flag("job_done_" + j.id)
+	p.jobs.erase(j)
+	say("Подработка сдана: %s.%s" % [j.title, (" +%d Су." % j.su) if j.su > 0 else ""])
+	changed.emit()
+
+
+# ---------- Изучение Пустоши ----------
+
+## Прогулка по Пустоши: 2 часа и сытость. Возвращает исход: poi / fight / loot / empty.
+func explore_roll() -> Dictionary:
+	p.food = maxi(0, p.food - 6)
+	pass_hours(2)
+	var unknown: Array = []
+	for id in D.LOCS:
+		if not (id in p.known):
+			unknown.append(id)
+	var r := randf()
+	var miss := int(p.flags.get("explore_miss", 0))
+	if not unknown.is_empty() and r < 0.3 + miss * 0.15:
+		p.flags["explore_miss"] = 0
+		var id: String = unknown.pick_random()
+		p.known.append(id)
+		return {"kind": "poi", "id": id}
+	p.flags["explore_miss"] = miss + 1
+	if r < 0.6:
+		return {"kind": "fight", "enemy": "pes" if randf() < 0.7 else "padal"}
+	if r < 0.85:
+		var loot: Array = [["su", randi_range(8, 30)], ["Сухпаёк", 1], ["Бинт", 1], ["Пистолетные патроны", 1], ["Самогон", 1]]
+		var l: Array = loot.pick_random()
+		if l[0] == "su":
+			p.su += l[1]
+		else:
+			add_item(l[0], l[1])
+		return {"kind": "loot", "what": l}
+	return {"kind": "empty"}
+
+
 # ---------- Имущество ----------
 
 var quiet := false
@@ -361,7 +554,8 @@ func slot_info(i: int) -> String:
 	if typeof(data) != TYPE_DICTIONARY:
 		return "— повреждено —"
 	var pp: Dictionary = data.p
-	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
+	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "caldera1": "Кальдера, ярус 1",
+		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
 	return "%s · %s · %s" % [pp.get("callsign", "?"), where, data.get("time", "")]
 
 
@@ -403,7 +597,31 @@ func _fix_numbers(d: Dictionary) -> Dictionary:
 	if not d.has("map_at"):
 		d["map_at"] = "caldera"
 	if not d.has("known"):
-		d["known"] = ["caldera", "outskirts"]
+		d["known"] = ["caldera"]
+	d.known.erase("outskirts")
+	if d.get("map_at", "") == "outskirts":
+		d.map_at = "caldera"
+	if d.get("map", "") == "caldera":
+		d.map = "caldera1"
+		d.pos = [3, 3]
+	for k in ["rel", "flags"]:
+		if not d.has(k):
+			d[k] = {}
+	for k in d.rel:
+		d.rel[k] = int(d.rel[k])
+	if not d.has("jobs"):
+		d["jobs"] = []
+	for j in d.jobs:
+		for k in ["need", "have", "su", "rel"]:
+			if j.has(k):
+				j[k] = int(j[k])
+	if not d.has("companion"):
+		d["companion"] = ""
+	# Эмирра стала Рыжей: переносим флаги.
+	for k in d.flags.keys():
+		if str(k).begins_with("emirra_"):
+			d.flags["ry_" + str(k).substr(7)] = d.flags[k]
+			d.flags.erase(k)
 	var pity := {}
 	for k in d.get("pity", {}):
 		pity[k] = int(d.pity[k])
