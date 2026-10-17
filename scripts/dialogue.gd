@@ -248,6 +248,8 @@ func _cond(c: String) -> bool:
 			return G.p.wounds.size() > 0 and G.p.su >= 40
 		"injury":
 			return G.p.got_phys.size() > 0 and G.p.su >= 120
+		"river_today":
+			return int(G.p.flags.get("river_day", -1)) == G.p.day
 	return false
 
 
@@ -336,6 +338,14 @@ func _fx(list: Array) -> void:
 			"spare":
 				if G.main().world:
 					G.main().world.spare_current()
+			"at":
+				G.p["map_at"] = f[1]
+			"wash":
+				G.p.flags["river_day"] = G.p.day
+				G.p.wounds.clear()
+				G.heal(15)
+				G.p.mind = maxi(1, G.p.mind - 3)
+				G.changed.emit()
 			"goto":
 				var m: String = f[1]
 				var sp: String = f[2]

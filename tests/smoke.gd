@@ -126,6 +126,66 @@ func run(main: Node) -> void:
 	await _wait(1.8)
 	await _shot("17_combat_warped")
 	_close_overlays()
+	_close_overlays()
+	# смена оружия в бою
+	G.add_item("Красный")
+	M.start_combat("pes", func(r): print("SMOKE combat3 ", r))
+	await _wait(1.6)
+	var cb3 = _overlay_of_type("Combat")
+	if cb3:
+		print("SMOKE spare weapons ", cb3._spare_weapons())
+		cb3._weapons_menu()
+		await _wait(0.3)
+		await _shot("17b_weapon_menu")
+		cb3._switch_weapon("Красный")
+		await _wait(0.3)
+		print("SMOKE weapon now ", G.p.weapon)
+	_close_overlays()
+	# карта мира
+	M.show_map()
+	await _wait(0.8)
+	await _shot("19_worldmap")
+	var wm = M.current
+	wm.select("outskirts")
+	await _wait(0.3)
+	await _shot("20_map_info")
+	var food0 = G.p.food
+	wm.select_point(Vector2(420, 120))
+	wm.walk("")
+	for i in 60:
+		await _wait(0.2)
+		var cbx = _overlay_of_type("Combat")
+		if cbx:
+			print("SMOKE map fight")
+			await _shot("21_map_fight")
+			cbx._end("win")
+		if not wm.walking:
+			break
+	print("SMOKE scouted at ", G.p.map_at, " known ", G.p.known, " food ", food0, "->", G.p.food, " day ", G.p.day, " h ", G.p.hour)
+	G.p.known.append("river")
+	wm.select("river")
+	wm.walk("river")
+	for i in 60:
+		await _wait(0.2)
+		var cbx = _overlay_of_type("Combat")
+		if cbx:
+			cbx._end("win")
+		if not wm.walking:
+			break
+	wm.enter("river")
+	await _wait(1.5)
+	await _shot("22_river")
+	_close_overlays()
+	G.p.su = 500
+	wm.select("caldera")
+	wm.taxi("caldera")
+	await _wait(0.8)
+	print("SMOKE taxi -> map ", G.p.map, " su ", G.p.su)
+	await _shot("23_back_caldera")
+	G.save(1)
+	M.show_map()
+	await _wait(0.4)
+	print("SMOKE load map slot ", G.load_slot(1), " map ", G.p.map)
 	_check_story()
 	print("SMOKE load ok: ", G.load_slot(0))
 	M.show_world(G.p.map)

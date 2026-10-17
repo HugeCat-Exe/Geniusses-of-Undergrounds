@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.1"
+const VERSION := "0.2"
 const SLOTS := 3
 
 var p: Dictionary = {}
@@ -19,7 +19,8 @@ func new_character() -> Dictionary:
 		"hp": 1, "mind": 1, "food": 80, "su": 300, "will": 0,
 		"inv": {}, "weapon": "", "melee": "Нож", "armor": "Футболка", "mag": 0,
 		"wounds": [], "mags": {}, "flags": {}, "quests": {}, "killed": [],
-		"map": "caldera", "pos": [0, 0], "steps": 0, "day": 1, "seed": randi(),
+		"map": "caldera", "pos": [0, 0], "steps": 0, "day": 1, "hour": 8,
+		"map_at": "caldera", "known": ["caldera", "outskirts"], "pity": {}, "seed": randi(),
 	}
 
 
@@ -29,12 +30,14 @@ func start_game(c: Dictionary) -> void:
 	p.weapon = pistol
 	p.mag = D.ITEMS[pistol].mag
 	p.inv = {}
+	quiet = true
 	add_item(pistol)
 	add_item("Нож")
 	add_item("Футболка")
 	add_item(D.ITEMS[pistol].ammo)
 	add_item("Бинт", 2)
 	add_item("Сухпаёк")
+	quiet = false
 	p.hp = max_hp()
 	p.mind = max_mind()
 	p.will = max_will()
@@ -58,18 +61,23 @@ func mods_total(c: Dictionary = p) -> Array:
 	return t
 
 
+## Сжатие минусов: отрицательная сумма весит 60%, чтобы черты не роняли Гения в «яму».
+func soft(x: float) -> float:
+	return x if x >= 0.0 else x * 0.6
+
+
 func stat(k: String, c: Dictionary = p) -> int:
 	var t := mods_total(c)
 	var i := D.KEYS.find(k)
-	return mini(22, roundi(10.0 + t[i]))
+	return clampi(roundi(10.0 + soft(t[i])), 4, 22)
 
 
 func max_hp(c: Dictionary = p) -> int:
-	return clampi(roundi(70.0 + mods_total(c)[0] * 5.0) + stat("ТЕЛ", c), 10, 110)
+	return clampi(roundi(70.0 + soft(mods_total(c)[0]) * 4.0) + stat("ТЕЛ", c), 40, 110)
 
 
 func max_mind(c: Dictionary = p) -> int:
-	return clampi(roundi(70.0 + mods_total(c)[1] * 5.0) + stat("ИНТ", c), 10, 110)
+	return clampi(roundi(70.0 + soft(mods_total(c)[1]) * 4.0) + stat("ИНТ", c), 40, 110)
 
 
 func max_will(c: Dictionary = p) -> int:
@@ -98,15 +106,35 @@ func psy_def() -> int:
 	return maxi(0, D.check_mod(stat("ИНТ")))
 
 
-## Бросок к20 + бонус навыка против сложности.
-func roll(skill: String, dc: int) -> Dictionary:
+## Невидимая подкрутка: после каждого провала следующий к20 берётся лучшим из нескольких бросков.
+func d20(cat: String) -> int:
+	var lvl: int = int(p.get("pity", {}).get(cat, 0))
 	var d := randi_range(1, 20)
+	for i in lvl:
+		d = maxi(d, randi_range(1, 20))
+	return d
+
+
+func pity_result(cat: String, ok: bool) -> void:
+	if not p.has("pity"):
+		p["pity"] = {}
+	if ok:
+		p.pity[cat] = 0
+	else:
+		p.pity[cat] = mini(3, int(p.pity.get(cat, 0)) + 1)
+
+
+## Бросок к20 + бонус навыка против сложности.
+func roll(skill: String, dc: int, cat: String = "check") -> Dictionary:
+	var d := d20(cat)
 	var b := skill_bonus(skill)
 	var ok := d + b >= dc
 	if d == 20:
 		ok = true
 	if d == 1:
 		ok = false
+	if cat != "":
+		pity_result(cat, ok)
 	return {"d": d, "bonus": b, "total": d + b, "dc": dc, "ok": ok, "skill": skill}
 
 
@@ -173,7 +201,7 @@ func death_saves() -> Dictionary:
 	var ok := 0
 	var rolls: Array = []
 	for i in 3:
-		var r := roll("Антисмерть", 10)
+		var r := roll("Антисмерть", 10, "")
 		rolls.append(r)
 		if r.ok:
 			ok += 1
@@ -207,7 +235,12 @@ func step(in_wasteland: bool) -> void:
 
 # ---------- Имущество ----------
 
+var quiet := false
+
+
 func add_item(item: String, n: int = 1) -> void:
+	if not quiet and D.ITEMS[item].type == "weapon" and p.inv.get(item, 0) == 0:
+		say("Новое оружие: %s. Взять в руку: пейджер (Tab) → Имущество → «Взять», или в бою «Сменить оружие»." % item)
 	p.inv[item] = p.inv.get(item, 0) + n
 	changed.emit()
 
@@ -262,8 +295,11 @@ func use_item(item: String) -> String:
 				p.mags[p.weapon] = p.mag
 			p.weapon = item
 			p.mag = int(p.mags.get(item, 0))
+			var extra := ""
+			if p.mag == 0 and has(it.ammo):
+				extra = " " + reload()
 			changed.emit()
-			return "В руке: %s (в магазине %d)." % [item, p.mag]
+			return "В руке: %s (в магазине %d).%s" % [item, p.mag, extra]
 	return "Это нельзя использовать."
 
 
@@ -325,7 +361,8 @@ func slot_info(i: int) -> String:
 	if typeof(data) != TYPE_DICTIONARY:
 		return "— повреждено —"
 	var pp: Dictionary = data.p
-	return "%s · %s · %s" % [pp.get("callsign", "?"), "Пустошь" if pp.get("map") == "waste" else "Кальдера", data.get("time", "")]
+	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
+	return "%s · %s · %s" % [pp.get("callsign", "?"), where, data.get("time", "")]
 
 
 func load_slot(i: int) -> bool:
@@ -353,7 +390,7 @@ func any_save() -> int:
 
 ## JSON превращает все числа в float; возвращаем целые там, где они нужны.
 func _fix_numbers(d: Dictionary) -> Dictionary:
-	for k in ["faction", "hp", "mind", "food", "su", "will", "mag", "steps", "day", "seed"]:
+	for k in ["faction", "hp", "mind", "food", "su", "will", "mag", "steps", "day", "seed", "hour"]:
 		if d.has(k):
 			d[k] = int(d[k])
 	var inv := {}
@@ -361,6 +398,16 @@ func _fix_numbers(d: Dictionary) -> Dictionary:
 		inv[k] = int(d.inv[k])
 	d.inv = inv
 	d.pos = [int(d.pos[0]), int(d.pos[1])]
+	if not d.has("hour"):
+		d["hour"] = 8
+	if not d.has("map_at"):
+		d["map_at"] = "caldera"
+	if not d.has("known"):
+		d["known"] = ["caldera", "outskirts"]
+	var pity := {}
+	for k in d.get("pity", {}):
+		pity[k] = int(d.pity[k])
+	d["pity"] = pity
 	for k in d.get("mags", {}):
 		d.mags[k] = int(d.mags[k])
 	return d

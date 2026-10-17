@@ -14,6 +14,7 @@ var hover_part := ""
 var analyzed := false
 var defending := false
 var busy := false
+var enemy_streak := 0
 var finished := false
 var scale_k := 3.0
 
@@ -173,6 +174,7 @@ func _menu() -> void:
 	_act("Анализ [ВСП]" if not analyzed else "Анализ: проведён", _analyze, not analyzed)
 	_act("Самозащита [ТЕЛ]", _defend)
 	_act("Предмет", _items_menu)
+	_act("Сменить оружие (бесплатно)", _weapons_menu, _spare_weapons().size() > 0)
 	_act("Подбросить монетку (бежать)", _flee)
 
 
@@ -215,9 +217,10 @@ func _attack(melee: bool, part: Dictionary) -> void:
 		base += maxi(0, D.check_mod(G.stat("ТЕЛ"))) * 2
 	else:
 		p.mag -= 1
-	var d := randi_range(1, 20)
+	var d := G.d20("hit")
 	var bonus := _attack_bonus(melee, part)
 	var hit: bool = (d + bonus >= E.evade or d == 20) and d != 1
+	G.pity_result("hit", hit)
 	var verb := "бьёте" if melee else "стреляете"
 	if not hit:
 		_log("Вы %s в «%s» (%s): к20=%d %+d против %d — [color=%s]мимо[/color]." % [verb, part.name, wname, d, bonus, E.evade, Pal.hex(Pal.G2)])
@@ -289,6 +292,28 @@ func _defend() -> void:
 	_after_enemy()
 
 
+func _spare_weapons() -> Array:
+	var res: Array = []
+	for it in G.p.inv.keys():
+		if D.ITEMS[it].type == "weapon" and it != G.p.weapon and it != G.p.melee:
+			res.append(it)
+	return res
+
+
+func _weapons_menu() -> void:
+	_clear_actions()
+	for it in _spare_weapons():
+		var info: Dictionary = D.ITEMS[it]
+		var kind := "ближний" if info.get("melee", false) else "магазин %d" % int(G.p.mags.get(it, 0))
+		_act("%s (урон %d, %s)" % [it, info.dmg, kind], _switch_weapon.bind(it))
+	_act("< Назад", _menu)
+
+
+func _switch_weapon(it: String) -> void:
+	_log(G.use_item(it))
+	_menu()
+
+
 func _items_menu() -> void:
 	_clear_actions()
 	var any := false
@@ -323,7 +348,7 @@ func _flee() -> void:
 		_end("fled")
 		return
 	var dc := 12 + (4 if "Ноги" in G.p.wounds else 0)
-	var r := G.roll("Акробатика", dc)
+	var r := G.roll("Акробатика", dc, "flee")
 	_log("Вы подбрасываете монетку... %s" % G.roll_text(r))
 	if r.ok:
 		_log("[color=%s]Орёл. Вы вырываетесь и бежите.[/color]" % Pal.hex(Pal.G5))
@@ -367,10 +392,13 @@ func _enemy_turn() -> void:
 	elif roll_w < 0.6:
 		target = "Ноги"
 	var d := randi_range(1, 20)
+	if enemy_streak >= 2:
+		d = mini(d, randi_range(1, 20))
 	var evade := 10 + maxi(0, D.check_mod(G.stat("ЛВК"))) + (4 if defending else 0)
 	if a.kind == "mind":
 		evade = 10 + maxi(0, D.check_mod(G.stat("ВСП")))
 	var hit := (d + 4 >= evade or d == 20) and d != 1
+	enemy_streak = enemy_streak + 1 if hit else 0
 	var where := target.to_lower() if a.kind == "body" else "ваш разум"
 	if a.kind == "mind":
 		where = "вас"

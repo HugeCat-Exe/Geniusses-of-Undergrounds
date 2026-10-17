@@ -8,6 +8,7 @@ const Combat := preload("res://scripts/combat.gd")
 const Dialogue := preload("res://scripts/dialogue.gd")
 const Pager := preload("res://scripts/pager.gd")
 const Shop := preload("res://scripts/shop.gd")
+const WorldMap := preload("res://scripts/worldmap.gd")
 
 var screen_root: Node
 var ui: Control
@@ -136,7 +137,17 @@ func show_creator() -> void:
 
 
 ## Войти в мир (на карту map). spawn: имя точки появления или пусто — позиция из сохранения.
+func show_map() -> void:
+	_clear()
+	G.p.map = "worldmap"
+	current = WorldMap.new()
+	ui.add_child(current)
+
+
 func show_world(map: String, spawn: String = "") -> void:
+	if map == "worldmap" or map == "map":
+		show_map()
+		return
 	_clear()
 	G.p.map = map
 	world = World.new()
