@@ -12,7 +12,7 @@ const HELP := [
 	"Подземка, в которой Вы появились на свет. Актуальный список — в Реестре Подземок.",
 	"Внесите внешние черты согласно «Справочнику Занимательных Черт».",
 	"Внесите черты характера. Гении должны знать, чего ожидать друг от друга.",
-	"Отметьте два навыка как основные: к ним добавляется бонус мастерства и удачи.",
+	"Отметьте основные навыки: к ним добавляется бонус удачи (мод УДЧ + 1, не меньше +1). Два навыка, три при ИНТ 16+ («Эрудит»).",
 	"Проверьте данные. Введите «О» (Одобрено) в зелёное поле, чтобы закрепить карточку в базе.",
 ]
 
@@ -70,6 +70,7 @@ func _ready() -> void:
 	add_child(portrait)
 	desc = Pal.rich("", 8)
 	desc.fit_content = false
+	desc.scroll_active = true
 	desc.position = Vector2(254, 208)
 	desc.size = Vector2(150, 106)
 	add_child(desc)
@@ -80,6 +81,8 @@ func _ready() -> void:
 	add_child(right)
 	sheet = Pal.rich("", 8)
 	sheet.fit_content = false
+	sheet.scroll_active = true
+	sheet.meta_hover_started.connect(_on_meta)
 	right.add_child(sheet)
 
 	back_btn = Pal.button("< НАЗАД", _back, 10)
@@ -131,15 +134,17 @@ func _build() -> void:
 				_option(b, c.birth == b, _pick.bind("birth", b), "Подземка %s\n\n%s" % [b, _mods_text(D.BIRTH[b])])
 		6:
 			for t in D.PHYS:
-				_option(t, t in c.phys, _toggle.bind("phys", t, D.AGES[c.age].ext), _mods_text(D.PHYS[t]))
+				_option(t, t in c.phys, _toggle.bind("phys", t, D.AGES[c.age].ext), _trait_info(t, D.PHYS[t]))
 		7:
 			if D.AGES[c.age].psy == 0:
 				list.add_child(Pal.label("Ребёнку черты характера\nне вносятся.", Pal.G3))
 			for t in D.PSY:
-				_option(t, t in c.psy, _toggle.bind("psy", t, D.AGES[c.age].psy), _mods_text(D.PSY[t]))
+				_option(t, t in c.psy, _toggle.bind("psy", t, D.AGES[c.age].psy), _trait_info(t, D.PSY[t]))
 		8:
+			c.main = c.main.slice(0, G.main_count(c))
 			for s in D.SKILLS:
-				_option("%s (%s)" % [s[0], s[1]], s[0] in c.main, _toggle.bind("main", s[0], 2), s[2])
+				_option("%s (%s)" % [s[0], s[1]], s[0] in c.main, _toggle.bind("main", s[0], G.main_count(c)),
+					"%s\n\nХарактеристика %s: %s" % [s[2], s[1], D.STAT_DESC[s[1]]])
 		9:
 			list.add_child(Pal.label("Заключение Института\nпо Этике о характеристиках\nГения:", Pal.G4, 10, true))
 			var verdict := Pal.rich(_verdict(), 8)
@@ -220,8 +225,8 @@ func _valid() -> String:
 			if c.psy.size() != D.AGES[c.age].psy:
 				return "Выбрано %d из %d" % [c.psy.size(), D.AGES[c.age].psy]
 		8:
-			if c.main.size() != 2:
-				return "Выбрано %d из 2" % c.main.size()
+			if c.main.size() != G.main_count(c):
+				return "Выбрано %d из %d" % [c.main.size(), G.main_count(c)]
 		9:
 			if approve == null or not (approve.text.strip_edges().to_upper() in ["О", "O"]):
 				return "Ожидается подпись «О»"
@@ -262,6 +267,30 @@ func _mods_text(m: Array) -> String:
 	if parts.is_empty():
 		return "[color=%s]Без изменений[/color]" % Pal.hex(Pal.G2)
 	return "  ".join(parts)
+
+
+func _trait_info(t: String, m: Array) -> String:
+	return "[color=%s]%s[/color]\n\n%s\n\n[color=%s]Наведите на характеристику справа, чтобы прочесть, за что она отвечает.[/color]" % [
+		Pal.hex(Pal.G4), D.TRAIT_DESC.get(t, ""), _mods_text(m), Pal.hex(Pal.G2)]
+
+
+## Наведение на строку листа справа: описание характеристики, показателя, свойства или черты.
+func _on_meta(meta) -> void:
+	desc.text = info_for(str(meta))
+
+
+static func info_for(key: String) -> String:
+	if D.STAT_DESC.has(key):
+		return "[b]%s[/b]\n%s" % [key, D.STAT_DESC[key]]
+	if D.PERK_DESC.has(key):
+		return "[b]%s[/b]\n%s" % [key, D.PERK_DESC[key]]
+	if D.TRAIT_DESC.has(key):
+		return "[b]%s[/b]\n%s" % [key, D.TRAIT_DESC[key]]
+	if key == "Перебросы":
+		return "[b]Перебросы удачи[/b]\nБесплатные перебросы проваленной проверки: 1 + мод УДЧ / 2 в день, если мод УДЧ не отрицательный."
+	if key == "Основные":
+		return "[b]Бонус основных навыков[/b]\nМод УДЧ + 1, но не меньше +1. Добавляется к проверкам основных навыков."
+	return ""
 
 
 func _relations_text(fi: int) -> String:
@@ -305,15 +334,33 @@ func _refresh() -> void:
 
 
 func _sheet_text() -> String:
-	var s := "[b]ЛИЧНАЯ КАРТА ГЕНИЯ[/b]\n"
-	s += "%s  ·  %s\n" % [c.callsign if c.callsign != "" else "без позывного", D.FACTIONS[c.faction].short]
-	s += "[color=%s]ООЗ[/color] %d   [color=%s]ООР[/color] %d\n" % [Pal.hex(Pal.R3), G.max_hp(c), Pal.hex(Pal.G5), G.max_mind(c)]
-	s += "Воля %d   Внимание %d\n\n" % [G.max_will(c), G.speed(c)]
+	return sheet_text(c, true)
+
+
+## Лист Гения с наводимыми строками (общий для анкеты и пейджера).
+static func sheet_text(ch: Dictionary, creating: bool) -> String:
+	var s := "[b]ЛИЧНАЯ КАРТА ГЕНИЯ[/b]\n" if creating else ""
+	if creating:
+		s += "%s  ·  %s\n" % [ch.callsign if ch.callsign != "" else "без позывного", D.FACTIONS[ch.faction].short]
+	s += "[url=ООЗ][color=%s]ООЗ[/color][/url] %d   [url=ООР][color=%s]ООР[/color][/url] %d\n" % [Pal.hex(Pal.R3), G.max_hp(ch), Pal.hex(Pal.G5), G.max_mind(ch)]
+	s += "[url=Воля]Воля[/url] %d  [url=Внимание]Внимание[/url] %d  [url=Уклонение]Уклон.[/url] %d\n" % [G.max_will(ch), G.speed(ch), G.evasion(ch)]
+	s += "[url=Основные]Бонус основных[/url] +%d  [url=Перебросы]Перебросы[/url] %d/день\n\n" % [G.main_bonus(ch), maxi(0, (1 + floori(G.mod("УДЧ", ch) / 2.0)) if G.mod("УДЧ", ch) >= 0 else 0)]
 	for k in D.ATTRS:
-		var val := G.stat(k, c)
+		var val := G.stat(k, ch)
 		var m := D.check_mod(val)
-		var col := Pal.hex(Pal.G5) if m > 0 else (Pal.hex(Pal.R3) if m < -2 else Pal.hex(Pal.G4))
-		s += "[color=%s]%s %2d  к20 %+d  %s[/color]\n" % [col, k, val, m, D.grade(val)]
-	s += "\n[color=%s]Черты:[/color] %s\n" % [Pal.hex(Pal.G3), ", ".join(c.phys + c.psy) if (c.phys + c.psy).size() > 0 else "—"]
-	s += "[color=%s]Основные навыки:[/color] %s" % [Pal.hex(Pal.G3), ", ".join(c.main) if c.main.size() > 0 else "—"]
+		var col := Pal.hex(Pal.G5) if m > 0 else (Pal.hex(Pal.R3) if m < 0 else Pal.hex(Pal.G4))
+		s += "[url=%s][color=%s]%s %2d  мод %+d  %s[/color][/url]\n" % [k, col, k, val, m, D.grade(val)]
+	var pk := G.perks(ch)
+	if pk.size() > 0:
+		var parts: Array = []
+		for x in pk:
+			var good: bool = x in ["Тяжеловес", "Эрудит", "Чуткий", "Ловкач", "Вожак", "Везунчик"]
+			parts.append("[url=%s][color=%s]%s[/color][/url]" % [x, Pal.hex(Pal.G5) if good else Pal.hex(Pal.R3), x])
+		s += "\n[color=%s]Свойства:[/color] %s\n" % [Pal.hex(Pal.G3), ", ".join(parts)]
+	var tr: Array = []
+	for t in ch.phys + ch.psy:
+		tr.append("[url=%s]%s[/url]" % [t, t])
+	s += "\n[color=%s]Черты:[/color] %s\n" % [Pal.hex(Pal.G3), ", ".join(tr) if tr.size() > 0 else "—"]
+	if creating:
+		s += "[color=%s]Основные навыки:[/color] %s" % [Pal.hex(Pal.G3), ", ".join(ch.main) if ch.main.size() > 0 else "—"]
 	return s

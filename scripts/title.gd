@@ -13,6 +13,7 @@ const BOOT := [
 var boot_label: Label
 var menu: VBoxContainer
 var load_box: VBoxContainer
+var full_btn: Button
 var t := 0.0
 var shown := 0
 
@@ -49,15 +50,20 @@ func _ready() -> void:
 	if last >= 0:
 		menu.add_child(Pal.button("ПРОДОЛЖИТЬ", _load.bind(last), 11))
 		menu.add_child(Pal.button("ЗАГРУЗИТЬ", _toggle_load, 11))
+	full_btn = Pal.button("", _toggle_full, 11)
+	menu.add_child(full_btn)
+	_full_text()
 	menu.add_child(Pal.button("ВЫХОД", func(): get_tree().quit(), 11))
 
 	load_box = VBoxContainer.new()
-	load_box.position = Vector2(270, 190)
+	load_box.position = Vector2(270, 214)
 	load_box.custom_minimum_size = Vector2(330, 0)
 	load_box.visible = false
 	add_child(load_box)
-	for i in G.SLOTS:
-		var b := Pal.button("Ячейка %d: %s" % [i + 1, G.slot_info(i)], _load.bind(i))
+	for i in G.SLOTS + 1:
+		var b := Pal.button("%s: %s" % [G.slot_name(i), G.slot_info(i)], _load.bind(i), 9)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.clip_text = true
 		b.disabled = not FileAccess.file_exists(G.slot_path(i))
 		load_box.add_child(b)
 
@@ -76,6 +82,15 @@ func _ready() -> void:
 func _load(i: int) -> void:
 	if G.load_slot(i):
 		G.main().show_world(G.p.map)
+
+
+func _toggle_full() -> void:
+	G.main().set_fullscreen(not G.main().fullscreen)
+	_full_text()
+
+
+func _full_text() -> void:
+	full_btn.text = "ПОЛНЫЙ ЭКРАН: %s" % ("ВКЛ" if G.main().fullscreen else "ВЫКЛ")
 
 
 func _toggle_load() -> void:

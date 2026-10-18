@@ -31,8 +31,17 @@ func run(main: Node) -> void:
 	await _shot("03_creator_faction")
 	cr.step = 6
 	cr._build()
+	cr.desc.text = "[b]Рыжие волосы[/b]\n" + cr._trait_info("Рыжие волосы", D.PHYS["Рыжие волосы"])
 	await _wait(0.3)
 	await _shot("04_creator_traits")
+	cr._on_meta("ЛВК")
+	await _wait(0.2)
+	await _shot("04b_creator_stat_hover")
+	cr.step = 8
+	cr._build()
+	await _wait(0.3)
+	await _shot("04c_creator_skills")
+	print("SMOKE stats ", D.ATTRS.map(func(k): return "%s=%d(%+d)" % [k, G.stat(k, cr.c), G.mod(k, cr.c)]), " hp ", G.max_hp(cr.c), " mind ", G.max_mind(cr.c), " perks ", G.perks(cr.c), " mains ", G.main_count(cr.c))
 	cr.step = 9
 	cr._build()
 	cr.approve.text = "О"
@@ -57,8 +66,8 @@ func run(main: Node) -> void:
 	M.show_world("caldera2", "down1")
 	await _wait(0.8)
 	await _shot("08_floor2")
-	M.world.ppos = Vector2i(14, 12)
-	M.world.pf = Vector2(14, 12)
+	M.world.ppos = Vector2i(10, 10)
+	M.world.pf = Vector2(10, 10)
 	await _wait(0.6)
 	await _shot("08b_floor2_shaft")
 	M.open_dialogue("surgeon_start")
@@ -69,6 +78,18 @@ func run(main: Node) -> void:
 	M.open_dialogue("autodoc")
 	await _wait(1.0)
 	await _shot("09b_autodoc")
+	_close_overlays()
+	# голос черты и исход
+	M.open_dialogue("trader_start")
+	await _wait(0.3)
+	var dlg = _dialogue()
+	dlg.voice = {"trait": "Жадность", "line": "На нём вещей на сотню Су. Он может заплатить больше."}
+	dlg._show("trader_start")
+	await _wait(2.0)
+	await _shot("09c_voice")
+	dlg._live({"live": ["voice", "Жадность"]})
+	await _wait(0.5)
+	await _shot("09d_voice_result")
 	_close_overlays()
 	M.open_dialogue("board")
 	await _wait(1.0)
@@ -84,7 +105,15 @@ func run(main: Node) -> void:
 	_close_overlays()
 	M.open_pager(0)
 	await _wait(0.4)
+	for c in M.overlay.get_children():
+		if c.has_method("_on_meta"):
+			c._on_meta("Ловкач" if G.has_perk("Ловкач") else "ВСП")
+	await _wait(0.2)
 	await _shot("11_pager_sheet")
+	_close_overlays()
+	M.open_pager(4)
+	await _wait(0.4)
+	await _shot("11b_pager_system")
 	_close_overlays()
 	M.open_shop(preload("res://scripts/story.gd").SHOPS.guns)
 	await _wait(0.4)
@@ -93,8 +122,8 @@ func run(main: Node) -> void:
 	M.show_world("caldera3", "down2")
 	await _wait(0.8)
 	await _shot("13_floor3")
-	M.world.ppos = Vector2i(22, 7)
-	M.world.pf = Vector2(22, 7)
+	M.world.ppos = Vector2i(17, 4)
+	M.world.pf = Vector2(17, 4)
 	await _wait(0.6)
 	await _shot("13b_bar")
 	M.open_dialogue("ry_start")
@@ -204,8 +233,39 @@ func run(main: Node) -> void:
 	M.show_world(G.p.map)
 	await _wait(0.6)
 	await _shot("21_loaded")
+	# смерть в Пустоши и загрузка с экрана гибели
+	M.show_world("waste", "road")
+	await _wait(0.6)
+	var before_hp: int = G.p.hp
+	M.start_combat("pes", M._battle_end.bind("", ""))
+	await _wait(1.0)
+	var cbd = _overlay_of_type("Combat")
+	G.p.hp = -20
+	cbd._end("dead")
+	await _wait(0.6)
+	await _shot("22_game_over")
+	var load_btn: Button = null
+	for b in M.ui.find_children("*", "Button", true, false):
+		if b.text.begins_with("Загрузить"):
+			load_btn = b
+	print("SMOKE game over load button ", load_btn != null, " newest slot ", G.any_save())
+	if load_btn:
+		load_btn.pressed.emit()
+		await _wait(0.8)
+		print("SMOKE after death load map ", G.p.map, " hp ", G.p.hp, " (before ", before_hp, ") world ", M.world != null)
+		await _shot("23_after_death_load")
+	M.show_title()
+	await _wait(1.8)
+	await _shot("24_title_again")
 	print("SMOKE DONE")
 	get_tree().quit()
+
+
+func _dialogue():
+	for c in M.overlay.get_children():
+		if c.has_method("_choose") and not c.is_queued_for_deletion():
+			return c
+	return null
 
 
 func _choose_first() -> void:

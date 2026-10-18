@@ -3,6 +3,7 @@ extends Control
 
 const Story := preload("res://scripts/story.gd")
 const Maps := preload("res://scripts/maps.gd")
+const Live := preload("res://scripts/live.gd")
 
 var on_close: Callable
 var nodes: Dictionary
@@ -20,6 +21,10 @@ var chars := 0.0
 var current_who := ""
 var current_id := ""
 var injury_result := ""
+## Первый узел разговора: здесь звучит голос черты и появляются её реплики.
+var first_id := ""
+var voice: Dictionary = {}
+var voice_checked := false
 
 
 func _ready() -> void:
@@ -62,13 +67,18 @@ func _ready() -> void:
 
 	choice_panel = PanelContainer.new()
 	add_child(choice_panel)
+	var csc := ScrollContainer.new()
+	csc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	choice_panel.add_child(csc)
 	choices = VBoxContainer.new()
-	choice_panel.add_child(choices)
+	choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	csc.add_child(choices)
 
 
 func start(id: String) -> void:
 	nodes = Story.nodes()
 	nodes.merge(G.temp_nodes, true)
+	first_id = id
 	_show(id)
 
 
@@ -119,13 +129,37 @@ func _show(id: String) -> void:
 	chars = 0.0
 	_clear_choices()
 	var i := 1
-	var list: Array = _dynamic_choices(n) + n.get("choices", [])
+	var own: Array = n.get("choices", [])
+	var list: Array = _dynamic_choices(n)
+	var live: Array = []
+	# «Живые черты»: голос в начале разговора и свои реплики черт.
+	if current_who != "" and current_who != "raider" and id == first_id:
+		if not voice_checked:
+			voice_checked = true
+			voice = Live.pick_voice(current_who)
+		if not voice.is_empty():
+			text.text += "\n\n[color=%s][%s][/color] [i]%s[/i]" % [Pal.hex(Pal.R3), voice.trait, voice.line]
+			live.append({"t": "[%s] Последовать подсказке" % voice.trait, "live": ["voice", voice.trait]})
+	if current_who != "" and current_who != "raider" and (id == first_id or n.get("hub", false)):
+		var acts := Live.acts_for(current_who)
+		for tr in acts.slice(0, 2):
+			var at: String = Live.ACTS[tr].t
+			if tr == "Рыжие волосы" and current_who == "ryzhaya":
+				at = "«Рыжий рыжего видит». Подмигнуть."
+			live.append({"t": "[%s] %s" % [tr, Live.gender(at, current_who)], "live": ["act", tr]})
+	# Реплики черт встают перед последним вариантом узла (обычно это «уйти»).
+	if own.size() > 0:
+		list += own.slice(0, own.size() - 1) + live + own.slice(own.size() - 1)
+	else:
+		list += live
 	for ch in list:
 		if ch.has("if") and not _cond(ch["if"]):
 			continue
+		if _hidden_by_trait(ch):
+			continue
 		var label := "%d. %s" % [i, _subst(ch.t)]
 		if ch.has("check"):
-			var dc := _dc(ch.check[1])
+			var dc := _dc(ch.check[1], ch.check[0])
 			label += "  [%s · %d%%]" % [ch.check[0], G.chance(G.skill_bonus(ch.check[0]), dc)]
 		_add_choice(label, _choose.bind(ch))
 		i += 1
@@ -200,20 +234,62 @@ func _add_choice(label: String, cb: Callable) -> void:
 	choices.add_child(b)
 
 
+## Сдвиг сложностей под шкалу Б+В: модификаторы стали крупнее, проверки — на 2 строже.
+const DC_SHIFT := 2
+
+
 ## Сложность с поправкой на отношение фракции говорящего к Гению.
-func _dc(base: int) -> int:
+func _dc(base: int, skill: String = "") -> int:
+	base += DC_SHIFT
+	if skill in ["История", "Медицина", "Сефиры"] and G.has_perk("Простак"):
+		base += 3
 	if current_who != "" and Story.WHO[current_who].has("faction"):
 		var personal: int = G.rel_tier(current_who).idx if Story.WHO[current_who].get("rel", false) else 0
 		return clampi(base - G.relation(Story.WHO[current_who].faction) - personal, 2, 30)
 	return base
 
 
+## Черты закрывают часть реплик: страшному не до дружбы, глупому не до науки, невозмутимому не до флирта.
+func _hidden_by_trait(ch: Dictionary) -> bool:
+	var skill: String = ch.check[0] if ch.has("check") else ""
+	if skill == "Дружелюбие" and Live.has("Страшный человек"):
+		return true
+	if skill in ["История", "Сефиры", "Медицина"] and Live.has("Глупость"):
+		return true
+	if "[Флирт]" in str(ch.get("t", "")) and Live.has("Невозмутимость"):
+		return true
+	return false
+
+
+func _scroll_text_end() -> void:
+	await get_tree().process_frame
+	text.scroll_to_line(maxi(0, text.get_line_count() - 1))
+
+
+func _live(ch: Dictionary) -> void:
+	var kind: String = ch.live[0]
+	var tr: String = ch.live[1]
+	var res := Live.resolve(kind, tr, current_who)
+	if kind == "voice":
+		voice = {}
+	text.text += "\n\n" + res
+	text.visible_characters = -1
+	_scroll_text_end.call_deferred()
+	if current_who != "" and Story.WHO[current_who].get("rel", false):
+		rel_label.text = _rel_text(current_who)
+	_clear_choices()
+	_add_choice("1. Далее", _show.bind(current_id))
+
+
 func _choose(ch: Dictionary) -> void:
+	if ch.has("live"):
+		_live(ch)
+		return
 	_fx(ch.get("fx", []))
 	if closed:
 		return
 	if ch.has("check"):
-		_resolve_check(ch, G.roll(ch.check[0], _dc(ch.check[1])))
+		_resolve_check(ch, G.roll(ch.check[0], _dc(ch.check[1], ch.check[0])))
 		return
 	_show(ch.get("next", "end"))
 
@@ -222,22 +298,31 @@ func _resolve_check(ch: Dictionary, r: Dictionary) -> void:
 	var col := Pal.hex(Pal.G5) if r.ok else Pal.hex(Pal.R3)
 	text.text += "\n\n[color=%s]%s[/color]" % [col, G.roll_text(r)]
 	text.visible_characters = -1
+	_scroll_text_end.call_deferred()
 	_clear_choices()
 	if r.ok:
 		_fx(ch.get("ok_fx", []))
 		_add_choice("1. Далее", _show.bind(ch.get("ok", ch.get("next", "end"))))
 	else:
 		var i := 1
+		if G.luck_left() > 0:
+			_add_choice("%d. [Удача] Бесплатный переброс (сегодня осталось %d)" % [i, G.luck_left()], _luck_reroll.bind(ch))
+			i += 1
 		if G.p.will >= 3:
 			_add_choice("%d. Переброс за 3 Воли (осталось %d)" % [i, G.p.will], _reroll.bind(ch))
 			i += 1
 		_add_choice("%d. Принять провал" % i, _fail.bind(ch))
 
 
+func _luck_reroll(ch: Dictionary) -> void:
+	G.use_luck()
+	_resolve_check(ch, G.roll(ch.check[0], _dc(ch.check[1], ch.check[0])))
+
+
 func _reroll(ch: Dictionary) -> void:
 	G.p.will -= 3
 	G.changed.emit()
-	_resolve_check(ch, G.roll(ch.check[0], _dc(ch.check[1])))
+	_resolve_check(ch, G.roll(ch.check[0], _dc(ch.check[1], ch.check[0])))
 
 
 func _fail(ch: Dictionary) -> void:
@@ -353,13 +438,13 @@ func _doc_heal() -> int:
 
 
 func _doc_cost() -> int:
-	return _doc_heal()
+	return G.price(_doc_heal())
 
 
 func _heal_cost() -> int:
 	if G.flag("free_heal"):
 		return 0
-	return (G.max_hp() - G.p.hp) * 2
+	return G.price((G.max_hp() - G.p.hp) * 2)
 
 
 func _subst(s: String) -> String:
@@ -451,6 +536,9 @@ func _fx(list: Array) -> void:
 				G.changed.emit()
 			"goto":
 				var m: String = f[1]
+				if G.trait_has("Клаустрофобия") and str(G.p.map).begins_with("caldera") and m.begins_with("caldera"):
+					G.p.mind = maxi(1, G.p.mind - 2)
+					G.say("[Клаустрофобия] В тесной клети лифта нечем дышать: −2 ООР.")
 				var sp: String = f[2]
 				after.append(func(): G.main().show_world(m, sp))
 			"rel":

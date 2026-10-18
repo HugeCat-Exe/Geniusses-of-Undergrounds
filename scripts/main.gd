@@ -17,15 +17,17 @@ var crt: ColorRect
 var current: Node
 var world: Node2D
 var crt_on := true
+var fullscreen := true
 
 const CRT_SHADER := """
 shader_type canvas_item;
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear;
-uniform float curve = 0.025;
+uniform float curve = 0.014;
 void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec2 c = uv - 0.5;
-	uv = uv + c * dot(c, c) * curve * 4.0;
+	// Изгиб «кинескопа» сжат так, чтобы углы картинки оставались на экране целиком.
+	uv = 0.5 + (c + c * dot(c, c) * curve * 4.0) / (1.0 + curve * 2.0);
 	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
 		COLOR = vec4(0.0, 0.0, 0.0, 1.0);
 	} else {
@@ -93,8 +95,7 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F11 or (event.keycode == KEY_ENTER and event.alt_pressed):
-			var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+			set_fullscreen(not fullscreen)
 			get_viewport().set_input_as_handled()
 
 
@@ -102,15 +103,50 @@ func _load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load("user://settings.cfg") == OK:
 		crt_on = cfg.get_value("video", "crt", true)
+		fullscreen = cfg.get_value("video", "fullscreen", true)
 	crt.visible = crt_on
+	if OS.get_environment("GP_SMOKE") == "1":
+		fullscreen = false
+	_apply_window()
+
+
+func _save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("video", "crt", crt_on)
+	cfg.set_value("video", "fullscreen", fullscreen)
+	cfg.save("user://settings.cfg")
 
 
 func set_crt(on: bool) -> void:
 	crt_on = on
 	crt.visible = on
-	var cfg := ConfigFile.new()
-	cfg.set_value("video", "crt", on)
-	cfg.save("user://settings.cfg")
+	_save_settings()
+
+
+func set_fullscreen(on: bool) -> void:
+	fullscreen = on
+	_apply_window()
+	_save_settings()
+
+
+## Полный экран или окно, которое целиком помещается на мониторе (с учётом масштаба Windows).
+func _apply_window() -> void:
+	if fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	var scr := DisplayServer.window_get_current_screen()
+	var area := DisplayServer.screen_get_usable_rect(scr)
+	if area.size.x <= 0 or area.size.y <= 0:
+		return
+	# Самый крупный масштаб 640×360, который влезает с запасом под рамку окна и панель задач.
+	var f := minf((area.size.x - 32) / 640.0, (area.size.y - 64) / 360.0)
+	if OS.get_environment("GP_SMOKE") == "1":
+		f = 2.0
+	f = maxf(0.75, f)
+	var sz := Vector2i(roundi(640 * f), roundi(360 * f))
+	DisplayServer.window_set_size(sz)
+	DisplayServer.window_set_position(area.position + (area.size - sz) / 2)
 
 
 func _clear() -> void:
@@ -142,6 +178,7 @@ func show_map() -> void:
 	G.p.map = "worldmap"
 	current = WorldMap.new()
 	ui.add_child(current)
+	G.autosave()
 
 
 func show_world(map: String, spawn: String = "") -> void:
@@ -158,6 +195,7 @@ func show_world(map: String, spawn: String = "") -> void:
 	world.setup(map, spawn)
 	screen_root.add_child(world)
 	current = world
+	G.autosave()
 
 
 func has_overlay() -> bool:
@@ -227,24 +265,41 @@ func explore() -> void:
 	if has_overlay():
 		return
 	var r := G.explore_roll()
+	G.phobia_open(3)
 	var txt := ""
+	var red := Pal.hex(Pal.R3)
+	# «Паранойя» предупреждает о засаде, но каждое третье предупреждение ложное.
+	var warn := false
+	if G.trait_has("Паранойя"):
+		var n := int(G.p.flags.get("paranoia_n", 0))
+		if r.kind == "fight" and n % 3 != 2:
+			warn = true
+			G.p.flags["paranoia_n"] = n + 1
+		elif r.kind in ["empty", "loot"] and n % 3 == 2:
+			G.p.flags["paranoia_n"] = n + 1
+			txt = "[color=%s][Паранойя][/color] [i]Это ловушка. За тем барханом кто-то есть.[/i]\n\nВы долго лежите в пыли и ждёте. Никого.\n\n" % red
 	match r.kind:
 		"poi":
-			txt = "Гений бродит по барханам и выходит к месту, которого нет на старых картах: [b]%s[/b].\n\n%s\n\n[color=#7ff07a](Место отмечено на карте мира.)[/color]" % [D.LOCS[r.id].name, D.LOCS[r.id].desc]
+			if G.trait_has("Любопытство"):
+				txt += "[color=%s][Любопытство][/color] [i]Там что-то есть. Ну же, сверни туда.[/i]\n\n" % red
+			txt += "Гений бродит по барханам и выходит к месту, которого нет на старых картах: [b]%s[/b].\n\n%s\n\n[color=#7ff07a](Место отмечено на карте мира.)[/color]" % [D.LOCS[r.id].name, D.LOCS[r.id].desc]
 			G.say("Найдено новое место: %s." % D.LOCS[r.id].name)
 		"fight":
 			txt = "Через час ходьбы ветер доносит запах псины и пота. Из-за руин выходит %s." % D.ENEMIES[r.enemy].name.to_lower()
-			G.temp_nodes["explore"] = {"who": "", "text": txt,
-				"choices": [{"t": "К бою!", "fx": [["battle", r.enemy]], "next": "end"}]}
+			var chs: Array = [{"t": "К бою!", "fx": [["battle", r.enemy]], "next": "end"}]
+			if warn:
+				txt = "[color=%s][Паранойя][/color] [i]Это ловушка. Не иди туда.[/i]\n\nВы замираете за обломком стены. Впереди %s ждёт в засаде, но вас не заметил." % [red, D.ENEMIES[r.enemy].name.to_lower()]
+				chs = [{"t": "Обойти засаду стороной", "next": "end"}, {"t": "Напасть первым", "fx": [["battle", r.enemy]], "next": "end"}]
+			G.temp_nodes["explore"] = {"who": "", "text": txt, "choices": chs}
 			open_dialogue("explore")
 			return
 		"loot":
 			var w: Array = r.what
 			var what: String = "%d Су в чужом кошельке" % w[1] if w[0] == "su" else "%s ×%d" % [w[0], w[1]]
-			txt = "Под ржавым листом железа кто-то устроил тайник и не вернулся за ним.\n\n[color=#7ff07a](Найдено: %s)[/color]" % what
+			txt += "Под ржавым листом железа кто-то устроил тайник и не вернулся за ним.\n\n[color=#7ff07a](Найдено: %s)[/color]" % what
 			G.say("Найдено в Пустоши: %s." % what)
 		_:
-			txt = ["Два часа ходьбы, пепел на зубах и ничего нового. Пустошь умеет быть скучной.",
+			txt += ["Два часа ходьбы, пепел на зубах и ничего нового. Пустошь умеет быть скучной.",
 				"Вы находите только старый указатель «КАЛЬДЕРА 2 КМ» и собственные следы.",
 				"Где-то далеко гремит. Небо над руинами на миг становится зелёным, потом снова серым."].pick_random()
 	G.temp_nodes["explore"] = {"who": "", "text": txt, "choices": [{"t": "Дальше", "next": "end"}]}
@@ -257,19 +312,27 @@ func game_over(text: String) -> void:
 	root.color = Pal.BG
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(root)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
 	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.position = Vector2(170, 90)
-	box.custom_minimum_size = Vector2(300, 0)
-	root.add_child(box)
+	box.custom_minimum_size = Vector2(360, 0)
+	box.add_theme_constant_override("separation", 6)
+	center.add_child(box)
 	box.add_child(Pal.label("ЗАПИСЬ ГЕНИЯ ЗАКРЫТА", Pal.R2, 20, true))
 	var t := Pal.rich(text, 10)
-	t.custom_minimum_size = Vector2(300, 0)
+	t.custom_minimum_size = Vector2(360, 0)
 	box.add_child(t)
-	box.add_child(Pal.label("Институт по Этике выражает соболезнования\nи напоминает: пейджер подлежит возврату.", Pal.G2, 9))
+	var cond := Pal.label("Институт по Этике выражает соболезнования и напоминает: пейджер подлежит возврату.", Pal.G2, 9)
+	cond.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cond.custom_minimum_size = Vector2(360, 0)
+	box.add_child(cond)
 	var last := G.any_save()
 	if last >= 0:
-		box.add_child(Pal.button("Загрузить последнее сохранение", load_and_play.bind(last)))
+		var b := Pal.button("Загрузить последнее сохранение", load_and_play.bind(last))
+		b.tooltip_text = "%s: %s" % [G.slot_name(last), G.slot_info(last)]
+		box.add_child(b)
+		box.add_child(Pal.label("%s · %s" % [G.slot_name(last), G.slot_info(last)], Pal.G3, 8))
 	box.add_child(Pal.button("В главное меню", show_title))
 
 

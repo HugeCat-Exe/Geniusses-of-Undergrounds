@@ -6,7 +6,7 @@ const ArtLib := preload("res://scripts/art.gd")
 const WALLS := {"#": "panel", "B": "brick", "R": "ruin"}
 const FLOORS := {".": "metal", ",": "concrete", "_": "tile", "=": "rug", "s": "sand", "a": "ash",
 	"g": "grate", "/": "stairs", "p": "plaza", "k": "asphalt"}
-const SPEED := 4.5
+const SPEED := 5.5
 
 var map: Dictionary
 var grid: Array
@@ -94,6 +94,9 @@ func setup(map_name: String, spawn: String) -> void:
 		ppos = map.spawns[spawn]
 	else:
 		ppos = Vector2i(G.p.pos[0], G.p.pos[1])
+		# Старое сохранение с прежней, большой картой: ставим Гения на ближайшую точку появления.
+		if not in_bounds(ppos) or astar.is_point_solid(ppos):
+			ppos = map.spawns.values()[0]
 	pf = Vector2(ppos)
 	G.p.pos = [ppos.x, ppos.y]
 	mate_pos = pf + Vector2(-1, 0)

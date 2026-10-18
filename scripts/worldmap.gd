@@ -297,6 +297,7 @@ func _arrive() -> void:
 		G.say("В пути закончилась еда. Голод отнял силы.")
 	G.p.food = maxi(0, G.p.food - food)
 	pass_time(walk_hours)
+	G.phobia_open(3)
 	if walk_target == "":
 		G.p.map_at = "wild"
 		G.p.map_xy = [player_pos.x, player_pos.y]
@@ -314,6 +315,7 @@ func taxi(id: String) -> void:
 		return
 	G.p.su -= cost
 	pass_time(maxi(1, hours_to(id) / 2))
+	G.phobia_open(1)
 	player_pos = LOCS[id].pos
 	G.p.map_at = id
 	G.say("Такси довезло за %d Су. Водитель всю дорогу молчал." % cost)

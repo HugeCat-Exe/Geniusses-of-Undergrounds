@@ -5,63 +5,47 @@ extends RefCounted
 ## Кальдера — три яруса вниз. v — шахта (сквозь неё видно нижний ярус), g — решётка, / — лестница,
 ## p — площадь на дне шахты, k — асфальт.
 const FLOOR1 := [
-	"##########################",
-	"#ssss#aaaa,,,,,,,,,,,,,,,#",
-	"#sssssaaaa,,,,,,,,,,,,,,,#",
-	"#sssssaaaa,,,,,,,,,,,,,,,#",
-	"#ssss#aaaa,,,,,,,,,,,,,,,#",
-	"######,,,,gggggggg,,,,,,,#",
-	"#,,,,,,,,,gvvvvvvg,,,,,,,#",
-	"#,,,,,,,,,gvvvvvvg,,,,,,,#",
-	"#,,,,,,,,,gvvvvvvg,,,,,,,#",
-	"#,,,,,,,,,gvvvvvvg,,,,,,,#",
-	"#,,,,,,,,,gggggggg,,,,,,,#",
-	"#,,,,,,,,,,,,,,,,,,,,,,,,#",
-	"#,,,,,,,,,,,,,,,,,,,,,,,,#",
-	"#,,,,,,,,,,,,,,,,,,,////,#",
-	"#,,,,,,,,,,,,,,,,,,,////,#",
-	"#,,,,,,,,,,,,,,,,,,,,,,,,#",
-	"##########################",
+	"####################",
+	"#sss#aa,,,,,,,,,,,,#",
+	"#sssaaa,,,,,,,,,,,,#",
+	"#sss#aa,,,,,,,,,,,,#",
+	"#####,,,gggggg,,,,,#",
+	"#,,,,,,,gvvvvg,,,,,#",
+	"#,,,,,,,gvvvvg,,,,,#",
+	"#,,,,,,,gggggg,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,///,#",
+	"#,,,,,,,,,,,,,,///,#",
+	"####################",
 ]
 const FLOOR2 := [
-	"############################",
-	"#_______#.......#==========#",
-	"#_______#.......#==========#",
-	"#_______#.......#==========#",
-	"#________##..########==#####",
-	"#________,,,,,,,,,,,,,,,,,,#",
-	"#_______#,,,,,,,,,,,,,,,,,,#",
-	"####,,##,,,gggggggg,,,,,,,,#",
-	"#///,,,,,,,gvvvvvvg,,,,,,,,#",
-	"#///,,,,,,,gvvvvvvg,,,,,,,,#",
-	"#,,,,,,,,,,gvvvvvvg,,,,,,,,#",
-	"#,,,,,,,,,,gvvvvvvg,,,,,,,,#",
-	"#,,,,,,,,,,gggggggg,,,,,,,,#",
-	"#,,,,,,,,,,,,,,,,,,,,,,,,,,#",
-	"#,,,,,,,,,,,,,,,,,,,,,,////#",
-	"#,,,,,,,,,,,,,,,,,,,,,,////#",
-	"############################",
+	"######################",
+	"#_____#......#=======#",
+	"#_____#......#=======#",
+	"#_____,......,=======#",
+	"###,,##,,,,,,##,,,####",
+	"#///,,,,,,,,,,,,,,,,,#",
+	"#///,,,,gggggg,,,,,,,#",
+	"#,,,,,,,gvvvvg,,,,,,,#",
+	"#,,,,,,,gvvvvg,,,,,,,#",
+	"#,,,,,,,gggggg,,,////#",
+	"#,,,,,,,,,,,,,,,,////#",
+	"######################",
 ]
 const FLOOR3 := [
-	"############################",
-	"########________#,#........#",
-	"#///,,,#________#,#.======.#",
-	"#///,,,#________#,#.======.#",
-	"#,,,,,,####__####,#........#",
-	"#,,,,,,,,,,,,,,,,,#........#",
-	"#,,,,,,,,,,,,,,,,,.........#",
-	"#,,,,,,,,,pppppp,,.........#",
-	"#,,,,,,,,,pppppp,,#........#",
-	"#,,,,,,,,,pppppp,,#........#",
-	"#,,,,,,,,,pppppp,,##########",
-	"####==###,,,,,,,,,,,,,,,,,,#",
-	"#=======#,,,,,,,,,,,,,,,,,,#",
-	"#=======#,,,,,,,,,,,,,,,,,,#",
-	"#========,,,,,,,,,,,,,,,,,,#",
-	"#=======#,,,,,,,,,,,,,,,,,,#",
-	"#=======#,,,,,,,,,,,,,,,,,,#",
-	"#=======#,,,,,,,,,,,,,,,,,,#",
-	"############################",
+	"######################",
+	"#///,#______#........#",
+	"#///,#______#.======.#",
+	"#,,,,#______#........#",
+	"#,,,,##,,,###........#",
+	"#,,,,,,,,,,,,........#",
+	"#,,,,,,pppp,,#.......#",
+	"#,,,,,,pppp,,#########",
+	"####=###,,,,,,,,,,,,,#",
+	"#======#,,,,,,,,,,,,,#",
+	"#======,,,,,,,,,,,,,,#",
+	"#======#,,,,,,,,,,,,,#",
+	"######################",
 ]
 
 ## Внешность NPC: спрайт на карте и портрет в сцене.
@@ -142,111 +126,105 @@ func _caldera1() -> Dictionary:
 	var objs: Array = []
 	objs.append(_prop("stairs_up", 1, 2, "Подъём на поверхность", "to_surface"))
 	objs.append(_prop("crate", 8, 1, "Мешки с песком"))
-	objs.append(_prop("crate", 9, 1, "Мешки с песком"))
-	objs.append(_prop("barrel", 6, 4, "Бочка с водой"))
-	objs.append(_npc("guard", 7, 3, "Страж Кальдеры", "guard_start", 1))
-	objs.append(_prop("terminal", 2, 7, "Терминал Института", "terminal"))
-	for x in [12, 16, 20]:
+	objs.append(_prop("barrel", 5, 3, "Бочка с водой"))
+	objs.append(_npc("guard", 6, 1, "Страж Кальдеры", "guard_start", 1))
+	objs.append(_prop("terminal", 2, 6, "Терминал Института", "terminal"))
+	for x in [10, 14]:
 		objs.append(_prop("shack", x, 1, "Лачуга из листового железа"))
-	objs.append(_prop("laundry", 18, 3, "Бельё на верёвке"))
-	objs.append(_npc("beggar", 14, 3, "Нищий Тимоха", "res_beggar", 1))
-	objs.append(_npc("kid", 22, 3, "Девочка Ласка", "res_kid", 1))
-	objs.append(_prop("cable", 24, 5, "Провода и гирлянда"))
-	objs.append(_prop("pipe", 1, 10, "Трубы"))
-	objs.append(_prop("vent", 3, 13, "Вентиляция"))
-	objs.append(_prop("tent", 6, 14, "Палатка беженцев"))
-	objs.append(_prop("tent", 9, 14, "Палатка беженцев"))
-	objs.append(_prop("crate", 15, 14, "Ящики"))
-	objs.append(_prop("crate", 16, 14, "Ящики"))
-	objs.append(_prop("lift", 24, 9, "Грузовой лифт", "lift"))
-	objs.append(_prop("stairs_down", 24, 13, "Лестница вниз, на ярус 2", "go:caldera2:down1"))
-	objs.append(_npc("smoker", 21, 14, "Курильщик Лёва", "stairs_smoker", 1))
-	_lamps(objs, [Vector2i(9, 4), Vector2i(9, 11), Vector2i(19, 11), Vector2i(2, 15), Vector2i(19, 6)])
+	objs.append(_prop("laundry", 16, 2, "Бельё на верёвке"))
+	objs.append(_npc("beggar", 12, 2, "Нищий Тимоха", "res_beggar", 1))
+	objs.append(_npc("kid", 17, 3, "Девочка Ласка", "res_kid", 1))
+	objs.append(_prop("cable", 15, 4, "Провода и гирлянда"))
+	objs.append(_prop("pipe", 1, 8, "Трубы"))
+	objs.append(_prop("tent", 4, 10, "Палатка беженцев"))
+	objs.append(_prop("tent", 7, 10, "Палатка беженцев"))
+	objs.append(_prop("crate", 11, 10, "Ящики"))
+	objs.append(_prop("lift", 18, 6, "Грузовой лифт", "lift"))
+	objs.append(_prop("stairs_down", 18, 9, "Лестница вниз, на ярус 2", "go:caldera2:down1"))
+	objs.append(_npc("smoker", 14, 10, "Курильщик Лёва", "stairs_smoker", 1))
+	_lamps(objs, [Vector2i(7, 4), Vector2i(14, 7), Vector2i(2, 9), Vector2i(9, 3)])
 	var grid := _grid(FLOOR1)
 	return {"name": "Кальдера · Ярус 1 · Вход", "floor": grid, "objs": objs, "waste": false, "depth": 1,
-		"spawns": {"surface": Vector2i(3, 3), "start": Vector2i(3, 3), "lift": Vector2i(23, 9), "up2": Vector2i(22, 13)}, "light": 10.0}
+		"spawns": {"surface": Vector2i(2, 2), "start": Vector2i(2, 2), "lift": Vector2i(17, 6), "up2": Vector2i(14, 9)}, "light": 10.0}
 
 
 func _caldera2() -> Dictionary:
 	var objs: Array = []
-	objs.append(_prop("stairs_up", 1, 8, "Лестница наверх, на ярус 1", "go:caldera1:up2"))
-	objs.append(_npc("ian", 2, 9, "Ян Мистел", "stairs_ian", 1))
+	objs.append(_prop("stairs_up", 1, 5, "Лестница наверх, на ярус 1", "go:caldera1:up2"))
+	objs.append(_npc("ian", 4, 7, "Ян Мистел", "stairs_ian", 1))
 	# медпункт
-	objs.append(_npc("surgeon", 3, 3, "Хирург Ирвин Кост", "surgeon_start", 1))
-	objs.append(_prop("table", 5, 2, "Операционный стол"))
+	objs.append(_npc("surgeon", 3, 2, "Хирург Ирвин Кост", "surgeon_start", 1))
 	objs.append(_prop("shelf", 1, 1, "Шкаф с препаратами"))
-	objs.append(_prop("shelf", 2, 1, "Шкаф с препаратами"))
-	objs.append(_prop("autodoc", 7, 1, "Автодок «Санитар-3»", "autodoc"))
-	objs.append(_prop("bed", 1, 5, "Койка для больных"))
+	objs.append(_prop("table", 4, 1, "Операционный стол"))
+	objs.append(_prop("autodoc", 5, 1, "Автодок «Санитар-3»", "autodoc"))
+	objs.append(_prop("bed", 1, 3, "Койка для больных"))
 	# оружейная
-	objs.append(_npc("gunsmith", 12, 2, "Оружейник Сава Клин", "gunsmith_start", 1))
-	objs.append(_prop("gunrack", 10, 1, "Стойка с оружием"))
-	objs.append(_prop("gunrack", 14, 1, "Стойка с оружием"))
-	objs.append(_prop("counter", 14, 3, "Верстак"))
+	objs.append(_npc("gunsmith", 10, 2, "Оружейник Сава Клин", "gunsmith_start", 1))
+	objs.append(_prop("gunrack", 8, 1, "Стойка с оружием"))
+	objs.append(_prop("gunrack", 12, 1, "Стойка с оружием"))
+	objs.append(_prop("counter", 8, 3, "Верстак"))
 	# лавка
-	objs.append(_npc("trader", 21, 2, "Старьёвщик Бартоломей", "trader_start", 1))
-	objs.append(_prop("clothes", 18, 1, "Вешалка с одеждой"))
-	objs.append(_prop("clothes", 25, 1, "Вешалка с одеждой"))
-	objs.append(_prop("shelf", 23, 1, "Полки с безделушками"))
-	objs.append(_prop("counter", 24, 3, "Прилавок"))
-	objs.append(_prop("board", 14, 6, "Доска объявлений", "board"))
-	objs.append(_prop("lift", 26, 8, "Грузовой лифт", "lift"))
-	objs.append(_prop("stairs_down", 26, 14, "Лестница вниз, на ярус 3", "go:caldera3:down2"))
-	objs.append(_npc("patrol", 20, 13, "Патрульная Дана", "res_patrol", 1))
-	objs.append(_prop("crate", 2, 12, "Ящики"))
-	objs.append(_prop("crate", 3, 12, "Ящики"))
-	objs.append(_prop("barrel", 8, 14, "Бочка"))
-	objs.append(_prop("pipe", 9, 1, "Трубы"))
-	objs.append(_prop("cable", 21, 6, "Провода"))
-	_lamps(objs, [Vector2i(9, 10), Vector2i(20, 9), Vector2i(5, 14), Vector2i(7, 5), Vector2i(16, 5)])
+	objs.append(_npc("trader", 17, 2, "Старьёвщик Бартоломей", "trader_start", 1))
+	objs.append(_prop("clothes", 14, 1, "Вешалка с одеждой"))
+	objs.append(_prop("clothes", 20, 1, "Вешалка с одеждой"))
+	objs.append(_prop("shelf", 19, 1, "Полки с безделушками"))
+	objs.append(_prop("counter", 19, 3, "Прилавок"))
+	objs.append(_prop("board", 6, 5, "Доска объявлений", "board"))
+	objs.append(_prop("lift", 20, 6, "Грузовой лифт", "lift"))
+	objs.append(_prop("stairs_down", 20, 9, "Лестница вниз, на ярус 3", "go:caldera3:down2"))
+	objs.append(_npc("patrol", 15, 7, "Патрульная Дана", "res_patrol", 1))
+	objs.append(_prop("crate", 1, 9, "Ящики"))
+	objs.append(_prop("crate", 2, 9, "Ящики"))
+	objs.append(_prop("barrel", 6, 10, "Бочка"))
+	objs.append(_prop("cable", 13, 5, "Провода"))
+	_lamps(objs, [Vector2i(7, 8), Vector2i(15, 5), Vector2i(3, 10), Vector2i(12, 10)])
 	var grid := _grid(FLOOR2)
 	return {"name": "Кальдера · Ярус 2 · Торговый", "floor": grid, "objs": objs, "waste": false, "depth": 1,
-		"spawns": {"down1": Vector2i(4, 9), "lift": Vector2i(25, 8), "up3": Vector2i(24, 14)}, "light": 10.0}
+		"spawns": {"down1": Vector2i(4, 6), "lift": Vector2i(19, 6), "up3": Vector2i(16, 10)}, "light": 10.0}
 
 
 func _caldera3() -> Dictionary:
 	var objs: Array = []
-	objs.append(_prop("stairs_up", 1, 2, "Лестница наверх, на ярус 2", "go:caldera2:up3"))
-	objs.append(_npc("old", 3, 2, "Слепой Ефим", "old_start", 1))
+	objs.append(_prop("stairs_up", 1, 1, "Лестница наверх, на ярус 2", "go:caldera2:up3"))
+	objs.append(_npc("old", 4, 2, "Слепой Ефим", "old_start", 1))
 	# кухня
-	objs.append(_npc("cook", 12, 2, "Матушка Грета", "cook_start", 1))
-	objs.append(_prop("pot", 14, 1, "Котёл с похлёбкой"))
-	objs.append(_prop("shelf", 9, 1, "Полки с посудой"))
-	objs.append(_prop("table", 10, 3, "Разделочный стол"))
+	objs.append(_npc("cook", 9, 2, "Матушка Грета", "cook_start", 1))
+	objs.append(_prop("pot", 11, 1, "Котёл с похлёбкой"))
+	objs.append(_prop("shelf", 6, 1, "Полки с посудой"))
+	objs.append(_prop("table", 7, 3, "Разделочный стол"))
 	# площадь на дне шахты
-	for pos in [Vector2i(11, 8), Vector2i(14, 8), Vector2i(12, 10)]:
-		objs.append(_prop("table", pos.x, pos.y, "Стол"))
-	for pos in [Vector2i(10, 8), Vector2i(15, 8), Vector2i(11, 10)]:
-		objs.append(_prop("stool", pos.x, pos.y, "Табурет", "", false))
-	objs.append(_prop("vent", 13, 7, "Решётка стока"))
-	objs.append(_prop("barrel", 16, 9, "Бочка-жаровня"))
+	objs.append(_prop("table", 8, 6, "Стол"))
+	objs.append(_prop("table", 10, 7, "Стол"))
+	objs.append(_prop("stool", 7, 6, "Табурет", "", false))
+	objs.append(_prop("stool", 9, 7, "Табурет", "", false))
+	objs.append(_prop("barrel", 12, 7, "Бочка-жаровня"))
 	# бар «Клык»
-	for x in [20, 21, 22, 23]:
-		objs.append(_prop("bar", x, 4, "Стойка бара «Клык»"))
-	objs.append(_npc("bartender", 22, 2, "Бармен Гарри Зуб", "bar_start", 2))
-	objs.append(_prop("bottles", 21, 1, "Полки с бутылками"))
-	objs.append(_prop("bottles", 24, 1, "Полки с бутылками"))
-	objs.append(_prop("neon", 19, 1, "Неоновая вывеска"))
-	for pos in [Vector2i(20, 6), Vector2i(23, 6), Vector2i(25, 8)]:
+	for x in [15, 16, 17, 18]:
+		objs.append(_prop("bar", x, 3, "Стойка бара «Клык»"))
+	objs.append(_npc("bartender", 17, 2, "Бармен Гарри Зуб", "bar_start", 2))
+	objs.append(_prop("bottles", 16, 1, "Полки с бутылками"))
+	objs.append(_prop("bottles", 19, 1, "Полки с бутылками"))
+	objs.append(_prop("neon", 14, 1, "Неоновая вывеска"))
+	for pos in [Vector2i(15, 4), Vector2i(18, 4), Vector2i(20, 5)]:
 		objs.append(_prop("stool", pos.x, pos.y, "Табурет", "", false))
-	objs.append(_prop("table", 21, 8, "Столик"))
+	objs.append(_prop("table", 16, 5, "Столик"))
 	if G.p.get("companion", "") != "ryzhaya":
-		objs.append(_npc("ryzhaya", 24, 7, "Рыжая", "ry_start", 1))
+		objs.append(_npc("ryzhaya", 19, 5, "Рыжая", "ry_start", 1))
 	# мотель
-	for pos in [Vector2i(1, 12), Vector2i(1, 14), Vector2i(1, 16), Vector2i(4, 16), Vector2i(6, 16)]:
+	for pos in [Vector2i(1, 9), Vector2i(1, 11), Vector2i(3, 11), Vector2i(5, 11)]:
 		objs.append(_prop("bed", pos.x, pos.y, "Койка в мотеле", "bed"))
 	# жилой блок
-	for pos in [Vector2i(11, 14), Vector2i(15, 14), Vector2i(19, 15)]:
+	for pos in [Vector2i(10, 11), Vector2i(13, 11)]:
 		objs.append(_prop("tent", pos.x, pos.y, "Жилая палатка"))
-	objs.append(_prop("shack", 23, 15, "Дом семьи Мистел"))
-	objs.append(_npc("mistel", 21, 13, "Ода Мистел", "mistel_start", 1))
-	objs.append(_prop("laundry", 17, 12, "Бельё на верёвке"))
-	objs.append(_prop("cable", 13, 12, "Провода"))
-	objs.append(_prop("lift", 26, 12, "Грузовой лифт", "lift"))
-	_lamps(objs, [Vector2i(7, 12), Vector2i(9, 6), Vector2i(17, 6), Vector2i(26, 9), Vector2i(10, 16)])
+	objs.append(_prop("shack", 18, 11, "Дом семьи Мистел"))
+	objs.append(_npc("mistel", 16, 10, "Ода Мистел", "mistel_start", 1))
+	objs.append(_prop("laundry", 14, 9, "Бельё на верёвке"))
+	objs.append(_prop("cable", 11, 8, "Провода"))
+	objs.append(_prop("lift", 20, 9, "Грузовой лифт", "lift"))
+	_lamps(objs, [Vector2i(8, 9), Vector2i(5, 5), Vector2i(12, 5), Vector2i(20, 11)])
 	var grid := _grid(FLOOR3)
 	return {"name": "Кальдера · Ярус 3 · Жилой", "floor": grid, "objs": objs, "waste": false, "depth": 0,
-		"spawns": {"down2": Vector2i(4, 3), "lift": Vector2i(25, 12)}, "light": 10.0}
+		"spawns": {"down2": Vector2i(3, 3), "lift": Vector2i(19, 9)}, "light": 10.0}
 
 
 func _waste() -> Dictionary:

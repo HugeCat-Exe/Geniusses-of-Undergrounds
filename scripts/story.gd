@@ -4,19 +4,19 @@ extends RefCounted
 
 const WHO := {
 	"trader": {"name": "Бартоломей, старьёвщик", "short": "Бартоломею", "faction": 0, "rel": true},
-	"cook": {"name": "Матушка Грета", "short": "Матушке Грете", "faction": 2, "rel": true},
+	"cook": {"name": "Матушка Грета", "short": "Матушке Грете", "faction": 2, "rel": true, "fem": true},
 	"surgeon": {"name": "Ирвин Кост, хирург", "short": "хирургу Косту", "faction": 3, "rel": true},
-	"ryzhaya": {"name": "Рыжая", "short": "Рыжей", "faction": 5, "rel": true},
+	"ryzhaya": {"name": "Рыжая", "short": "Рыжей", "faction": 5, "rel": true, "fem": true},
 	"guard": {"name": "Страж Кальдеры", "faction": 0},
 	"old": {"name": "Слепой Ефим", "faction": 6, "rel": true},
 	"raider": {"name": "Падальщик", "faction": 5},
 	"beggar": {"name": "Нищий Тимоха", "faction": 6, "rel": true},
-	"kid": {"name": "Ласка", "faction": 6},
+	"kid": {"name": "Ласка", "faction": 6, "fem": true},
 	"smoker": {"name": "Курильщик Лёва", "faction": 0},
 	"gunsmith": {"name": "Сава Клин, оружейник", "short": "Саве Клину", "faction": 0, "rel": true},
 	"ian": {"name": "Ян Мистел", "faction": 6},
-	"mistel": {"name": "Ода Мистел", "short": "Оде Мистел", "faction": 6, "rel": true},
-	"patrol": {"name": "Патрульная Дана", "faction": 0},
+	"mistel": {"name": "Ода Мистел", "short": "Оде Мистел", "faction": 6, "rel": true, "fem": true},
+	"patrol": {"name": "Патрульная Дана", "faction": 0, "fem": true},
 	"bartender": {"name": "Гарри Зуб, бармен", "short": "Гарри", "faction": 5, "rel": true},
 }
 

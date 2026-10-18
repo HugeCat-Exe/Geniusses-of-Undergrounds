@@ -1,6 +1,7 @@
 extends Control
 ## Пейджер Института: лист Гения, имущество, задачи, журнал, сохранения.
 
+const Creator := preload("res://scripts/creator.gd")
 const TABS := ["ЛИСТ ГЕНИЯ", "ИМУЩЕСТВО", "ЗАДАЧИ", "ЖУРНАЛ", "СИСТЕМА"]
 const QUESTS := {
 	"med": {"title": "Груз для хирурга",
@@ -16,6 +17,8 @@ var tab := 0
 var content: VBoxContainer
 var scroll: ScrollContainer
 var tab_buttons: Array = []
+## Строка-подсказка внизу экрана пейджера: что значит характеристика или черта под курсором.
+var info: RichTextLabel
 
 
 func _ready() -> void:
@@ -53,12 +56,23 @@ func _ready() -> void:
 	add_child(screen)
 	scroll = ScrollContainer.new()
 	scroll.position = Vector2(60, 64)
-	scroll.size = Vector2(522, 244)
+	scroll.size = Vector2(522, 212)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(scroll)
 	content = VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(content)
+	var line := ColorRect.new()
+	line.color = Pal.G1
+	line.position = Vector2(58, 278)
+	line.size = Vector2(524, 1)
+	add_child(line)
+	info = Pal.rich("", 8)
+	info.fit_content = false
+	info.scroll_active = true
+	info.position = Vector2(60, 280)
+	info.size = Vector2(522, 30)
+	add_child(info)
 	var close_b := Pal.button("ЗАКРЫТЬ [Tab]", queue_free, 9)
 	close_b.position = Vector2(486, 318)
 	close_b.size = Vector2(100, 18)
@@ -79,6 +93,7 @@ func _set_tab(i: int) -> void:
 	for c in content.get_children():
 		c.queue_free()
 	scroll.scroll_vertical = 0
+	info.text = "[color=%s]Наведите курсор на характеристику, показатель или черту, чтобы прочесть описание.[/color]" % Pal.hex(Pal.G2) if i == 0 else ""
 	match i:
 		0: _sheet()
 		1: _inventory()
@@ -93,29 +108,30 @@ func _sheet() -> void:
 	content.add_child(top)
 	var pic := TextureRect.new()
 	pic.texture = Art.portrait_tex(G.look())
-	pic.custom_minimum_size = Vector2(96, 112)
+	pic.custom_minimum_size = Vector2(84, 98)
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_SCALE
 	top.add_child(pic)
 	var idt := Pal.rich("", 9)
-	idt.custom_minimum_size = Vector2(190, 0)
-	idt.text = "[b]%s[/b]\n%s\n%s · %s · %s\n%s\nРодом из: %s\n[color=%s]«%s»[/color]\n\n[color=%s]ООЗ %d/%d[/color]   [color=%s]ООР %d/%d[/color]\nВоля %d/%d · Внимание %d\nЗащита: физ. %d · псих. %d\nСытость %d · Су %d · День %d" % [
+	idt.custom_minimum_size = Vector2(186, 0)
+	idt.meta_hover_started.connect(_on_meta)
+	idt.text = "[b]%s[/b]\n%s\n%s · %s · %s\n%s\nРодом из: %s\n[color=%s]«%s»[/color]\n\n[url=ООЗ][color=%s]ООЗ %d/%d[/color][/url]   [url=ООР][color=%s]ООР %d/%d[/color][/url]\n[url=Воля]Воля[/url] %d/%d\n[url=Защита]Защита[/url]: физ. %d · псих. %d\nУдача: перебросов сегодня %d\nСытость %d · Су %d · День %d" % [
 		p.callsign, p.name, p.race, "М" if p.sex == "М" else "Ж", p.age, D.FACTIONS[p.faction].name, p.birth,
 		Pal.hex(Pal.G3), p.motive if p.motive != "" else "—",
 		Pal.hex(Pal.R3), p.hp, G.max_hp(), Pal.hex(Pal.G5), p.mind, G.max_mind(),
-		p.will, G.max_will(), G.speed(), G.phys_def(), G.psy_def(), p.food, p.su, p.day]
+		p.will, G.max_will(), G.phys_def(), G.psy_def(), G.luck_left(), p.food, p.su, p.day]
 	top.add_child(idt)
 	var stats := Pal.rich("", 9)
-	stats.custom_minimum_size = Vector2(220, 0)
-	var s := "[b]ХАРАКТЕРИСТИКИ[/b]\n"
-	for k in D.ATTRS:
-		var v := G.stat(k)
-		s += "%s %2d  к20 %+d  %s\n" % [k, v, D.check_mod(v), D.grade(v)]
-	s += "\n[b]ЧЕРТЫ[/b]\n%s" % ", ".join(p.phys + p.psy)
+	stats.custom_minimum_size = Vector2(236, 0)
+	stats.meta_hover_started.connect(_on_meta)
+	var s := "[b]ХАРАКТЕРИСТИКИ[/b]\n" + Creator.sheet_text(p, false)
 	if (p.got_phys + p.got_psy).size() > 0:
-		s += "\n[color=%s]Приобретённые: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.got_phys + p.got_psy)]
+		var got: Array = []
+		for t in p.got_phys + p.got_psy:
+			got.append("[url=%s]%s[/url]" % [t, t])
+		s += "[color=%s]Приобретённые: %s[/color]\n" % [Pal.hex(Pal.R3), ", ".join(got)]
 	if p.wounds.size() > 0:
-		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
+		s += "[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
 	stats.text = s
 	top.add_child(stats)
 	content.add_child(HSeparator.new())
@@ -127,9 +143,13 @@ func _sheet() -> void:
 		var b := G.skill_bonus(sk[0])
 		var main: bool = sk[0] in p.main
 		var l := Pal.label("%s%s (%s) %+d" % ["★ " if main else "", sk[0], sk[1], b], Pal.G5 if main else Pal.G4, 9)
-		l.tooltip_text = sk[2]
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		l.mouse_entered.connect(func(): info.text = "[b]%s[/b] (%s): %s%s" % [sk[0], sk[1], sk[2], "  ★ основной: +%d" % G.main_bonus() if main else ""])
 		grid.add_child(l)
+
+
+func _on_meta(meta) -> void:
+	info.text = Creator.info_for(str(meta)).replace("\n", " ")
 
 
 func _inventory() -> void:
@@ -212,18 +232,35 @@ func _journal() -> void:
 func _system() -> void:
 	content.add_child(Pal.label("СОХРАНИТЬ", Pal.G5, 10, true))
 	for i in G.SLOTS:
-		content.add_child(Pal.button("Ячейка %d: %s" % [i + 1, G.slot_info(i)], _save.bind(i), 9))
+		content.add_child(_slot_button("Ячейка %d: %s" % [i + 1, G.slot_info(i)], _save.bind(i)))
 	content.add_child(HSeparator.new())
 	content.add_child(Pal.label("ЗАГРУЗИТЬ", Pal.G5, 10, true))
-	for i in G.SLOTS:
-		var b := Pal.button("Ячейка %d: %s" % [i + 1, G.slot_info(i)], _load.bind(i), 9)
+	for i in G.SLOTS + 1:
+		var b := _slot_button("%s: %s" % [G.slot_name(i), G.slot_info(i)], _load.bind(i))
 		b.disabled = not FileAccess.file_exists(G.slot_path(i))
 		content.add_child(b)
+	content.add_child(Pal.label("Автосохранение пишется само при входе на каждую карту и после сна.", Pal.G2, 8))
 	content.add_child(HSeparator.new())
+	content.add_child(Pal.label("ЭКРАН", Pal.G5, 10, true))
+	content.add_child(Pal.button("Полный экран: %s  [F11]" % ("ВКЛ" if G.main().fullscreen else "ВЫКЛ"), _toggle_full, 9))
 	var crt := Pal.button("Эффект старого монитора: %s" % ("ВКЛ" if G.main().crt_on else "ВЫКЛ"), _toggle_crt, 9)
 	content.add_child(crt)
+	content.add_child(HSeparator.new())
 	content.add_child(Pal.button("Выйти в главное меню (без сохранения)", func(): G.main().show_title(), 9))
 	content.add_child(Pal.button("Выйти из игры", func(): get_tree().quit(), 9))
+
+
+func _slot_button(text: String, cb: Callable) -> Button:
+	var b := Pal.button(text, cb, 9)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.clip_text = true
+	b.custom_minimum_size = Vector2(500, 0)
+	return b
+
+
+func _toggle_full() -> void:
+	G.main().set_fullscreen(not G.main().fullscreen)
+	_set_tab(4)
 
 
 func _save(i: int) -> void:
