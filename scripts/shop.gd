@@ -88,7 +88,7 @@ func _fill() -> void:
 		var b := Pal.button("%s ×%d — %d Су" % [it, G.p.inv[it], _sell_price(it)], _sell.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.mouse_entered.connect(_show_about.bind(it))
-		var equipped: bool = it == G.p.weapon or it == G.p.melee or it == G.p.armor
+		var equipped: bool = G.equipped(it)
 		b.disabled = equipped and G.p.inv[it] <= 1
 		sell_box.add_child(b)
 

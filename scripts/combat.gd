@@ -627,6 +627,9 @@ func _victory() -> void:
 	for it in E.loot:
 		G.add_item(it)
 		_log("Найдено: %s." % it)
+	if E.has("rare") and randf() < float(E.rare[1]):
+		G.add_item(E.rare[0])
+		_log("[color=%s]Редкая находка: %s![/color]" % [Pal.hex(Pal.R3), E.rare[0]])
 	if E.loot.size() > 0:
 		var r := G.roll("Трофей", 13)
 		if r.ok:

@@ -292,10 +292,10 @@ func _after_fight(result: String) -> void:
 func _arrive() -> void:
 	walking = false
 	var food: int = walk_hours * FOOD_PER_HOUR
-	if G.p.food < food:
-		G.p.hp = maxi(1, G.p.hp - (food - G.p.food))
-		G.say("В пути закончилась еда. Голод отнял силы.")
 	G.p.food = maxi(0, G.p.food - food)
+	if G.starving():
+		G.p.hp = mini(G.p.hp, G.max_hp())
+		G.say("В пути закончилась еда. Голод: предел ООЗ на треть ниже, пока Гений не поест.")
 	pass_time(walk_hours)
 	G.phobia_open(3)
 	if walk_target == "":

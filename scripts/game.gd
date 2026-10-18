@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.5"
+const VERSION := "0.6"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -13,6 +13,7 @@ var p: Dictionary = {}
 ## Узлы диалогов, собранные на лету (исходы прогулок и т. п.).
 var temp_nodes: Dictionary = {}
 var log_lines: Array = []
+var world_dirty := false
 
 
 func new_character() -> Dictionary:
@@ -26,6 +27,7 @@ func new_character() -> Dictionary:
 		"map": "caldera", "pos": [0, 0], "steps": 0, "day": 1, "hour": 8,
 		"map_at": "caldera", "known": ["caldera"], "pity": {}, "seed": randi(),
 		"rel": {}, "jobs": [], "companion": "",
+		"gear": {"head": "", "legs": "", "feet": "", "amulet": ""},
 	}
 
 
@@ -103,12 +105,23 @@ func mod(k: String, c: Dictionary = p) -> int:
 
 ## ООЗ = 80 + 5 × (ТЕЛ − 10) + 3 × ΣООЗ, не меньше 40.
 func max_hp(c: Dictionary = p) -> int:
-	return maxi(40, 80 + 5 * (stat("ТЕЛ", c) - 10) + roundi(3.0 * mods_total(c)[0]))
+	var mx := maxi(40, 80 + 5 * (stat("ТЕЛ", c) - 10) + roundi(3.0 * mods_total(c)[0]))
+	# Голод не убивает: пока Гений не поест, предел ООЗ на треть ниже.
+	if starving(c):
+		mx = int(mx * 0.66)
+	return mx
+
+
+func starving(c: Dictionary = p) -> bool:
+	return int(c.get("food", 100)) <= 0
 
 
 ## ООР = 80 + 5 × (ИНТ − 10) + 3 × ΣООР, не меньше 40.
 func max_mind(c: Dictionary = p) -> int:
-	return maxi(40, 80 + 5 * (stat("ИНТ", c) - 10) + roundi(3.0 * mods_total(c)[1]))
+	var mx := maxi(40, 80 + 5 * (stat("ИНТ", c) - 10) + roundi(3.0 * mods_total(c)[1]))
+	if amulet(c) == "Камень души":
+		mx += 10
+	return mx
 
 
 func max_will(c: Dictionary = p) -> int:
@@ -122,10 +135,31 @@ func speed(c: Dictionary = p) -> int:
 
 ## Уклонение (сложность попасть по Гению) = 8 + мод ЛВК + броня.
 func evasion(c: Dictionary = p) -> int:
+	return 8 + mod("ЛВК", c) + armor_total(c)
+
+
+## Защита всей одежды: торс, шлем, штаны, обувь.
+func armor_total(c: Dictionary = p) -> int:
 	var a := 0
 	if c.get("armor", "") != "":
-		a = int(D.ITEMS[c.armor].def)
-	return 8 + mod("ЛВК", c) + a
+		a += int(D.ITEMS[c.armor].def)
+	var gear: Dictionary = c.get("gear", {})
+	for slot in ["head", "legs", "feet"]:
+		var it: String = gear.get(slot, "")
+		if it != "":
+			a += int(D.ITEMS[it].get("def", 0))
+	return a
+
+
+func amulet(c: Dictionary = p) -> String:
+	return c.get("gear", {}).get("amulet", "")
+
+
+## Надето или в руках.
+func equipped(it: String) -> bool:
+	if it == p.weapon or it == p.melee or it == p.armor:
+		return true
+	return it in p.get("gear", {}).values()
 
 
 ## Бонус основного навыка = мод УДЧ + 1, но не меньше +1.
@@ -148,14 +182,13 @@ func skill_bonus(skill: String, c: Dictionary = p) -> int:
 	# «Одержимость запутанностью»: +2 к Сефирам.
 	if skill == "Сефиры" and is_same(c, p) and trait_has("Одержимость запутанностью"):
 		b += 2
+	if skill == "Сефиры" and amulet(c) == "Камень души":
+		b += 2
 	return b
 
 
 func phys_def() -> int:
-	var a := 0
-	if p.armor != "":
-		a = D.ITEMS[p.armor].def
-	return a + maxi(0, mod("ТЕЛ"))
+	return armor_total() + maxi(0, mod("ТЕЛ"))
 
 
 func psy_def() -> int:
@@ -365,11 +398,12 @@ func step(in_wasteland: bool) -> void:
 	p.steps += 1
 	var every := 8 if in_wasteland else 25
 	if p.steps % every == 0:
+		var was := starving()
 		p.food = maxi(0, p.food - 1)
-		if p.food == 0:
-			p.hp -= 1
-			if p.steps % (every * 4) == 0:
-				say("Желудок сводит от голода. ООЗ уходит.")
+		if starving():
+			p.hp = mini(p.hp, max_hp())
+			if not was or p.steps % (every * 6) == 0:
+				say("Голод: ноги ватные, Гений идёт медленнее, предел ООЗ на треть ниже. Нужно поесть.")
 		changed.emit()
 
 
@@ -403,6 +437,34 @@ func new_day() -> void:
 
 
 # ---------- Отношения ----------
+
+## Нанять или отпустить спутника. Карта пересобирается: нанятый пропадает со своего места
+## и идёт следом, отпущенный возвращается туда, где обычно стоит.
+func set_companion(id: String) -> void:
+	var old: String = p.get("companion", "")
+	p.companion = id
+	if id == "" and old != "":
+		say("%s возвращается на своё место: %s." % [WHO_NAME(old), D.COMPANION_HOME.get(old, "в Кальдеру")])
+	changed.emit()
+	world_dirty = true
+	if not main().has_overlay():
+		refresh_world()
+
+
+## Пересобрать текущую карту на том же месте (после найма или прощания со спутником).
+func refresh_world() -> void:
+	if not world_dirty:
+		return
+	world_dirty = false
+	var m: Node = main()
+	if m.world:
+		var mp: String = p.map
+		m.show_world.call_deferred(mp, "")
+
+
+func WHO_NAME(who: String) -> String:
+	return preload("res://scripts/story.gd").WHO.get(who, {}).get("name", who)
+
 
 func rel_points(who: String) -> int:
 	if p.rel.has(who):
@@ -483,6 +545,9 @@ func take_job(j: Dictionary) -> void:
 	if j.kind == "find" and not (j.poi in p.known):
 		p.known.append(j.poi)
 		say("На карте отмечено: %s." % D.LOCS[j.poi].name)
+	if j.kind == "kill" and j.enemy == "muezzin" and not ("den" in p.known):
+		p.known.append("den")
+		say("На карте отмечено: %s." % D.LOCS.den.name)
 	say("Новая подработка: %s." % j.title)
 	changed.emit()
 
@@ -536,6 +601,8 @@ func turn_in(id: String) -> void:
 	if j.giver == "ryzhaya":
 		p.flags["ry_errands"] = int(p.flags.get("ry_errands", 0)) + 1
 	set_flag("job_done_" + j.id)
+	if j.has("unlock"):
+		say(j.unlock)
 	p.jobs.erase(j)
 	say("Подработка сдана: %s.%s" % [j.title, (" +%d Су." % j.su) if j.su > 0 else ""])
 	changed.emit()
@@ -623,9 +690,18 @@ func use_item(item: String) -> String:
 			calm(it.amount)
 			return "%s: +%d ООР." % [item, it.amount]
 		"armor":
-			p.armor = item
+			var slot: String = it.get("slot", "body")
+			if slot == "body":
+				p.armor = item
+			else:
+				p.gear[slot] = item
 			changed.emit()
 			return "Надето: %s." % item
+		"amulet":
+			p.gear.amulet = item
+			p.mind = mini(p.mind, max_mind())
+			changed.emit()
+			return "На шее: %s." % item
 		"weapon":
 			if it.get("melee", false):
 				p.melee = item
@@ -760,6 +836,8 @@ func _fix_numbers(d: Dictionary) -> Dictionary:
 		d["hour"] = 8
 	if not d.has("map_at"):
 		d["map_at"] = "caldera"
+	if not d.has("gear"):
+		d["gear"] = {"head": "", "legs": "", "feet": "", "amulet": ""}
 	if not d.has("known"):
 		d["known"] = ["caldera"]
 	d.known.erase("outskirts")

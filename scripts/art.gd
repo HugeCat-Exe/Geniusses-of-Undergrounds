@@ -1052,6 +1052,25 @@ func enemy_art(kind: String) -> Dictionary:
 			cv.rect(34, 44, 6, 18, 1)
 			parts = {"Голова": Rect2(24, 3, 16, 18), "Туловище": Rect2(20, 22, 24, 23),
 				"Правая рука": Rect2(8, 22, 16, 22), "Левая рука": Rect2(42, 16, 18, 22)}
+		"muezzin":
+			# пёс-вожак: горб, выгнутый хребет, пасть до груди
+			cv.ellipse(28, 34, 20, 13, 2)
+			cv.ellipse(22, 24, 11, 9, 3)
+			for lx in [12, 19, 34, 41]:
+				cv.line(lx, 42, lx - 3 + (lx % 4), 60, 2, 3)
+			cv.line(8, 30, 1, 20, 2, 2)
+			cv.ellipse(48, 26, 11, 10, 3)
+			cv.poly(PackedVector2Array([Vector2(46, 26), Vector2(63, 18), Vector2(63, 46), Vector2(44, 40)]), 7)
+			cv.poly(PackedVector2Array([Vector2(49, 28), Vector2(62, 23), Vector2(62, 41), Vector2(48, 37)]), 0, false)
+			for i in 6:
+				cv.line(50 + i * 2, 26 - i, 51 + i * 2, 30 - i, 6)
+				cv.line(50 + i * 2, 39 + i / 2, 51 + i * 2, 35 + i / 2, 6)
+			cv.line(44, 17, 40, 7, 3, 2)
+			cv.line(50, 17, 53, 8, 3, 2)
+			for i in 7:
+				cv.line(10 + i * 5, 20 + absi(i - 3), 12 + i * 5, 14 + absi(i - 3), 4)
+			parts = {"Голова": Rect2(37, 14, 22, 16), "Туловище": Rect2(8, 18, 40, 28),
+				"Пасть": Rect2(44, 18, 20, 28), "Лапы": Rect2(8, 42, 38, 20)}
 		"warped":
 			cv.ellipse(32, 40, 16, 18, 2)
 			cv.ellipse(32, 18, 10, 11, 4)

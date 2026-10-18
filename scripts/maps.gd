@@ -539,6 +539,8 @@ func _poi_den() -> Dictionary:
 		objs.append(_prop("burrow", pos.x, pos.y, "Нора"))
 	objs.append(_mob("pes", _daily("den_pes_a"), 8, 5, 4))
 	objs.append(_mob("pes", _daily("den_pes_b"), 16, 6, 4))
+	# Собачий Муэдзин сидит в глубине логова и возвращается раз в три дня.
+	objs.append(_mob("muezzin", "den_muezzin_%d" % (int(G.p.get("day", 1)) / 3), 19, 3, 3))
 	for pos in [Vector2i(10, 6), Vector2i(14, 4), Vector2i(5, 9), Vector2i(19, 8)]:
 		objs.append(_prop("bones", pos.x, pos.y, "Обглоданные кости", "", false))
 	objs.append(_exit(23, 17))

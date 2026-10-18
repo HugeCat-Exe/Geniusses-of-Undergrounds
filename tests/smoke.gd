@@ -166,6 +166,18 @@ func run(main: Node) -> void:
 	await _wait(0.6)
 	print("SMOKE companion ", G.p.companion)
 	_close_overlays()
+	G.refresh_world()
+	await _wait(0.8)
+	var ry_n := 0
+	for o in M.world.objs:
+		if o.type == "npc" and o.id == "ryzhaya":
+			ry_n += 1
+	print("SMOKE ryzhaya npcs on map after join ", ry_n, " map ", G.p.map, " mate ", M.world.has_mate())
+	await _shot("15b_after_join")
+	M.open_pager(5)
+	await _wait(0.4)
+	await _shot("15c_social")
+	_close_overlays()
 	G.save(0)
 	M.show_world("waste", "road")
 	await _wait(1.0)
@@ -244,6 +256,31 @@ func run(main: Node) -> void:
 		await _wait(0.8)
 		await _shot("20_poi_%s" % id)
 		print("SMOKE poi ", id, " objs ", M.world.objs.size(), " mobs ", M.world.mobs.size())
+	# Собачий Муэдзин
+	G.take_job(G._make_job(D.SPECIAL_JOBS.muezzin_gunsmith, RandomNumberGenerator.new(), "muezzin_gunsmith"))
+	M.start_combat("muezzin", M._battle_end.bind("", ""))
+	await _wait(1.2)
+	await _shot("20b_muezzin")
+	var cbm = _overlay_of_type("Combat")
+	if cbm:
+		cbm._victory()
+		await _wait(0.5)
+		cbm._end("win")
+	await _wait(0.5)
+	_close_overlays()
+	print("SMOKE muezzin trophy ", G.has("Глотка Муэдзина"), " job ", G.job_by_id("muezzin_gunsmith").state)
+	G.turn_in("muezzin_gunsmith")
+	print("SMOKE unlock sword ", G.flag("job_done_muezzin_gunsmith"))
+	# голод: не убивает
+	var mh: int = G.max_hp()
+	G.p.food = 1
+	for k in 20:
+		G.step(true)
+	print("SMOKE starving ", G.starving(), " max_hp ", mh, " -> ", G.max_hp(), " hp ", G.p.hp, " map ", G.p.map)
+	G.feed(50)
+	G.add_item("Каска шахтёра")
+	G.add_item("Камень души")
+	print(G.use_item("Каска шахтёра"), " ", G.use_item("Камень души"), " armor ", G.armor_total())
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()

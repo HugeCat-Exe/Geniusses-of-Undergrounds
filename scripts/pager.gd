@@ -2,7 +2,7 @@ extends Control
 ## Пейджер Института: лист Гения, имущество, задачи, журнал, сохранения.
 
 const Creator := preload("res://scripts/creator.gd")
-const TABS := ["ЛИСТ ГЕНИЯ", "ИМУЩЕСТВО", "ЗАДАЧИ", "ЖУРНАЛ", "СИСТЕМА"]
+const TABS := ["ЛИСТ ГЕНИЯ", "ИМУЩЕСТВО", "ЗАДАЧИ", "ЖУРНАЛ", "СИСТЕМА", "СВЕТСКОЕ"]
 const QUESTS := {
 	"med": {"title": "Груз для хирурга",
 		"active": "Найти ящик с красным крестом у разбитого каравана на юго-востоке Пустоши и отнести хирургу Косту.",
@@ -100,6 +100,7 @@ func _set_tab(i: int) -> void:
 		2: _quests()
 		3: _journal()
 		4: _system()
+		5: _social()
 
 
 func _sheet() -> void:
@@ -158,8 +159,13 @@ func _inventory() -> void:
 	if p.weapon != "":
 		var wi: Dictionary = D.ITEMS[p.weapon]
 		w = "%s (урон %d, магазин %d/%d, %s)" % [p.weapon, wi.dmg, p.mag, wi.mag, wi.ammo]
-	content.add_child(Pal.rich("[b]Огнестрел:[/b] %s\n[b]Ближний бой:[/b] %s (урон %d)\n[b]Одежда:[/b] %s (защита %d)\n[b]Капитал:[/b] %d Су" % [
-		w, p.melee, D.ITEMS[p.melee].dmg, p.armor, D.ITEMS[p.armor].def if p.armor != "" else 0, p.su], 9))
+	var gear: Dictionary = p.get("gear", {})
+	var slots := ""
+	for sl in [["head", "Шлем"], ["legs", "Штаны"], ["feet", "Обувь"], ["amulet", "Амулет"]]:
+		var it: String = gear.get(sl[0], "")
+		slots += "[b]%s:[/b] %s   " % [sl[1], it if it != "" else "—"]
+	content.add_child(Pal.rich("[b]Огнестрел:[/b] %s\n[b]Ближний бой:[/b] %s (урон %d)\n[b]Одежда:[/b] %s · всего защиты %d\n%s\n[b]Капитал:[/b] %d Су" % [
+		w, p.melee, D.ITEMS[p.melee].dmg, p.armor, G.armor_total(), slots, p.su], 9))
 	content.add_child(HSeparator.new())
 	var keys: Array = p.inv.keys()
 	keys.sort()
@@ -167,18 +173,22 @@ func _inventory() -> void:
 		var info: Dictionary = D.ITEMS[it]
 		var row := HBoxContainer.new()
 		content.add_child(row)
-		var equipped: bool = it == p.weapon or it == p.melee or it == p.armor
+		var equipped: bool = G.equipped(it)
 		var l := Pal.label("%s%s ×%d" % ["● " if equipped else "", it, p.inv[it]], Pal.G5 if equipped else Pal.G4, 9)
 		l.custom_minimum_size = Vector2(170, 0)
 		row.add_child(l)
-		var dsc := Pal.label(D.item_desc(it), Pal.G3, 8)
+		# В имуществе у оружия только тип и урон; полное описание — в лавке.
+		var short: String = info.desc
+		if info.type == "weapon":
+			short = "%s · урон %d" % [str(info.get("kind", "ближний бой" if info.get("melee", false) else "огнестрел")).to_lower(), int(info.dmg)]
+		var dsc := Pal.label(short, Pal.G3, 8)
 		dsc.custom_minimum_size = Vector2(250, 0)
 		dsc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(dsc)
 		var act := ""
 		match info.type:
 			"heal", "food", "calm": act = "Использовать"
-			"armor": act = "Надеть" if not equipped else ""
+			"armor", "amulet": act = "Надеть" if not equipped else ""
 			"weapon": act = "Взять" if not equipped else ""
 		if act != "":
 			var b := Pal.button(act, _use.bind(it), 8)
@@ -186,6 +196,43 @@ func _inventory() -> void:
 			row.add_child(b)
 	if p.weapon != "":
 		content.add_child(Pal.button("Перезарядить %s" % p.weapon, _reload, 9))
+
+
+## Светское: отношения с жителями и спутники.
+func _social() -> void:
+	var p := G.p
+	var who_all: Dictionary = preload("res://scripts/story.gd").WHO
+	var comp: String = p.get("companion", "")
+	content.add_child(Pal.label("СПУТНИКИ", Pal.G4, 9, true))
+	if comp == "":
+		content.add_child(Pal.label("Никто не идёт с вами.", Pal.G3, 9))
+	else:
+		var row := HBoxContainer.new()
+		content.add_child(row)
+		var t := G.rel_tier(comp)
+		var l := Pal.label("%s · %s (%d)" % [who_all[comp].name, t.name, t.pts], Pal.G5, 9)
+		l.custom_minimum_size = Vector2(300, 0)
+		row.add_child(l)
+		row.add_child(Pal.button("Разделиться", _split, 9))
+	content.add_child(HSeparator.new())
+	content.add_child(Pal.label("ОТНОШЕНИЯ", Pal.G4, 9, true))
+	var ids: Array = []
+	for id in who_all:
+		if who_all[id].get("rel", false) and (p.rel.has(id) or G.flag("met_" + id) or id == comp):
+			ids.append(id)
+	for id in who_all:
+		if who_all[id].get("rel", false) and not (id in ids):
+			ids.append(id)
+	for id in ids:
+		var t := G.rel_tier(id)
+		var nxt := "" if t.next < 0 else " · до следующей ступени %d" % (t.next - t.pts)
+		var col := Pal.R3 if t.idx < 0 else (Pal.G5 if t.idx >= 2 else Pal.G4)
+		content.add_child(Pal.rich("[color=%s]%s[/color] — %s (%d)%s" % [Pal.hex(col), who_all[id].name, t.name, t.pts, nxt], 9))
+
+
+func _split() -> void:
+	queue_free()
+	G.set_companion("")
 
 
 func _use(it: String) -> void:

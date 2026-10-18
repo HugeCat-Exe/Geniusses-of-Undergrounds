@@ -230,7 +230,12 @@ func _clear_choices() -> void:
 func _add_choice(label: String, cb: Callable) -> void:
 	var b := Pal.button(label, cb, 9)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.clip_text = true
+	# Длинные реплики переносятся на вторую строку, а не обрезаются: шанс успеха всегда виден.
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Кнопка с переносом сама не растёт в высоту: считаем строки по ширине панели.
+	var per_line := maxi(20, int((choice_panel.size.x - 28) / 5.5))
+	var lines := ceili(label.length() / float(per_line))
+	b.custom_minimum_size = Vector2(200, 8 + 12 * lines)
 	choices.add_child(b)
 
 
@@ -375,6 +380,7 @@ func close() -> void:
 		on_close.call()
 	for a in after:
 		a.call_deferred()
+	G.refresh_world.call_deferred()
 
 
 # ---------- условия и эффекты ----------
@@ -388,6 +394,8 @@ func _cond(c: String) -> bool:
 		return G.has(c.substr(4))
 	if c.begins_with("flag:"):
 		return G.flag(c.substr(5))
+	if c.begins_with("job:"):
+		return G.job_by_id(c.substr(4)) != null
 	if c.begins_with("quest:"):
 		var q := c.substr(6)
 		if "=" in q:
@@ -401,6 +409,10 @@ func _cond(c: String) -> bool:
 			return G.p.wounds.size() > 0 and G.p.su >= 40
 		"injury":
 			return G.p.got_phys.size() > 0 and G.p.su >= 120
+		"old_stone":
+			return G.rel_tier("old").idx >= 1
+		"prayed_today":
+			return int(G.p.flags.get("pray_day", -1)) == G.p.day
 		"river_today":
 			return int(G.p.flags.get("river_day", -1)) == G.p.day
 		"den_today":
@@ -519,7 +531,10 @@ func _fx(list: Array) -> void:
 				if not r.ok:
 					G.say("Кошелёк почему-то стал легче на 25 Су.")
 			"shop":
-				var stock: Array = Story.SHOPS[f[1]]
+				var stock: Array = Story.SHOPS[f[1]].duplicate()
+				for u in D.SHOP_UNLOCKS.get(f[1], []):
+					if G.flag("job_done_" + u[0]):
+						stock.append(u[1])
 				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА"}.get(f[1], "ЛАВКА")
 				after.append(func(): G.main().open_shop(stock, st_title))
 			"fight":
@@ -580,11 +595,11 @@ func _fx(list: Array) -> void:
 				G.p.su -= _doc_cost()
 				G.heal(h)
 			"companion":
-				G.p.companion = f[1]
-				G.changed.emit()
-				if f[1] == "" and G.main().world:
-					G.say("Рыжая возвращается в бар «Клык» на третьем ярусе.")
+				G.set_companion(f[1])
 			"time":
 				G.pass_hours(f[1])
+			"special_job":
+				if G.job_by_id(f[1]) == null:
+					G.take_job(G._make_job(D.SPECIAL_JOBS[f[1]], RandomNumberGenerator.new(), f[1]))
 			"explore_go":
 				after.append(func(): G.main().explore_now())

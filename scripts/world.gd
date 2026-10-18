@@ -316,7 +316,7 @@ func _move(delta: float) -> void:
 	var target: Vector2 = Vector2(path[0])
 	if (target - pf).x - (target - pf).y != 0:
 		flip = (target - pf).x - (target - pf).y < 0
-	pf = pf.move_toward(target, delta * SPEED)
+	pf = pf.move_toward(target, delta * SPEED * (0.6 if G.starving() else 1.0))
 	anim_t += delta
 	if anim_t > 0.14:
 		anim_t = 0.0
@@ -347,9 +347,6 @@ func _key_dir() -> Vector2i:
 
 func _on_step() -> void:
 	G.step(waste)
-	if G.p.hp <= 0:
-		G.main().game_over("Гений %s умер от голода. Пустошь не кормит тех, кто забывает о себе." % G.p.callsign)
-		return
 	for m in mobs:
 		if m.stun <= 0.0 and _cheb(m.pos, ppos) <= 1:
 			path.clear()
@@ -542,6 +539,8 @@ func _mob_tex(m: Dictionary) -> Texture2D:
 	match m.enemy:
 		"pes":
 			return Art.cached("mob_pes", func(): return _small_dog())
+		"muezzin":
+			return Art.cached("mob_muezzin", func(): return _big_dog())
 		"padal":
 			return Art.person_tex(Maps.NPC_LOOKS.raider.person, frame)
 		_:
@@ -557,6 +556,22 @@ func _small_dog() -> Texture2D:
 	for lx in [5, 8, 12, 15]:
 		cv.line(lx, 11, lx, 15, 2)
 	cv.line(3, 8, 0, 5, 2)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+func _big_dog() -> Texture2D:
+	var cv := ArtLib.Canvas.new(40, 30)
+	cv.ellipse(17, 17, 13, 7, 2)
+	cv.ellipse(13, 11, 7, 5, 3)
+	cv.ellipse(30, 12, 6, 6, 3)
+	cv.poly(PackedVector2Array([Vector2(30, 12), Vector2(39, 7), Vector2(39, 22), Vector2(29, 18)]), 7)
+	cv.poly(PackedVector2Array([Vector2(32, 13), Vector2(38, 10), Vector2(38, 19), Vector2(31, 17)]), 0, false)
+	for lx in [7, 12, 21, 26]:
+		cv.line(lx, 21, lx, 29, 2, 2)
+	cv.line(4, 15, 0, 9, 2)
+	cv.put(35, 11, 6)
+	cv.put(35, 18, 6)
 	cv.outline(0)
 	return Art.to_tex(cv)
 
