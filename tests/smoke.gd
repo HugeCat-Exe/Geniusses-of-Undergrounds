@@ -111,7 +111,7 @@ func run(main: Node) -> void:
 	await _wait(0.2)
 	await _shot("11_pager_sheet")
 	_close_overlays()
-	M.open_pager(4)
+	M.open_pager(5)
 	await _wait(0.4)
 	await _shot("11b_pager_system")
 	_close_overlays()
@@ -174,7 +174,7 @@ func run(main: Node) -> void:
 			ry_n += 1
 	print("SMOKE ryzhaya npcs on map after join ", ry_n, " map ", G.p.map, " mate ", M.world.has_mate())
 	await _shot("15b_after_join")
-	M.open_pager(5)
+	M.open_pager(3)
 	await _wait(0.4)
 	await _shot("15c_social")
 	_close_overlays()
@@ -241,7 +241,7 @@ func run(main: Node) -> void:
 	await _wait(0.8)
 	await _shot("19_worldmap")
 	# прогулки по открытым местам
-	var views := {"station": Vector2i(7, 8), "river": Vector2i(17, 16), "tower": Vector2i(13, 11), "den": Vector2i(13, 6)}
+	var views := {"station": Vector2i(7, 8), "river": Vector2i(17, 16), "tower": Vector2i(13, 11), "den": Vector2i(13, 6), "ruins": Vector2i(6, 7)}
 	for id in views:
 		if not (id in G.p.known):
 			G.p.known.append(id)
@@ -263,6 +263,13 @@ func run(main: Node) -> void:
 	await _shot("20b_muezzin")
 	var cbm = _overlay_of_type("Combat")
 	if cbm:
+		var howl: Dictionary = D.ENEMIES.muezzin.attacks[1]
+		var mind0: int = G.p.mind
+		cbm._prayer(howl)
+		await _wait(1.6)
+		await _shot("20c_prayer")
+		await _wait(4.0)
+		print("SMOKE prayer mind ", mind0, " -> ", G.p.mind)
 		cbm._victory()
 		await _wait(0.5)
 		cbm._end("win")
@@ -271,6 +278,79 @@ func run(main: Node) -> void:
 	print("SMOKE muezzin trophy ", G.has("Глотка Муэдзина"), " job ", G.job_by_id("muezzin_gunsmith").state)
 	G.turn_in("muezzin_gunsmith")
 	print("SMOKE unlock sword ", G.flag("job_done_muezzin_gunsmith"))
+	var mp2 = preload("res://scripts/maps.gd").new()
+	var cnt := func():
+		var k := 0
+		for o in mp2.get_map("poi_den").objs:
+			if o.get("enemy", "") == "muezzin" and not (o.id in G.p.killed):
+				k += 1
+		return k
+	var d0: int = G.p.day
+	print("SMOKE muezzin dead_day ", G.p.flags.get("muezzin_dead_day"), " now ", cnt.call())
+	G.p.day = d0 + 3
+	print("SMOKE muezzin after 3 days ", cnt.call())
+	G.p.day = d0
+	# ярус 4 и домик Рыжей
+	M.show_world("caldera4", "lift")
+	await _wait(0.8)
+	await _shot("25_floor4")
+	G.p.rel["ryzhaya"] = 0
+	M.open_dialogue("ry_door")
+	await _wait(0.5)
+	await _shot("25b_door_shut")
+	_close_overlays()
+	G.p.rel["ryzhaya"] = 30
+	M.open_dialogue("ry_door")
+	await _wait(0.5)
+	await _shot("25c_door_open")
+	_choose_first()
+	await _wait(0.8)
+	print("SMOKE ry home map ", G.p.map)
+	await _shot("25d_ry_home")
+	G.set_companion("")
+	for dd in 4:
+		G.p.day = d0 + dd
+		var in_home := 0
+		var in_bar := 0
+		for o in mp2.get_map("caldera_ryhome").objs:
+			if o.get("id", "") == "ryzhaya":
+				in_home += 1
+		for o in mp2.get_map("caldera3").objs:
+			if o.get("id", "") == "ryzhaya":
+				in_bar += 1
+		print("SMOKE ry day ", G.p.day, " home ", in_home, " bar ", in_bar)
+	G.p.day = d0
+	G.set_companion("ryzhaya")
+	await _wait(0.4)
+	# спасение бедолаги
+	for j in G.p.jobs.duplicate():
+		print("SMOKE job before rescue ", j.id, " ", j.kind, " ", j.state)
+		if j.kind == "escort":
+			G.p.jobs.erase(j)
+	G.take_job(G._make_job(D.RESCUE_JOB, RandomNumberGenerator.new(), "rescue_test"))
+	var su0: int = G.p.su
+	M.show_world("poi_ruins", "enter")
+	await _wait(0.6)
+	var strays := 0
+	for o in M.world.objs:
+		if o.get("id", "") == "stray":
+			strays += 1
+	M.open_dialogue("stray_start")
+	await _wait(0.4)
+	_choose_first()
+	await _wait(0.8)
+	_close_overlays()
+	M.world.ppos = Vector2i(10, 6)
+	M.world.pf = Vector2(10, 6)
+	M.world.esc_pos = Vector2(8, 6)
+	for k in 4:
+		M.world.path.append(Vector2i(10 + k + 1, 6))
+	await _wait(1.5)
+	await _shot("26_escort")
+	print("SMOKE escort strays ", strays, " state ", G.escort_job().state)
+	M.show_world("caldera1", "surface")
+	await _wait(0.6)
+	print("SMOKE escort done ", G.escort_job() == null, " su ", su0, " -> ", G.p.su, " rescued ", G.flag("rescued_once"))
 	# голод: не убивает
 	var mh: int = G.max_hp()
 	G.p.food = 1
@@ -381,7 +461,7 @@ func _check_story() -> void:
 				print("SMOKE BAD LINK ", id, " -> ", t)
 				bad += 1
 	var mp = preload("res://scripts/maps.gd").new()
-	for m in ["caldera1", "caldera2", "caldera3", "waste", "poi_station", "poi_river", "poi_tower", "poi_den"]:
+	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins"]:
 		for o in mp.get_map(m).objs:
 			if o.get("action", "") != "" and not o.action.begins_with("go:") and not nodes.has(o.action):
 				print("SMOKE BAD ACTION ", o.action)

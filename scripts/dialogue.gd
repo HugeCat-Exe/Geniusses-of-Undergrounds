@@ -433,6 +433,10 @@ func _cond(c: String) -> bool:
 		"ry_test_ready":
 			return int(G.p.flags.get("ry_errands", 0)) >= 2 and not G.flag("ry_test_done") \
 				and int(G.p.flags.get("ry_test_day", -1)) != G.p.day
+	if c == "ry_home_today":
+		return G.ry_home_today()
+	if c == "ry_home_chat":
+		return G.p.map == "caldera_ryhome" and not G.flag("ry_home_chat")
 	if c.begins_with("floor:"):
 		return G.p.map == "caldera" + c.substr(6)
 	if c.begins_with("errands>="):
@@ -596,6 +600,9 @@ func _fx(list: Array) -> void:
 				G.heal(h)
 			"companion":
 				G.set_companion(f[1])
+			"escort_start":
+				G.escort_start()
+				G.world_dirty = true
 			"time":
 				G.pass_hours(f[1])
 			"special_job":

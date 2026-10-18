@@ -50,6 +50,7 @@ void fragment() {
 
 func _ready() -> void:
 	G.set_meta("main", self)
+	_set_cursor()
 	screen_root = Node.new()
 	add_child(screen_root)
 
@@ -191,11 +192,52 @@ func show_world(map: String, spawn: String = "") -> void:
 			spawn = "surface"
 	_clear()
 	G.p.map = map
+	if map.begins_with("caldera"):
+		G.escort_arrive()
 	world = World.new()
 	world.setup(map, spawn)
 	screen_root.add_child(world)
 	current = world
 	G.autosave()
+
+
+## Курсор в стиле терминала Института: чёрная обводка, зелёная стрелка.
+const CURSOR := [
+	"0.........",
+	"00........",
+	"050.......",
+	"0540......",
+	"05440.....",
+	"054440....",
+	"0544440...",
+	"05444440..",
+	"054444440.",
+	"0544400000",
+	"05400440..",
+	"0500.0440.",
+	"00...0440.",
+	"0.....0440",
+	"......0440",
+	".......00.",
+]
+
+
+func _set_cursor() -> void:
+	var k := 2
+	var img := Image.create(10 * k, CURSOR.size() * k, false, Image.FORMAT_RGBA8)
+	var cols := {"0": Pal.BG, "4": Pal.G3, "5": Pal.G5}
+	for y in CURSOR.size():
+		var row: String = CURSOR[y]
+		for x in row.length():
+			if not cols.has(row[x]):
+				continue
+			for dy in k:
+				for dx in k:
+					img.set_pixel(x * k + dx, y * k + dy, cols[row[x]])
+	var tex := ImageTexture.create_from_image(img)
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, Vector2.ZERO)
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_POINTING_HAND, Vector2.ZERO)
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_IBEAM, Vector2.ZERO)
 
 
 func has_overlay() -> bool:

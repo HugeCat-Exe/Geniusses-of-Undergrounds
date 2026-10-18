@@ -512,6 +512,9 @@ func _enemy_turn() -> void:
 		_log("%s корчится, но больше не может атаковать." % E.name)
 		return
 	var a: Dictionary = atks.pick_random()
+	if a.get("prayer", false):
+		await _prayer(a)
+		return
 	var roll_w := randf()
 	var target := "Туловище"
 	if roll_w < 0.15:
@@ -556,6 +559,29 @@ func _enemy_turn() -> void:
 		if (d >= 18) and target != "Туловище" and not (target in G.p.wounds):
 			G.p.wounds.append(target)
 			_log("[color=%s]Рана: %s. Нужен хирург.[/color]" % [Pal.hex(Pal.R2), target.to_lower()])
+	_update_status()
+
+
+## Вой Муэдзина: устоять можно только в мини-игре.
+func _prayer(a: Dictionary) -> void:
+	_log("%s задирает голову и начинает молитву. Остальные псы подхватывают вой..." % E.name)
+	await _wait(0.5)
+	var pg := preload("res://scripts/prayer.gd").new()
+	add_child(pg)
+	var ok: bool = await pg.done
+	if ok:
+		enemy_streak = 0
+		_log("[color=%s]Вы выдерживаете все три волны. Молитва разбивается о вашу волю.[/color]" % Pal.hex(Pal.G4))
+		return
+	enemy_streak += 1
+	var dmg := int(round(float(a.dmg) * randf_range(0.9, 1.1)))
+	var dealt := G.hurt(dmg, "mind")
+	_shake()
+	_log("%s %s вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
+	var hp := G.hurt(int(a.get("body", 0)), "body")
+	if hp > 0:
+		_log("Из ушей течёт кровь: [color=%s]-%d ООЗ.[/color]" % [Pal.hex(Pal.R3), hp])
+	_check_mind()
 	_update_status()
 
 

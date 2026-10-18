@@ -44,6 +44,32 @@ const FLOOR3 := [
 	"#======#,,,,,,,,,,,,,#",
 	"######################",
 ]
+## Ярус 4 — жилые кварталы: дома жильцов у дальней стены, домик Рыжей, общий двор.
+const FLOOR4 := [
+	"######################",
+	"#///,,,,,,,,,,,,,,,,,#",
+	"#///,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,____,,,,,,,,#",
+	"#,,,,,,,,____,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
+	"######################",
+]
+## Домик Рыжей изнутри.
+const RY_HOME := [
+	"##########",
+	"#===_____#",
+	"#===_____#",
+	"#===_____#",
+	"#,,,,,,,,#",
+	"#,,,,,,,,#",
+	"#,,,,,,,,#",
+	"##########",
+]
 
 ## Внешность NPC: спрайт на карте и портрет в сцене.
 const NPC_LOOKS := {
@@ -75,6 +101,14 @@ const NPC_LOOKS := {
 		"portrait": {"sex": "Ж", "coat": 3, "collar": 4, "helmet": true}},
 	"bartender": {"person": {"coat": 2, "hair": 1, "skin": 5, "accent": 6},
 		"portrait": {"sex": "М", "coat": 2, "collar": 6, "hair": 1, "beard": true, "traits": ["Золотой зуб"]}},
+	"zoya": {"person": {"coat": 5, "hair": 6, "skin": 5, "long": true, "accent": 3},
+		"portrait": {"sex": "Ж", "coat": 5, "collar": 3, "hair": 6, "old": true, "traits": ["Морщины"]}},
+	"miron": {"person": {"coat": 1, "hair": 6, "skin": 4, "accent": 8},
+		"portrait": {"sex": "М", "coat": 1, "collar": 8, "hair": 6, "beard": true, "old": true, "glasses": true, "traits": ["Ожоги"]}},
+	"pip": {"person": {"coat": 4, "hair": 3, "skin": 5, "race": "Крысолюд"},
+		"portrait": {"sex": "М", "race": "Крысолюд", "coat": 4, "hair": 3, "traits": ["Большие уши"]}},
+	"stray": {"person": {"coat": 1, "hair": 2, "skin": 4},
+		"portrait": {"sex": "М", "coat": 1, "hair": 2, "beard": true, "traits": ["Морщины", "Ножевые шрамы"]}},
 	"raider": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
 		"portrait": {"sex": "М", "coat": 2, "collar": 9, "bald": true, "scar": true, "traits": ["Ножевые шрамы", "Зубы крысолюда"]}},
 }
@@ -88,6 +122,12 @@ func get_map(name: String) -> Dictionary:
 			return _caldera2()
 		"caldera3":
 			return _caldera3()
+		"caldera4":
+			return _caldera4()
+		"caldera_ryhome":
+			return _ry_home()
+		"poi_ruins":
+			return _poi_ruins()
 		"poi_station":
 			return _poi_station()
 		"poi_river":
@@ -190,6 +230,7 @@ func _caldera2() -> Dictionary:
 func _caldera3() -> Dictionary:
 	var objs: Array = []
 	objs.append(_prop("stairs_up", 1, 1, "Лестница наверх, на ярус 2", "go:caldera2:up3"))
+	objs.append(_prop("stairs_down", 3, 1, "Лестница вниз, на ярус 4", "go:caldera4:down3"))
 	objs.append(_npc("old", 3, 4, "Слепой Ефим", "old_start", 1))
 	objs.append(_prop("lift", 1, 5, "Грузовой лифт", "lift"))
 	# кухня
@@ -212,7 +253,7 @@ func _caldera3() -> Dictionary:
 	for pos in [Vector2i(15, 4), Vector2i(18, 4)]:
 		objs.append(_prop("stool", pos.x, pos.y, "Табурет", "", false))
 	objs.append(_prop("table", 16, 5, "Столик"))
-	if G.p.get("companion", "") != "ryzhaya":
+	if G.p.get("companion", "") != "ryzhaya" and not G.ry_home_today():
 		objs.append(_npc("ryzhaya", 19, 4, "Рыжая", "ry_start", 1))
 	# мотель
 	for pos in [Vector2i(1, 8), Vector2i(3, 8), Vector2i(5, 8)]:
@@ -226,7 +267,55 @@ func _caldera3() -> Dictionary:
 	_lamps(objs, [Vector2i(5, 5), Vector2i(13, 6), Vector2i(19, 7)])
 	var grid := _grid(FLOOR3)
 	return {"name": "Кальдера · Ярус 3 · Жилой", "floor": grid, "objs": objs, "waste": false, "depth": 0,
-		"spawns": {"down2": Vector2i(2, 3), "lift": Vector2i(2, 5)}, "light": 10.0}
+		"spawns": {"down2": Vector2i(2, 3), "lift": Vector2i(2, 5), "up4": Vector2i(3, 3)}, "light": 10.0}
+
+
+func _caldera4() -> Dictionary:
+	var objs: Array = []
+	objs.append(_prop("stairs_up", 1, 1, "Лестница наверх, на ярус 3", "go:caldera3:up4"))
+	objs.append(_prop("lift", 1, 5, "Грузовой лифт", "lift"))
+	# дома жильцов вдоль дальней стены
+	objs.append(_prop("laundry", 4, 1, "Бельё на верёвке"))
+	objs.append(_npc("zoya", 5, 3, "Прачка Зоя", "zoya_start", 1))
+	objs.append(_prop("shack", 7, 1, "Дом прачки Зои"))
+	objs.append(_prop("shack", 10, 1, "Мастерская деда Мирона"))
+	objs.append(_prop("crate", 11, 2, "Ящик с деталями"))
+	objs.append(_npc("miron", 9, 3, "Дед Мирон", "miron_start", 1))
+	# домик Рыжей: войти можно только по-приятельски
+	objs.append(_big("ryhouse", 14, 1, 3, 2, "Домик Рыжей", "ry_door"))
+	objs.append(_prop("pot", 17, 2, "Горшок с бледным вьюнком"))
+	objs.append(_prop("tent", 19, 1, "Жилая палатка"))
+	# вдоль левой стены
+	objs.append(_prop("pipe", 1, 8, "Трубы с тёплой водой"))
+	objs.append(_prop("tent", 1, 9, "Палатка без хозяина"))
+	# общий двор
+	objs.append(_prop("barrel", 10, 5, "Бочка-жаровня"))
+	objs.append(_prop("table", 13, 7, "Общий стол"))
+	objs.append(_prop("stool", 12, 7, "Табурет", "", false))
+	objs.append(_prop("stool", 14, 8, "Табурет", "", false))
+	objs.append(_npc("pip", 7, 6, "Крысёнок Пип", "pip_start", 1))
+	_lamps(objs, [Vector2i(5, 5), Vector2i(17, 5), Vector2i(8, 9)])
+	var grid := _grid(FLOOR4)
+	return {"name": "Кальдера · Ярус 4 · Кварталы", "floor": grid, "objs": objs, "waste": false, "depth": 0,
+		"spawns": {"down3": Vector2i(3, 3), "lift": Vector2i(2, 5), "ryhouse": Vector2i(15, 4)}, "light": 9.0}
+
+
+func _ry_home() -> Dictionary:
+	var objs: Array = []
+	objs.append(_prop("door", 1, 5, "Дверь на ярус 4", "go:caldera4:ryhouse"))
+	objs.append(_prop("bed", 1, 1, "Кровать Рыжей"))
+	objs.append(_prop("shelf", 4, 1, "Полка с безделушками", "ry_shelf"))
+	objs.append(_prop("bottles", 6, 1, "Заначка из бара"))
+	objs.append(_prop("neon", 7, 1, "Краденая вывеска «Клык»"))
+	objs.append(_prop("table", 6, 3, "Столик с фотографией", "ry_photo"))
+	objs.append(_prop("stool", 7, 4, "Табурет", "", false))
+	objs.append(_prop("clothes", 1, 3, "Куртки на вешалке"))
+	if G.p.get("companion", "") != "ryzhaya" and G.ry_home_today():
+		objs.append(_npc("ryzhaya", 4, 3, "Рыжая", "ry_start", 1))
+	_lamps(objs, [Vector2i(3, 1)])
+	var grid := _grid(RY_HOME)
+	return {"name": "Кальдера · Домик Рыжей", "floor": grid, "objs": objs, "waste": false, "depth": 0,
+		"spawns": {"door": Vector2i(2, 5)}, "light": 7.0}
 
 
 func _waste() -> Dictionary:
@@ -539,8 +628,10 @@ func _poi_den() -> Dictionary:
 		objs.append(_prop("burrow", pos.x, pos.y, "Нора"))
 	objs.append(_mob("pes", _daily("den_pes_a"), 8, 5, 4))
 	objs.append(_mob("pes", _daily("den_pes_b"), 16, 6, 4))
-	# Собачий Муэдзин сидит в глубине логова и возвращается раз в три дня.
-	objs.append(_mob("muezzin", "den_muezzin_%d" % (int(G.p.get("day", 1)) / 3), 19, 3, 3))
+	# Собачий Муэдзин сидит в глубине логова; убитый, он возвращается через три дня.
+	var dead := int(G.p.flags.get("muezzin_dead_day", -99))
+	if int(G.p.get("day", 1)) >= dead + 3:
+		objs.append(_mob("muezzin", "den_muezzin_%d" % dead, 19, 3, 3))
 	for pos in [Vector2i(10, 6), Vector2i(14, 4), Vector2i(5, 9), Vector2i(19, 8)]:
 		objs.append(_prop("bones", pos.x, pos.y, "Обглоданные кости", "", false))
 	objs.append(_exit(23, 17))
@@ -548,3 +639,41 @@ func _poi_den() -> Dictionary:
 	_ensure_paths(grid, objs, Vector2i(22, 16), [Vector2i(12, 3), Vector2i(23, 17)])
 	return {"name": "Логово диких псов", "floor": grid, "objs": objs, "waste": true, "poi": "den",
 		"spawns": {"enter": Vector2i(22, 16)}, "light": 30.0}
+
+
+## Разрушенный посёлок: сюда ведёт задание на спасение, бедолага ждёт в уцелевшем доме.
+func _poi_ruins() -> Dictionary:
+	var w := 28
+	var h := 20
+	var grid := _sand(w, h, 801, 4)
+	var houses := [Rect2i(2, 1, 6, 5), Rect2i(10, 1, 5, 4), Rect2i(2, 8, 5, 5)]
+	for rr in houses:
+		_fill(grid, rr, ",")
+		for x in range(rr.position.x, rr.end.x):
+			grid[rr.position.y][x] = "R"
+			grid[rr.end.y - 1][x] = "R"
+		for y in range(rr.position.y, rr.end.y):
+			grid[y][rr.position.x] = "R"
+			grid[y][rr.end.x - 1] = "R"
+	# проёмы к югу и востоку
+	grid[5][4] = ","
+	grid[5][5] = ","
+	grid[4][12] = ","
+	grid[10][6] = ","
+	var objs: Array = []
+	objs.append(_prop("bed", 3, 2, "Сырой матрас"))
+	objs.append(_prop("shelf", 5, 2, "Пустая полка"))
+	objs.append(_prop("cache", 11, 2, "Разбитый шкафчик", "ruins_cache"))
+	objs.append(_prop("wreck", 19, 3, "Сгоревший грузовик"))
+	objs.append(_prop("pylon", 23, 2, "Покосившийся столб"))
+	objs.append(_prop("bones", 9, 11, "Кости", "", false))
+	var j = G.escort_job()
+	if j != null and j.state == "active":
+		objs.append(_npc("stray", 4, 3, "Бедолага", "stray_start", 1))
+	objs.append(_mob("padal", _daily("ruins_padal"), 16, 8, 4))
+	objs.append(_mob("pes", _daily("ruins_pes"), 12, 13, 5))
+	objs.append(_exit(25, 17))
+	_scatter(grid, objs, 802, 24, houses + [Rect2i(21, 14, 7, 6)])
+	_ensure_paths(grid, objs, Vector2i(24, 16), [Vector2i(4, 4), Vector2i(11, 3), Vector2i(25, 17)])
+	return {"name": "Разрушенный посёлок", "floor": grid, "objs": objs, "waste": true, "poi": "ruins",
+		"spawns": {"enter": Vector2i(24, 16)}, "light": 30.0}

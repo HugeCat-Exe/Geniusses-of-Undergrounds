@@ -2,7 +2,7 @@ extends Control
 ## Пейджер Института: лист Гения, имущество, задачи, журнал, сохранения.
 
 const Creator := preload("res://scripts/creator.gd")
-const TABS := ["ЛИСТ ГЕНИЯ", "ИМУЩЕСТВО", "ЗАДАЧИ", "ЖУРНАЛ", "СИСТЕМА", "СВЕТСКОЕ"]
+const TABS := ["ЛИСТ ГЕНИЯ", "ИМУЩЕСТВО", "ЗАДАЧИ", "СВЕТСКОЕ", "ЖУРНАЛ", "СИСТЕМА"]
 const QUESTS := {
 	"med": {"title": "Груз для хирурга",
 		"active": "Найти ящик с красным крестом у разбитого каравана на юго-востоке Пустоши и отнести хирургу Косту.",
@@ -98,9 +98,9 @@ func _set_tab(i: int) -> void:
 		0: _sheet()
 		1: _inventory()
 		2: _quests()
-		3: _journal()
-		4: _system()
-		5: _social()
+		3: _social()
+		4: _journal()
+		5: _system()
 
 
 func _sheet() -> void:
@@ -109,9 +109,10 @@ func _sheet() -> void:
 	content.add_child(top)
 	var pic := TextureRect.new()
 	pic.texture = Art.portrait_tex(G.look())
-	pic.custom_minimum_size = Vector2(84, 98)
+	pic.custom_minimum_size = Vector2(96, 96)
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	pic.stretch_mode = TextureRect.STRETCH_SCALE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	top.add_child(pic)
 	var idt := Pal.rich("", 9)
 	idt.custom_minimum_size = Vector2(186, 0)
@@ -210,12 +211,13 @@ func _social() -> void:
 		var row := HBoxContainer.new()
 		content.add_child(row)
 		var t := G.rel_tier(comp)
-		var l := Pal.label("%s · %s (%d)" % [who_all[comp].name, t.name, t.pts], Pal.G5, 9)
+		var l := Pal.label("★ %s · %s (%d)" % [who_all[comp].name, t.name, t.pts], Pal.G5, 9)
 		l.custom_minimum_size = Vector2(300, 0)
 		row.add_child(l)
 		row.add_child(Pal.button("Разделиться", _split, 9))
 	content.add_child(HSeparator.new())
 	content.add_child(Pal.label("ОТНОШЕНИЯ", Pal.G4, 9, true))
+	content.add_child(Pal.rich("[color=%s]★ — с этим человеком можно сблизиться: спутник, романтика, своя история.[/color]" % Pal.hex(Pal.G3), 8))
 	var ids: Array = []
 	for id in who_all:
 		if who_all[id].get("rel", false) and (p.rel.has(id) or G.flag("met_" + id) or id == comp):
@@ -227,7 +229,8 @@ func _social() -> void:
 		var t := G.rel_tier(id)
 		var nxt := "" if t.next < 0 else " · до следующей ступени %d" % (t.next - t.pts)
 		var col := Pal.R3 if t.idx < 0 else (Pal.G5 if t.idx >= 2 else Pal.G4)
-		content.add_child(Pal.rich("[color=%s]%s[/color] — %s (%d)%s" % [Pal.hex(col), who_all[id].name, t.name, t.pts, nxt], 9))
+		var star := "★ " if who_all[id].get("bond", false) else "   "
+		content.add_child(Pal.rich("%s[color=%s]%s[/color] — %s (%d)%s" % [star, Pal.hex(col), who_all[id].name, t.name, t.pts, nxt], 9))
 
 
 func _split() -> void:
@@ -254,6 +257,8 @@ func _quests() -> void:
 		if j.kind == "kill":
 			prog = " Прогресс: %d/%d." % [j.have, j.need]
 		var st: String = "Выполнено, вернитесь к %s." % G.giver_name(j.giver, true) if j.state == "done" else "В работе." + prog
+		if j.kind == "escort":
+			st = "Бедолага идёт за вами. Доведите его до Кальдеры." if j.state == "escort" else "Найдите выжившего: %s." % D.LOCS[j.poi].name
 		var who := G.giver_name(j.giver)
 		content.add_child(Pal.rich("[color=%s][b]%s[/b] · %s · %d Су\n%s\n%s[/color]" % [Pal.hex(Pal.G5), j.title, who, j.su, j.text, st], 9))
 		content.add_child(HSeparator.new())
@@ -307,12 +312,12 @@ func _slot_button(text: String, cb: Callable) -> Button:
 
 func _toggle_full() -> void:
 	G.main().set_fullscreen(not G.main().fullscreen)
-	_set_tab(4)
+	_set_tab(5)
 
 
 func _save(i: int) -> void:
 	G.save(i)
-	_set_tab(4)
+	_set_tab(5)
 
 
 func _load(i: int) -> void:
@@ -321,4 +326,4 @@ func _load(i: int) -> void:
 
 func _toggle_crt() -> void:
 	G.main().set_crt(not G.main().crt_on)
-	_set_tab(4)
+	_set_tab(5)

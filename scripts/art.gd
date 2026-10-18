@@ -579,6 +579,16 @@ func _prop(kind: String) -> ImageTexture:
 			cv = _big_tower()
 		"bigburrow":
 			cv = _big_burrow()
+		"ryhouse":
+			cv = _big_ryhouse()
+		"door":
+			cv = Canvas.new(20, 40)
+			cv.rect(1, 1, 18, 38, 1)
+			cv.rect(3, 3, 14, 35, 3)
+			cv.rect(5, 6, 10, 12, 2, false)
+			cv.rect(5, 22, 10, 12, 2, false)
+			cv.put(14, 20, 9)
+			cv.put(14, 21, 8)
 		"pump":
 			cv = Canvas.new(16, 32)
 			cv.rect(2, 6, 12, 24, 3)
@@ -743,6 +753,48 @@ func _big_tower() -> Canvas:
 	var bx := _ip(o, 2.75, 2.3, 0)
 	cv.rect(int(bx.x) - 8, int(bx.y) - 16, 14, 16, 3)
 	cv.rect(int(bx.x) - 5, int(bx.y) - 12, 5, 7, 1, false)
+	return cv
+
+
+## Домик Рыжей: 3×2 клетки, листовой металл, косая крыша, красная занавеска и дверь к камере.
+func _big_ryhouse() -> Canvas:
+	var f := _foot(3, 2, 44)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var x0 := 0.15
+	var x1 := 2.85
+	var y0 := 0.15
+	var y1 := 1.85
+	var z := 26.0
+	# левый бок — к камере, с дверью и окном
+	cv.poly(PackedVector2Array([_ip(o, x0, y1, z), _ip(o, x1, y1, z), _ip(o, x1, y1, 0), _ip(o, x0, y1, 0)]), 3)
+	# правый торец
+	cv.poly(PackedVector2Array([_ip(o, x1, y1, z), _ip(o, x1, y0, z), _ip(o, x1, y0, 0), _ip(o, x1, y1, 0)]), 2)
+	# швы листов металла
+	for i in 6:
+		var gx := x0 + 0.4 + i * 0.42
+		var a := _ip(o, gx, y1, z - 1)
+		var b := _ip(o, gx, y1, 1)
+		cv.line(a.x, a.y, b.x, b.y, 2)
+	# крыша: скат к камере
+	cv.poly(PackedVector2Array([_ip(o, x0 - 0.1, y0, z + 14), _ip(o, x1 + 0.1, y0, z + 14), _ip(o, x1 + 0.1, y1 + 0.2, z - 2), _ip(o, x0 - 0.1, y1 + 0.2, z - 2)]), 4)
+	cv.poly(PackedVector2Array([_ip(o, x1 + 0.1, y0, z + 14), _ip(o, x1 + 0.1, y1 + 0.2, z - 2), _ip(o, x1, y1, z), _ip(o, x1, y0, z)]), 1, false)
+	var r0 := _ip(o, x0 - 0.1, y1 + 0.2, z - 2)
+	var r1 := _ip(o, x1 + 0.1, y1 + 0.2, z - 2)
+	cv.line(r0.x, r0.y, r1.x, r1.y, 5)
+	# дверь
+	cv.poly(PackedVector2Array([_ip(o, 1.9, y1, 20), _ip(o, 2.4, y1, 20), _ip(o, 2.4, y1, 0), _ip(o, 1.9, y1, 0)]), 1)
+	var kn := _ip(o, 2.3, y1, 10)
+	cv.put(int(kn.x), int(kn.y), 8)
+	# окно с красной занавеской и тёплым светом
+	cv.poly(PackedVector2Array([_ip(o, 0.6, y1, 19), _ip(o, 1.3, y1, 19), _ip(o, 1.3, y1, 9), _ip(o, 0.6, y1, 9)]), 6)
+	cv.poly(PackedVector2Array([_ip(o, 0.6, y1, 19), _ip(o, 0.85, y1, 19), _ip(o, 0.85, y1, 9), _ip(o, 0.6, y1, 9)]), 8)
+	cv.poly(PackedVector2Array([_ip(o, 1.1, y1, 19), _ip(o, 1.3, y1, 19), _ip(o, 1.3, y1, 9), _ip(o, 1.1, y1, 9)]), 9)
+	# труба на крыше
+	var ch := _ip(o, 2.2, 0.6, z + 10)
+	cv.rect(int(ch.x) - 2, int(ch.y) - 12, 5, 12, 2)
+	cv.put(int(ch.x), int(ch.y) - 15, 3)
+	cv.put(int(ch.x) + 1, int(ch.y) - 18, 2)
 	return cv
 
 

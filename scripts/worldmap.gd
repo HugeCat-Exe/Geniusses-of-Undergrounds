@@ -123,7 +123,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if info.visible:
 					info.visible = false
 				elif not walking:
-					G.main().open_pager(4)
+					G.main().open_pager(5)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -173,7 +173,9 @@ func taxi_cost(id: String) -> int:
 func has_marker(id: String) -> bool:
 	var q: Dictionary = G.p.quests
 	for j in G.p.jobs:
-		if j.state == "active" and j.kind == "find" and j.poi == id:
+		if j.state == "active" and j.kind in ["find", "escort"] and j.poi == id:
+			return true
+		if id == "caldera" and j.kind == "escort" and j.state == "escort":
 			return true
 		if id == "caldera" and (j.state == "done" or j.kind == "kill"):
 			return true

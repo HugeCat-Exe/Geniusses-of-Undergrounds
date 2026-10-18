@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.6"
+const VERSION := "0.7"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -537,6 +537,14 @@ func board_offers() -> Array:
 				taken = true
 		if not taken and not flag("job_done_" + id):
 			res.append(_make_job(D.JOBS[k], rng, id))
+	# Пока никого не спасали, объявление о бедолаге висит каждый день.
+	if not flag("rescued_once") and escort_job() == null:
+		var has_rescue := false
+		for j in res:
+			if j.kind == "escort":
+				has_rescue = true
+		if not has_rescue:
+			res.append(_make_job(D.RESCUE_JOB, rng, "d%d_rescue" % p.day))
 	return res
 
 
@@ -545,11 +553,47 @@ func take_job(j: Dictionary) -> void:
 	if j.kind == "find" and not (j.poi in p.known):
 		p.known.append(j.poi)
 		say("На карте отмечено: %s." % D.LOCS[j.poi].name)
+	if j.kind == "escort" and not (j.poi in p.known):
+		p.known.append(j.poi)
+		say("На карте отмечено: %s." % D.LOCS[j.poi].name)
 	if j.kind == "kill" and j.enemy == "muezzin" and not ("den" in p.known):
 		p.known.append("den")
 		say("На карте отмечено: %s." % D.LOCS.den.name)
 	say("Новая подработка: %s." % j.title)
 	changed.emit()
+
+
+## Сегодня Рыжая сидит дома, а не в баре (решается по зерну дня).
+func ry_home_today() -> bool:
+	return hash(str(p.seed) + "ryhome" + str(p.day)) % 2 == 0
+
+
+## Задание на спасение, если оно взято.
+func escort_job():
+	for j in p.jobs:
+		if j.kind == "escort":
+			return j
+	return null
+
+
+## Бедолага пошёл за Гением.
+func escort_start() -> void:
+	var j = escort_job()
+	if j == null:
+		return
+	j.state = "escort"
+	say("Бедолага идёт за вами. Доведите его до Кальдеры.")
+	changed.emit()
+
+
+## Гений спустился в Кальдеру с бедолагой: у того теперь есть дом.
+func escort_arrive() -> void:
+	var j = escort_job()
+	if j == null or j.state != "escort":
+		return
+	say("Бедолага оглядывается, будто не верит, и уходит вглубь яруса. У него теперь есть дом.")
+	turn_in(j.id)
+	set_flag("rescued_once")
 
 
 func job_by_id(id: String):
@@ -561,6 +605,8 @@ func job_by_id(id: String):
 
 ## Убит враг: засчитать во все подходящие подработки.
 func on_kill(enemy: String) -> void:
+	if enemy == "muezzin":
+		p.flags["muezzin_dead_day"] = int(p.day)
 	if enemy == "pes":
 		p.flags["dogs"] = int(p.flags.get("dogs", 0)) + 1
 		if p.quests.get("dogs", "") == "active" and int(p.flags.dogs) >= 3:
@@ -795,7 +841,8 @@ func slot_info(i: int) -> String:
 		return "— повреждено —"
 	var pp: Dictionary = data.p
 	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "caldera1": "Кальдера, ярус 1",
-		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
+		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "caldera4": "Кальдера, ярус 4",
+		"caldera_ryhome": "Домик Рыжей", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
 	return "%s · %s · %s" % [pp.get("callsign", "?"), where, data.get("time", "")]
 
 

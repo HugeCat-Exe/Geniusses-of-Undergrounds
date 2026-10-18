@@ -24,6 +24,8 @@ var voids: Array = []
 var depth := 0
 var mate_pos := Vector2.ZERO
 var mate_trail: Array = []
+var esc_pos := Vector2.ZERO   # спасённый бедолага идёт следом
+var esc_trail: Array = []
 
 var ppos := Vector2i.ZERO
 var pf := Vector2.ZERO
@@ -104,6 +106,7 @@ func setup(map_name: String, spawn: String) -> void:
 	pf = Vector2(ppos)
 	G.p.pos = [ppos.x, ppos.y]
 	mate_pos = pf + Vector2(-1, 0)
+	esc_pos = pf + Vector2(0, -1)
 
 
 func _ready() -> void:
@@ -189,7 +192,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_TAB:
 				G.main().open_pager(0)
 			KEY_ESCAPE:
-				G.main().open_pager(4)
+				G.main().open_pager(5)
 			KEY_I:
 				G.main().open_pager(1)
 			KEY_E, KEY_SPACE, KEY_ENTER:
@@ -234,6 +237,11 @@ func _path_near(o: Dictionary, reach: int) -> void:
 	path = []
 	for i in range(1, best.size()):
 		path.append(best[i])
+
+
+func has_escort() -> bool:
+	var j = G.escort_job()
+	return j != null and j.state == "escort"
 
 
 func has_mate() -> bool:
@@ -292,6 +300,8 @@ func _process(delta: float) -> void:
 			m.stun -= delta
 	if has_mate() and not mate_trail.is_empty():
 		mate_pos = mate_pos.move_toward(Vector2(mate_trail[0]), delta * SPEED * 0.95)
+	if has_escort() and not esc_trail.is_empty():
+		esc_pos = esc_pos.move_toward(Vector2(esc_trail[0]), delta * SPEED * 0.9)
 	cam.position = iso(pf) + Vector2(0, -10)
 	_update_hover()
 	queue_redraw()
@@ -325,6 +335,9 @@ func _move(delta: float) -> void:
 		mate_trail.append(ppos)
 		if mate_trail.size() > 2:
 			mate_trail.pop_front()
+		esc_trail.append(ppos)
+		if esc_trail.size() > (4 if has_mate() else 2):
+			esc_trail.pop_front()
 		ppos = path.pop_front()
 		G.p.pos = [ppos.x, ppos.y]
 		_on_step()
@@ -499,6 +512,9 @@ func _draw() -> void:
 	if has_mate():
 		var mtex := Art.person_tex(Maps.NPC_LOOKS.ryzhaya.person, frame)
 		items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, mtex, iso(mate_pos) + Vector2(-8, 4 - 28), 1.0, mate_pos, flip])
+	if has_escort():
+		var etex := Art.person_tex(Maps.NPC_LOOKS.stray.person, frame)
+		items.append([esc_pos.x + esc_pos.y + 0.03, esc_pos.x, etex, iso(esc_pos) + Vector2(-8, 4 - 28), 1.0, esc_pos, flip])
 	var ptex := Art.person_tex(G.person_look(), frame)
 	items.append([pdepth + 0.05, pf.x, ptex, iso(pf) + Vector2(-8, 4 - 28), 1.0, pf, flip])
 	items.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))

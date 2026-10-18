@@ -16,6 +16,27 @@ var load_box: VBoxContainer
 var full_btn: Button
 var t := 0.0
 var shown := 0
+var gen_box: Control
+var phrase_label: Label
+var phrase := ""
+var typed := 0
+
+## Реплики Женевьевы на главном экране: каждый запуск — новая, как сплэш в Майнкрафте.
+const PHRASES := [
+	"Слежу за тобой, милый. Не сдохни от смущения хи-хи",
+	"Если бы я могла отправить тебе пачку бинтов... Я могу конечно, но не стану!",
+	"Никогда бы не подумала, что ты станешь таким выдающимся и знаменитым Гением. Как там тебя?",
+	"Институт напоминает: смерть не освобождает от уплаты взносов.",
+	"Сефиры сегодня в хорошем настроении. Это не про тебя, милый.",
+	"Твой пульс на мониторе такой милый. Особенно когда прерывается.",
+	"Отчёт о твоих подвигах занял полстроки. Я округлила вниз.",
+	"Пейджер пищит не от сбоя. Это я соскучилась. Немного.",
+	"Институт по Этике не убивает Гениев. Это делает Пустошь, а мы ведём учёт.",
+	"Опять ты? Я уже написала тебе некролог. Придётся переписывать.",
+	"Умрёшь красиво — поставлю тебе «удовлетворительно». Лично.",
+	"Собачий Муэдзин передаёт привет. Я тоже, но мой привет вежливее.",
+	"Не забывай есть, Гений. Голодные трупы плохо смотрятся в отчётах.",
+]
 
 
 func _ready() -> void:
@@ -71,12 +92,35 @@ func _ready() -> void:
 	hint.position = Vector2(24, 336)
 	add_child(hint)
 
+	# Женевьева, Институт по Этике
+	gen_box = Control.new()
+	gen_box.position = Vector2(384, 12)
+	add_child(gen_box)
+	var frame := ColorRect.new()
+	frame.color = Pal.G2
+	frame.position = Vector2(6, 0)
+	frame.size = Vector2(228, 228)
+	gen_box.add_child(frame)
 	var art := TextureRect.new()
-	art.texture = Art.portrait_tex({"sex": "Ж", "red": true, "coat": 2, "collar": 8, "freckles": true})
-	art.position = Vector2(470, 40)
-	art.scale = Vector2(3, 3)
-	art.modulate = Color(1, 1, 1, 0.85)
-	add_child(art)
+	art.texture = preload("res://scripts/genevieve.gd").texture()
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	art.position = Vector2(8, 2)
+	art.size = Vector2(224, 224)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_SCALE
+	gen_box.add_child(art)
+	var cap := Pal.label("Женевьева — Институт по Этике", Pal.G4, 9, true)
+	cap.position = Vector2(0, 232)
+	cap.size = Vector2(240, 14)
+	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gen_box.add_child(cap)
+	phrase_label = Pal.label("", Pal.G3, 9)
+	phrase_label.position = Vector2(0, 250)
+	phrase_label.size = Vector2(240, 60)
+	phrase_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gen_box.add_child(phrase_label)
+	phrase = "«%s»" % PHRASES[randi() % PHRASES.size()]
 
 
 func _load(i: int) -> void:
@@ -95,6 +139,7 @@ func _full_text() -> void:
 
 func _toggle_load() -> void:
 	load_box.visible = not load_box.visible
+	gen_box.visible = not load_box.visible
 
 
 func _process(delta: float) -> void:
@@ -103,3 +148,11 @@ func _process(delta: float) -> void:
 	if want != shown:
 		shown = want
 		boot_label.text = "\n".join(BOOT.slice(0, shown)) + ("_" if shown < BOOT.size() else "")
+	# реплика печатается по букве после загрузки терминала
+	var start := BOOT.size() * 0.25
+	if t > start:
+		var n := mini(phrase.length(), int((t - start) / 0.035))
+		var blink := "_" if int(t * 3.0) % 2 == 0 else " "
+		if n != typed or n == phrase.length():
+			typed = n
+			phrase_label.text = phrase.substr(0, n) + (blink if n == phrase.length() else "_")
