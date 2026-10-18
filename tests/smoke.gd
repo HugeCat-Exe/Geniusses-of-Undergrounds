@@ -115,9 +115,17 @@ func run(main: Node) -> void:
 	await _wait(0.4)
 	await _shot("11b_pager_system")
 	_close_overlays()
-	M.open_shop(preload("res://scripts/story.gd").SHOPS.guns)
+	M.open_shop(preload("res://scripts/story.gd").SHOPS.guns, "ОРУЖЕЙНАЯ САВЫ КЛИНА")
 	await _wait(0.4)
+	for c in M.overlay.get_children():
+		if c.has_method("_show_about"):
+			c._show_about("Землерой")
+	await _wait(0.2)
 	await _shot("12_shop_guns")
+	_close_overlays()
+	M.open_pager(1)
+	await _wait(0.4)
+	await _shot("12b_pager_inventory")
 	_close_overlays()
 	M.show_world("caldera3", "down2")
 	await _wait(0.8)
@@ -193,6 +201,12 @@ func run(main: Node) -> void:
 	for i in 4:
 		M.explore()
 		await _wait(0.8)
+		if i == 0:
+			await _shot("18a_explore_ask")
+		for c in M.overlay.get_children():
+			if c.has_method("_choose") and c.current_id == "explore_ask":
+				c._choose(c.nodes["explore_ask"].choices[0])
+		await _wait(0.8)
 		var cbx = _overlay_of_type("Combat")
 		if cbx == null:
 			for c in M.overlay.get_children():
@@ -214,6 +228,26 @@ func run(main: Node) -> void:
 	M.show_map()
 	await _wait(0.8)
 	await _shot("19_worldmap")
+	# прогулки по открытым местам
+	var views := {"station": Vector2i(7, 8), "river": Vector2i(17, 16), "tower": Vector2i(13, 11), "den": Vector2i(13, 6)}
+	for id in views:
+		if not (id in G.p.known):
+			G.p.known.append(id)
+		G.p.map_at = id
+		M.show_world("poi_" + id, "enter")
+		await _wait(0.8)
+		for m in M.world.mobs:
+			m.stun = 999.0
+		await _shot("20_poi_%s_enter" % id)
+		M.world.ppos = views[id]
+		M.world.pf = Vector2(views[id])
+		await _wait(0.8)
+		await _shot("20_poi_%s" % id)
+		print("SMOKE poi ", id, " objs ", M.world.objs.size(), " mobs ", M.world.mobs.size())
+	M.world.ppos = Vector2i(23, 16)
+	M.world.pf = Vector2(23, 16)
+	M.show_map()
+	await _wait(0.6)
 	M.open_dialogue("poi_den")
 	await _wait(1.0)
 	await _shot("20_den")
@@ -310,7 +344,7 @@ func _check_story() -> void:
 				print("SMOKE BAD LINK ", id, " -> ", t)
 				bad += 1
 	var mp = preload("res://scripts/maps.gd").new()
-	for m in ["caldera1", "caldera2", "caldera3", "waste"]:
+	for m in ["caldera1", "caldera2", "caldera3", "waste", "poi_station", "poi_river", "poi_tower", "poi_den"]:
 		for o in mp.get_map(m).objs:
 			if o.get("action", "") != "" and not o.action.begins_with("go:") and not nodes.has(o.action):
 				print("SMOKE BAD ACTION ", o.action)

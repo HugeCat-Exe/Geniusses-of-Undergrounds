@@ -220,9 +220,10 @@ func open_pager(tab: int = 0) -> void:
 	overlay.add_child(pg)
 
 
-func open_shop(stock: Array) -> void:
+func open_shop(stock: Array, title: String = "ЛАВКА") -> void:
 	var s := Shop.new()
 	s.stock = stock
+	s.title_text = title
 	overlay.add_child(s)
 
 
@@ -260,8 +261,21 @@ func _battle_end(result: String, win_node: String, job_id: String) -> void:
 	G.changed.emit()
 
 
-## «Изучать пустошь»: прогулка с исходом — новое место, бой, находка или пусто.
+## «Изучать пустошь»: сначала спрашиваем, зачем и сколько стоит, чтобы не нажать случайно.
 func explore() -> void:
+	if has_overlay():
+		return
+	var left := 0
+	for id in D.LOCS:
+		if not (id in G.p.known):
+			left += 1
+	var places := "Ещё не найдено мест: %d." % left if left > 0 else "Все места поблизости уже найдены, но тайники и звери попадаются всегда."
+	G.temp_nodes["explore_ask"] = {"who": "", "text": "[b]Изучать Пустошь?[/b]\n\nГений уходит бродить по барханам и руинам на 2 часа. Это стоит 6 сытости.\n\nЗачем это нужно:\n• [b]новые места[/b] появляются на карте мира, и по ним потом можно ходить;\n• [b]тайники[/b] с Су, едой, бинтами и патронами;\n• [b]звери и падальщики[/b]: трофеи на продажу и убийства для подработок.\n\nРиск: можно нарваться на бой. %s" % places,
+		"choices": [{"t": "Идти (2 ч, −6 сытости)", "fx": [["explore_go"]], "next": "end"}, {"t": "Не сейчас", "next": "end"}]}
+	open_dialogue("explore_ask")
+
+
+func explore_now() -> void:
 	if has_overlay():
 		return
 	var r := G.explore_roll()

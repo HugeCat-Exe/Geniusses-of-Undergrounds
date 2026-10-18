@@ -315,16 +315,25 @@ func _attack(melee: bool, part: Dictionary) -> void:
 	_after_enemy()
 
 
+## Перезарядка из таблицы оружия: 0,5 и меньше — ход не тратится, 2 и больше — враг успевает ударить лишний раз.
 func _reload() -> void:
 	busy = true
+	var rl: float = D.ITEMS[G.p.weapon].get("reload", 1.0)
 	_log(G.reload())
-	if G.has_perk("Ловкач"):
-		_log("[color=%s]Пальцы делают всё сами («Ловкач»): ход не потрачен.[/color]" % Pal.hex(Pal.G5))
+	if G.has_perk("Ловкач") or rl <= 0.5:
+		var why := "Пальцы делают всё сами («Ловкач»)" if G.has_perk("Ловкач") else "Быстрая перезарядка (%s)" % G.p.weapon
+		_log("[color=%s]%s: ход не потрачен.[/color]" % [Pal.hex(Pal.G5), why])
 		await _wait(0.3)
 		busy = false
 		_menu()
 		return
 	await _wait(0.4)
+	if rl >= 2.0 and not finished:
+		_log("[color=%s]Долгая перезарядка (%s): враг успевает ударить лишний раз.[/color]" % [Pal.hex(Pal.R3), str(rl).replace(".0", "")])
+		await _enemy_turn()
+		if G.p.hp <= 0:
+			_after_enemy()
+			return
 	await _round_end()
 	_after_enemy()
 

@@ -5,7 +5,7 @@ const Maps := preload("res://scripts/maps.gd")
 const ArtLib := preload("res://scripts/art.gd")
 const WALLS := {"#": "panel", "B": "brick", "R": "ruin"}
 const FLOORS := {".": "metal", ",": "concrete", "_": "tile", "=": "rug", "s": "sand", "a": "ash",
-	"g": "grate", "/": "stairs", "p": "plaza", "k": "asphalt"}
+	"g": "grate", "/": "stairs", "p": "plaza", "k": "asphalt", "w": "water", "h": "planks"}
 const SPEED := 5.5
 
 var map: Dictionary
@@ -69,6 +69,8 @@ func setup(map_name: String, spawn: String) -> void:
 				walls.append({"pos": Vector2i(x, y), "tex": Art.wall_tex(WALLS[ch], wall_h, (x * 7 + y * 3) % 4)})
 			else:
 				floors.append({"pos": Vector2i(x, y), "tex": Art.floor_tex(FLOORS.get(ch, "metal"), (x * 5 + y * 11) % 3)})
+				if ch == "w":
+					astar.set_point_solid(Vector2i(x, y), true)
 	for o in map.objs:
 		if o.type == "mob":
 			if o.id in G.p.killed:
@@ -87,9 +89,11 @@ func setup(map_name: String, spawn: String) -> void:
 		else:
 			ob.tex = Art.prop_tex(o.tex)
 		objs.append(ob)
-		obj_at[ob.pos] = ob
-		if ob.block:
-			astar.set_point_solid(ob.pos, true)
+		# Большие предметы (автобус, вышка) занимают несколько клеток: o.w по x, o.h по y.
+		for t in _cells(ob):
+			obj_at[t] = ob
+			if ob.block:
+				astar.set_point_solid(t, true)
 	if spawn != "" and map.spawns.has(spawn):
 		ppos = map.spawns[spawn]
 	else:
@@ -131,6 +135,22 @@ func to_grid(w: Vector2) -> Vector2i:
 	return Vector2i(roundi(gx), roundi(gy))
 
 
+func _cells(o: Dictionary) -> Array:
+	var res: Array = []
+	for dy in int(o.get("h", 1)):
+		for dx in int(o.get("w", 1)):
+			res.append(Vector2i(o.pos) + Vector2i(dx, dy))
+	return res
+
+
+## Расстояние от клетки до предмета с учётом его размера.
+func _odist(o: Dictionary, t: Vector2i) -> int:
+	var best := 99
+	for c in _cells(o):
+		best = mini(best, _cheb(c, t))
+	return best
+
+
 func in_bounds(t: Vector2i) -> bool:
 	return t.x >= 0 and t.y >= 0 and t.x < W and t.y < H
 
@@ -159,7 +179,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target = _target_at(t)
 		if target != null:
 			pending = target
-			_path_near(target.pos, target.get("reach", 1))
+			_path_near(target, target.get("reach", 1))
 		elif walkable(t):
 			pending = null
 			_path_to(t)
@@ -196,19 +216,21 @@ func _path_to(t: Vector2i) -> void:
 		path.append(ids[i])
 
 
-func _path_near(t: Vector2i, reach: int) -> void:
-	if _cheb(ppos, t) <= reach:
+func _path_near(o: Dictionary, reach: int) -> void:
+	if _odist(o, ppos) <= reach:
 		path.clear()
 		return
 	var best: Array = []
-	for dy in range(-reach, reach + 1):
-		for dx in range(-reach, reach + 1):
-			var c := t + Vector2i(dx, dy)
-			if c == t or not walkable(c):
-				continue
-			var ids := astar.get_id_path(ppos, c)
-			if ids.size() > 0 and (best.is_empty() or ids.size() < best.size()):
-				best = ids
+	var tiles: Array = _cells(o)
+	for t in tiles:
+		for dy in range(-reach, reach + 1):
+			for dx in range(-reach, reach + 1):
+				var c: Vector2i = t + Vector2i(dx, dy)
+				if c in tiles or not walkable(c):
+					continue
+				var ids := astar.get_id_path(ppos, c)
+				if ids.size() > 0 and (best.is_empty() or ids.size() < best.size()):
+					best = ids
 	path = []
 	for i in range(1, best.size()):
 		path.append(best[i])
@@ -228,7 +250,7 @@ func _interact_near() -> void:
 	for o in objs:
 		if o.type != "npc" and o.action == "":
 			continue
-		var d := _cheb(o.pos, ppos)
+		var d := _odist(o, ppos)
 		if d <= o.get("reach", 1) and d < bd:
 			bd = d
 			best = o
@@ -286,7 +308,7 @@ func _move(delta: float) -> void:
 				pending = null
 		elif pending != null:
 			var reach: int = pending.get("reach", 1)
-			if _cheb(ppos, pending.pos) <= reach:
+			if _odist(pending, ppos) <= reach:
 				_interact(pending)
 			else:
 				pending = null
@@ -462,6 +484,14 @@ func _draw() -> void:
 	for o in objs:
 		var p: Vector2i = o.pos
 		var tex: Texture2D = o.tex
+		var ow: int = o.get("w", 1)
+		var oh: int = o.get("h", 1)
+		if ow > 1 or oh > 1:
+			# Нижняя вершина «следа» предмета лежит на нижней кромке картинки.
+			var anchor := Vector2(oh * 16, tex.get_height() - 8 * (ow + oh))
+			var front := Vector2(p.x + ow - 1, p.y + oh - 1)
+			items.append([front.x + front.y, front.x, tex, iso(Vector2(p)) - Vector2(0, 8) - anchor, 1.0, Vector2(p) + Vector2(ow - 1, oh - 1) * 0.5, false])
+			continue
 		var off := Vector2(-tex.get_width() / 2.0, 6 - tex.get_height())
 		if o.type == "npc":
 			off = Vector2(-8, 4 - 28)
@@ -572,7 +602,7 @@ func _build_hud() -> void:
 	hud.add_child(pb)
 
 	if waste:
-		var eb := Pal.button("ИЗУЧАТЬ ПУСТОШЬ · 2 ч", _explore, 9)
+		var eb := Pal.button("ИЗУЧАТЬ ПУСТОШЬ", _explore, 9)
 		eb.position = Vector2(484, 44)
 		eb.size = Vector2(150, 18)
 		hud.add_child(eb)

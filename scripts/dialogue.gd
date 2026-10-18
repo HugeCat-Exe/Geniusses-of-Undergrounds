@@ -520,7 +520,8 @@ func _fx(list: Array) -> void:
 					G.say("Кошелёк почему-то стал легче на 25 Су.")
 			"shop":
 				var stock: Array = Story.SHOPS[f[1]]
-				after.append(func(): G.main().open_shop(stock))
+				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА"}.get(f[1], "ЛАВКА")
+				after.append(func(): G.main().open_shop(stock, st_title))
 			"fight":
 				after.append(func(): G.main().world.fight_current())
 			"spare":
@@ -585,3 +586,5 @@ func _fx(list: Array) -> void:
 					G.say("Рыжая возвращается в бар «Клык» на третьем ярусе.")
 			"time":
 				G.pass_hours(f[1])
+			"explore_go":
+				after.append(func(): G.main().explore_now())

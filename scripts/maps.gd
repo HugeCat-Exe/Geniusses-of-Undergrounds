@@ -10,26 +10,24 @@ const FLOOR1 := [
 	"#sssaaa,,,,,,,,,,,,#",
 	"#sss#aa,,,,,,,,,,,,#",
 	"#####,,,gggggg,,,,,#",
-	"#,,,,,,,gvvvvg,,,,,#",
-	"#,,,,,,,gvvvvg,,,,,#",
+	"#///,,,,gvvvvg,,,,,#",
+	"#///,,,,gvvvvg,,,,,#",
 	"#,,,,,,,gggggg,,,,,#",
 	"#,,,,,,,,,,,,,,,,,,#",
-	"#,,,,,,,,,,,,,,///,#",
-	"#,,,,,,,,,,,,,,///,#",
+	"#,,,,,,,,,,,,,,,,,,#",
 	"####################",
 ]
 const FLOOR2 := [
 	"######################",
-	"#_____#......#=======#",
-	"#_____#......#=======#",
-	"#_____,......,=======#",
-	"###,,##,,,,,,##,,,####",
-	"#///,,,,,,,,,,,,,,,,,#",
+	"#_____#......#====#,,#",
+	"#_____#......#====#,,#",
+	"#_____#......#====#,,#",
+	"#,,,,,,,,,,,,,,,,,,,,#",
 	"#///,,,,gggggg,,,,,,,#",
+	"#///,,,,gvvvvg,,,,,,,#",
 	"#,,,,,,,gvvvvg,,,,,,,#",
-	"#,,,,,,,gvvvvg,,,,,,,#",
-	"#,,,,,,,gggggg,,,////#",
-	"#,,,,,,,,,,,,,,,,////#",
+	"#///,,,,gggggg,,,,,,,#",
+	"#///,,,,,,,,,,,,,,,,,#",
 	"######################",
 ]
 const FLOOR3 := [
@@ -37,11 +35,10 @@ const FLOOR3 := [
 	"#///,#______#........#",
 	"#///,#______#.======.#",
 	"#,,,,#______#........#",
-	"#,,,,##,,,###........#",
 	"#,,,,,,,,,,,,........#",
-	"#,,,,,,pppp,,#.......#",
-	"#,,,,,,pppp,,#########",
-	"####=###,,,,,,,,,,,,,#",
+	"#,,,,,,pppp,,........#",
+	"#,,,,,,pppp,,,,,,,,,,#",
+	"####,####,,,,,,,,,,,,#",
 	"#======#,,,,,,,,,,,,,#",
 	"#======,,,,,,,,,,,,,,#",
 	"#======#,,,,,,,,,,,,,#",
@@ -91,6 +88,14 @@ func get_map(name: String) -> Dictionary:
 			return _caldera2()
 		"caldera3":
 			return _caldera3()
+		"poi_station":
+			return _poi_station()
+		"poi_river":
+			return _poi_river()
+		"poi_tower":
+			return _poi_tower()
+		"poi_den":
+			return _poi_den()
 	return _caldera1()
 
 
@@ -122,109 +127,106 @@ func _lamps(objs: Array, list: Array) -> void:
 		objs.append(_prop("lamp", pos.x, pos.y, "Лампа"))
 
 
+## Правило расстановки: важное стоит у дальних стен (верх и левый край на экране),
+## ничего не ставится вплотную перед стеной, обращённой к камере, и в проходах.
 func _caldera1() -> Dictionary:
 	var objs: Array = []
 	objs.append(_prop("stairs_up", 1, 2, "Подъём на поверхность", "to_surface"))
-	objs.append(_prop("crate", 8, 1, "Мешки с песком"))
-	objs.append(_prop("barrel", 5, 3, "Бочка с водой"))
+	objs.append(_prop("barrel", 5, 1, "Бочка с водой"))
 	objs.append(_npc("guard", 6, 1, "Страж Кальдеры", "guard_start", 1))
-	objs.append(_prop("terminal", 2, 6, "Терминал Института", "terminal"))
-	for x in [10, 14]:
+	objs.append(_prop("crate", 8, 1, "Мешки с песком"))
+	for x in [10, 13]:
 		objs.append(_prop("shack", x, 1, "Лачуга из листового железа"))
-	objs.append(_prop("laundry", 16, 2, "Бельё на верёвке"))
-	objs.append(_npc("beggar", 12, 2, "Нищий Тимоха", "res_beggar", 1))
-	objs.append(_npc("kid", 17, 3, "Девочка Ласка", "res_kid", 1))
-	objs.append(_prop("cable", 15, 4, "Провода и гирлянда"))
+	objs.append(_npc("beggar", 11, 2, "Нищий Тимоха", "res_beggar", 1))
+	objs.append(_prop("laundry", 15, 1, "Бельё на верёвке"))
+	objs.append(_npc("kid", 15, 3, "Девочка Ласка", "res_kid", 1))
+	objs.append(_prop("lift", 17, 1, "Грузовой лифт", "lift"))
+	objs.append(_prop("stairs_down", 1, 5, "Лестница вниз, на ярус 2", "go:caldera2:down1"))
+	objs.append(_npc("smoker", 4, 5, "Курильщик Лёва", "stairs_smoker", 1))
+	objs.append(_prop("terminal", 1, 7, "Терминал Института", "terminal"))
 	objs.append(_prop("pipe", 1, 8, "Трубы"))
-	objs.append(_prop("tent", 4, 10, "Палатка беженцев"))
-	objs.append(_prop("tent", 7, 10, "Палатка беженцев"))
-	objs.append(_prop("crate", 11, 10, "Ящики"))
-	objs.append(_prop("lift", 18, 6, "Грузовой лифт", "lift"))
-	objs.append(_prop("stairs_down", 18, 9, "Лестница вниз, на ярус 2", "go:caldera2:down1"))
-	objs.append(_npc("smoker", 14, 10, "Курильщик Лёва", "stairs_smoker", 1))
-	_lamps(objs, [Vector2i(7, 4), Vector2i(14, 7), Vector2i(2, 9), Vector2i(9, 3)])
+	objs.append(_prop("tent", 15, 5, "Палатка беженцев"))
+	objs.append(_prop("tent", 17, 5, "Палатка беженцев"))
+	objs.append(_prop("cable", 16, 4, "Провода и гирлянда"))
+	_lamps(objs, [Vector2i(7, 3), Vector2i(14, 7), Vector2i(5, 8)])
 	var grid := _grid(FLOOR1)
 	return {"name": "Кальдера · Ярус 1 · Вход", "floor": grid, "objs": objs, "waste": false, "depth": 1,
-		"spawns": {"surface": Vector2i(2, 2), "start": Vector2i(2, 2), "lift": Vector2i(17, 6), "up2": Vector2i(14, 9)}, "light": 10.0}
+		"spawns": {"surface": Vector2i(2, 2), "start": Vector2i(2, 2), "lift": Vector2i(17, 2), "up2": Vector2i(4, 6)}, "light": 10.0}
 
 
 func _caldera2() -> Dictionary:
 	var objs: Array = []
 	objs.append(_prop("stairs_up", 1, 5, "Лестница наверх, на ярус 1", "go:caldera1:up2"))
+	objs.append(_prop("stairs_down", 1, 8, "Лестница вниз, на ярус 3", "go:caldera3:down2"))
 	objs.append(_npc("ian", 4, 7, "Ян Мистел", "stairs_ian", 1))
 	# медпункт
-	objs.append(_npc("surgeon", 3, 2, "Хирург Ирвин Кост", "surgeon_start", 1))
 	objs.append(_prop("shelf", 1, 1, "Шкаф с препаратами"))
-	objs.append(_prop("table", 4, 1, "Операционный стол"))
-	objs.append(_prop("autodoc", 5, 1, "Автодок «Санитар-3»", "autodoc"))
+	objs.append(_prop("table", 2, 1, "Операционный стол"))
+	objs.append(_prop("autodoc", 4, 1, "Автодок «Санитар-3»", "autodoc"))
+	objs.append(_npc("surgeon", 3, 3, "Хирург Ирвин Кост", "surgeon_start", 1))
 	objs.append(_prop("bed", 1, 3, "Койка для больных"))
 	# оружейная
-	objs.append(_npc("gunsmith", 10, 2, "Оружейник Сава Клин", "gunsmith_start", 1))
-	objs.append(_prop("gunrack", 8, 1, "Стойка с оружием"))
-	objs.append(_prop("gunrack", 12, 1, "Стойка с оружием"))
-	objs.append(_prop("counter", 8, 3, "Верстак"))
+	objs.append(_prop("gunrack", 7, 1, "Стойка с оружием"))
+	objs.append(_prop("counter", 9, 1, "Верстак"))
+	objs.append(_prop("gunrack", 11, 1, "Стойка с оружием"))
+	objs.append(_npc("gunsmith", 9, 2, "Оружейник Сава Клин", "gunsmith_start", 1))
 	# лавка
-	objs.append(_npc("trader", 17, 2, "Старьёвщик Бартоломей", "trader_start", 1))
 	objs.append(_prop("clothes", 14, 1, "Вешалка с одеждой"))
-	objs.append(_prop("clothes", 20, 1, "Вешалка с одеждой"))
-	objs.append(_prop("shelf", 19, 1, "Полки с безделушками"))
-	objs.append(_prop("counter", 19, 3, "Прилавок"))
-	objs.append(_prop("board", 6, 5, "Доска объявлений", "board"))
-	objs.append(_prop("lift", 20, 6, "Грузовой лифт", "lift"))
-	objs.append(_prop("stairs_down", 20, 9, "Лестница вниз, на ярус 3", "go:caldera3:down2"))
-	objs.append(_npc("patrol", 15, 7, "Патрульная Дана", "res_patrol", 1))
-	objs.append(_prop("crate", 1, 9, "Ящики"))
-	objs.append(_prop("crate", 2, 9, "Ящики"))
-	objs.append(_prop("barrel", 6, 10, "Бочка"))
-	objs.append(_prop("cable", 13, 5, "Провода"))
-	_lamps(objs, [Vector2i(7, 8), Vector2i(15, 5), Vector2i(3, 10), Vector2i(12, 10)])
+	objs.append(_prop("shelf", 16, 1, "Полки с безделушками"))
+	objs.append(_npc("trader", 15, 3, "Старьёвщик Бартоломей", "trader_start", 1))
+	# лифт в нише
+	objs.append(_prop("lift", 19, 1, "Грузовой лифт", "lift"))
+	objs.append(_prop("board", 6, 4, "Доска объявлений", "board"))
+	objs.append(_npc("patrol", 16, 7, "Патрульная Дана", "res_patrol", 1))
+	objs.append(_prop("crate", 15, 5, "Ящики"))
+	objs.append(_prop("barrel", 18, 5, "Бочка"))
+	objs.append(_prop("cable", 14, 4, "Провода"))
+	_lamps(objs, [Vector2i(7, 5), Vector2i(17, 4), Vector2i(6, 8)])
 	var grid := _grid(FLOOR2)
 	return {"name": "Кальдера · Ярус 2 · Торговый", "floor": grid, "objs": objs, "waste": false, "depth": 1,
-		"spawns": {"down1": Vector2i(4, 6), "lift": Vector2i(19, 6), "up3": Vector2i(16, 10)}, "light": 10.0}
+		"spawns": {"down1": Vector2i(4, 5), "lift": Vector2i(19, 2), "up3": Vector2i(4, 8)}, "light": 10.0}
 
 
 func _caldera3() -> Dictionary:
 	var objs: Array = []
 	objs.append(_prop("stairs_up", 1, 1, "Лестница наверх, на ярус 2", "go:caldera2:up3"))
-	objs.append(_npc("old", 4, 2, "Слепой Ефим", "old_start", 1))
+	objs.append(_npc("old", 3, 4, "Слепой Ефим", "old_start", 1))
+	objs.append(_prop("lift", 1, 5, "Грузовой лифт", "lift"))
 	# кухня
-	objs.append(_npc("cook", 9, 2, "Матушка Грета", "cook_start", 1))
-	objs.append(_prop("pot", 11, 1, "Котёл с похлёбкой"))
 	objs.append(_prop("shelf", 6, 1, "Полки с посудой"))
-	objs.append(_prop("table", 7, 3, "Разделочный стол"))
+	objs.append(_prop("table", 7, 1, "Разделочный стол"))
+	objs.append(_prop("pot", 10, 1, "Котёл с похлёбкой"))
+	objs.append(_npc("cook", 8, 2, "Матушка Грета", "cook_start", 1))
 	# площадь на дне шахты
-	objs.append(_prop("table", 8, 6, "Стол"))
-	objs.append(_prop("table", 10, 7, "Стол"))
-	objs.append(_prop("stool", 7, 6, "Табурет", "", false))
-	objs.append(_prop("stool", 9, 7, "Табурет", "", false))
-	objs.append(_prop("barrel", 12, 7, "Бочка-жаровня"))
+	objs.append(_prop("table", 8, 5, "Стол"))
+	objs.append(_prop("stool", 7, 5, "Табурет", "", false))
+	objs.append(_prop("stool", 9, 6, "Табурет", "", false))
+	objs.append(_prop("barrel", 11, 6, "Бочка-жаровня"))
 	# бар «Клык»
-	for x in [15, 16, 17, 18]:
-		objs.append(_prop("bar", x, 3, "Стойка бара «Клык»"))
-	objs.append(_npc("bartender", 17, 2, "Бармен Гарри Зуб", "bar_start", 2))
+	objs.append(_prop("neon", 14, 1, "Неоновая вывеска"))
 	objs.append(_prop("bottles", 16, 1, "Полки с бутылками"))
 	objs.append(_prop("bottles", 19, 1, "Полки с бутылками"))
-	objs.append(_prop("neon", 14, 1, "Неоновая вывеска"))
-	for pos in [Vector2i(15, 4), Vector2i(18, 4), Vector2i(20, 5)]:
+	objs.append(_npc("bartender", 17, 2, "Бармен Гарри Зуб", "bar_start", 2))
+	for x in [15, 16, 17, 18]:
+		objs.append(_prop("bar", x, 3, "Стойка бара «Клык»"))
+	for pos in [Vector2i(15, 4), Vector2i(18, 4)]:
 		objs.append(_prop("stool", pos.x, pos.y, "Табурет", "", false))
 	objs.append(_prop("table", 16, 5, "Столик"))
 	if G.p.get("companion", "") != "ryzhaya":
-		objs.append(_npc("ryzhaya", 19, 5, "Рыжая", "ry_start", 1))
+		objs.append(_npc("ryzhaya", 19, 4, "Рыжая", "ry_start", 1))
 	# мотель
-	for pos in [Vector2i(1, 9), Vector2i(1, 11), Vector2i(3, 11), Vector2i(5, 11)]:
+	for pos in [Vector2i(1, 8), Vector2i(3, 8), Vector2i(5, 8)]:
 		objs.append(_prop("bed", pos.x, pos.y, "Койка в мотеле", "bed"))
 	# жилой блок
-	for pos in [Vector2i(10, 11), Vector2i(13, 11)]:
+	objs.append(_prop("shack", 8, 8, "Дом семьи Мистел"))
+	objs.append(_npc("mistel", 9, 9, "Ода Мистел", "mistel_start", 1))
+	objs.append(_prop("laundry", 11, 7, "Бельё на верёвке"))
+	for pos in [Vector2i(14, 8), Vector2i(17, 8)]:
 		objs.append(_prop("tent", pos.x, pos.y, "Жилая палатка"))
-	objs.append(_prop("shack", 18, 11, "Дом семьи Мистел"))
-	objs.append(_npc("mistel", 16, 10, "Ода Мистел", "mistel_start", 1))
-	objs.append(_prop("laundry", 14, 9, "Бельё на верёвке"))
-	objs.append(_prop("cable", 11, 8, "Провода"))
-	objs.append(_prop("lift", 20, 9, "Грузовой лифт", "lift"))
-	_lamps(objs, [Vector2i(8, 9), Vector2i(5, 5), Vector2i(12, 5), Vector2i(20, 11)])
+	_lamps(objs, [Vector2i(5, 5), Vector2i(13, 6), Vector2i(19, 7)])
 	var grid := _grid(FLOOR3)
 	return {"name": "Кальдера · Ярус 3 · Жилой", "floor": grid, "objs": objs, "waste": false, "depth": 0,
-		"spawns": {"down2": Vector2i(3, 3), "lift": Vector2i(19, 9)}, "light": 10.0}
+		"spawns": {"down2": Vector2i(2, 3), "lift": Vector2i(2, 5)}, "light": 10.0}
 
 
 func _waste() -> Dictionary:
@@ -276,7 +278,7 @@ func _waste() -> Dictionary:
 	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
 	objs.append(_prop("hatch", 2, 2, "Шахта Кальдеры", "to_caldera"))
 	objs.append(_prop("roadend", 1, 12, "Обрывок дороги · точка эвакуации", "evac"))
-	objs.append(_prop("wreck", 6, 11, "Ржавый автобус"))
+	objs.append(_big("bus", 3, 8, 5, 2, "Опрокинутый автобус"))
 	objs.append(_prop("wreck", 34, 27, "Разбитый караван"))
 	objs.append(_prop("cache", 33, 28, "Ящик с красным крестом", "cache_med"))
 	objs.append(_prop("cache", 28, 16, "Тайник падальщиков", "cache_ruin"))
@@ -288,7 +290,8 @@ func _waste() -> Dictionary:
 	objs.append(_mob("padal", "padal_1", 13, 6, 5))
 	objs.append(_mob("padal", "padal_2", 36, 10, 5))
 	for o in objs:
-		taken[Vector2i(o.x, o.y)] = true
+		for t in _cells(o):
+			taken[t] = true
 	var kinds := [["rocks", "Камни", true], ["tree", "Мёртвое дерево", true], ["bones", "Кости", false]]
 	for i in 70:
 		var x := rng.randi_range(1, w - 2)
@@ -308,6 +311,22 @@ func _waste() -> Dictionary:
 	_ensure_paths(grid, objs, Vector2i(3, 3), [Vector2i(33, 27), Vector2i(28, 15), Vector2i(13, 7), Vector2i(30, 25), Vector2i(3, 13)])
 	return {"name": "Пустошь у Кальдеры", "floor": grid, "objs": objs, "waste": true,
 		"spawns": {"gate": Vector2i(3, 3), "hatch": Vector2i(3, 3), "road": Vector2i(3, 13)}, "light": 30.0}
+
+
+## Большой предмет: занимает w×h клеток начиная с (x, y) — дальнего от камеры угла.
+func _big(tex: String, x: int, y: int, w: int, h: int, title: String, action: String = "") -> Dictionary:
+	var o := _prop(tex, x, y, title, action)
+	o.w = w
+	o.h = h
+	return o
+
+
+func _cells(o: Dictionary) -> Array:
+	var res: Array = []
+	for dy in int(o.get("h", 1)):
+		for dx in int(o.get("w", 1)):
+			res.append(Vector2i(o.x + dx, o.y + dy))
+	return res
 
 
 func _prop(tex: String, x: int, y: int, title: String, action: String = "", block: bool = true) -> Dictionary:
@@ -336,7 +355,7 @@ func _ensure_paths(grid: Array, objs: Array, from: Vector2i, targets: Array) -> 
 			if grid[y][x] == "R":
 				grid[y][x] = "s"
 			for o in objs.duplicate():
-				if o.type == "prop" and o.action == "" and o.x == x and o.y == y:
+				if o.type == "prop" and o.action == "" and not o.has("w") and o.x == x and o.y == y:
 					objs.erase(o)
 
 
@@ -344,7 +363,8 @@ func _reachable(grid: Array, objs: Array, from: Vector2i, to: Vector2i) -> bool:
 	var solid := {}
 	for o in objs:
 		if o.block and o.type != "mob":
-			solid[Vector2i(o.x, o.y)] = true
+			for t in _cells(o):
+				solid[t] = true
 	var h := grid.size()
 	var w: int = grid[0].size()
 	var seen := {from: true}
@@ -357,8 +377,172 @@ func _reachable(grid: Array, objs: Array, from: Vector2i, to: Vector2i) -> bool:
 			var nx: Vector2i = c + d
 			if nx.x < 0 or nx.y < 0 or nx.x >= w or nx.y >= h or seen.has(nx):
 				continue
-			if grid[nx.y][nx.x] == "R" or solid.has(nx):
+			if grid[nx.y][nx.x] in ["R", "w"] or solid.has(nx):
 				continue
 			seen[nx] = true
 			queue.append(nx)
 	return false
+
+
+# ---------------- Открытые места Пустоши: по ним можно ходить ----------------
+
+func _sand(w: int, h: int, seed: int, ash_spots: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var grid: Array = []
+	for y in h:
+		var row: Array = []
+		for x in w:
+			row.append("s")
+		grid.append(row)
+	for i in ash_spots:
+		var cx := rng.randi_range(2, w - 3)
+		var cy := rng.randi_range(2, h - 3)
+		var r := rng.randf_range(1.5, 3.5)
+		for y in h:
+			for x in w:
+				if Vector2(x - cx, y - cy).length() < r:
+					grid[y][x] = "a"
+	return grid
+
+
+func _fill(grid: Array, r: Rect2i, ch: String) -> void:
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, r.end.x):
+			grid[y][x] = ch
+
+
+## Мусор и камни по зерну, мимо занятых клеток и запретных прямоугольников.
+func _scatter(grid: Array, objs: Array, seed: int, count: int, avoid: Array) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var taken := {}
+	for o in objs:
+		for t in _cells(o):
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					taken[t + Vector2i(dx, dy)] = true
+	var kinds := [["rocks", "Камни", true], ["tree", "Мёртвое дерево", true], ["bones", "Кости", false]]
+	var h := grid.size()
+	var w: int = grid[0].size()
+	for i in count:
+		var pos := Vector2i(rng.randi_range(1, w - 2), rng.randi_range(1, h - 2))
+		if taken.has(pos) or not (grid[pos.y][pos.x] in ["s", "a"]):
+			continue
+		var bad := false
+		for r in avoid:
+			if (r as Rect2i).grow(1).has_point(pos):
+				bad = true
+		if bad:
+			continue
+		var kd: Array = kinds[rng.randi_range(0, kinds.size() - 1)]
+		objs.append(_prop(kd[0], pos.x, pos.y, kd[1], "", kd[2]))
+		taken[pos] = true
+
+
+func _exit(x: int, y: int) -> Dictionary:
+	return _prop("roadend", x, y, "Тропа обратно · карта мира", "leave_poi")
+
+
+## Монстры, которые возвращаются каждый день: id содержит номер дня.
+func _daily(id: String) -> String:
+	return "%s_d%d" % [id, int(G.p.get("day", 1))]
+
+
+func _poi_station() -> Dictionary:
+	var w := 26
+	var h := 18
+	var grid := _sand(w, h, 401, 3)
+	# здание заправки у дальних стен, вход снизу
+	_fill(grid, Rect2i(2, 1, 9, 6), ",")
+	for x in range(2, 11):
+		grid[1][x] = "R"
+		grid[6][x] = "R"
+	for y in range(1, 7):
+		grid[y][2] = "R"
+		grid[y][10] = "R"
+	grid[6][6] = ","
+	grid[6][7] = ","
+	# площадка с колонками
+	_fill(grid, Rect2i(2, 8, 21, 6), "k")
+	var objs: Array = []
+	objs.append(_prop("counter", 4, 2, "Прилавок заправки", "poi_station"))
+	objs.append(_prop("shelf", 7, 2, "Пустые полки"))
+	objs.append(_prop("crate", 9, 3, "Ящик из-под масла"))
+	for x in [7, 11, 15]:
+		objs.append(_prop("pump", x, 10, "Топливная колонка «Золотой век»"))
+	objs.append(_prop("pylon", 21, 2, "Вывеска АЗС"))
+	objs.append(_prop("wreck", 18, 6, "Брошенная легковушка"))
+	objs.append(_prop("barrel", 13, 3, "Бочка с дырой"))
+	objs.append(_exit(23, 16))
+	_scatter(grid, objs, 402, 26, [Rect2i(2, 1, 9, 6), Rect2i(2, 8, 21, 6), Rect2i(20, 14, 6, 4)])
+	_ensure_paths(grid, objs, Vector2i(22, 15), [Vector2i(4, 3), Vector2i(23, 16)])
+	return {"name": "Заброшенная заправка", "floor": grid, "objs": objs, "waste": true, "poi": "station",
+		"spawns": {"enter": Vector2i(22, 15)}, "light": 30.0}
+
+
+func _poi_river() -> Dictionary:
+	var w := 34
+	var h := 24
+	var grid := _sand(w, h, 501, 4)
+	# река Лета: шесть клеток воды через всю карту
+	_fill(grid, Rect2i(0, 9, w, 6), "w")
+	# старый мост
+	_fill(grid, Rect2i(16, 9, 2, 6), "h")
+	var objs: Array = []
+	objs.append(_prop("pylon", 13, 11, "Опора старого моста"))
+	objs.append(_prop("stump", 20, 12, "Обломок опоры"))
+	objs.append(_prop("post", 10, 15, "Спуск к воде", "poi_river"))
+	objs.append(_prop("shack", 6, 3, "Хижина паромщика", "river_cache"))
+	objs.append(_prop("wreck", 25, 3, "Ржавая лодка на берегу"))
+	objs.append(_mob("pes", _daily("river_pes"), 27, 6, 5))
+	for pos in [Vector2i(3, 15), Vector2i(7, 15), Vector2i(21, 15), Vector2i(26, 15), Vector2i(31, 15), Vector2i(4, 8), Vector2i(12, 8), Vector2i(22, 8), Vector2i(30, 8)]:
+		objs.append(_prop("reeds", pos.x, pos.y, "Камыш", "", false))
+	objs.append(_exit(30, 22))
+	_scatter(grid, objs, 502, 30, [Rect2i(0, 8, w, 8), Rect2i(15, 15, 4, 4), Rect2i(27, 19, 7, 5)])
+	_ensure_paths(grid, objs, Vector2i(29, 21), [Vector2i(10, 16), Vector2i(16, 15), Vector2i(17, 8), Vector2i(6, 4), Vector2i(30, 22)])
+	return {"name": "Река Лета", "floor": grid, "objs": objs, "waste": true, "poi": "river",
+		"spawns": {"enter": Vector2i(29, 21)}, "light": 30.0}
+
+
+func _poi_tower() -> Dictionary:
+	var w := 28
+	var h := 22
+	var grid := _sand(w, h, 601, 4)
+	_fill(grid, Rect2i(4, 2, 7, 7), ",")
+	var objs: Array = []
+	objs.append(_big("tower", 6, 4, 3, 3, "Ретрансляционная вышка Института", "poi_tower"))
+	objs.append(_prop("sign", 11, 9, "Табличка «Институт · ретранслятор №4»"))
+	objs.append(_prop("crate", 4, 2, "Ящик с изоляторами"))
+	objs.append(_prop("cable", 10, 2, "Оборванные провода"))
+	objs.append(_prop("wreck", 19, 4, "Фургон связистов"))
+	objs.append(_mob("padal", _daily("tower_padal"), 15, 9, 5))
+	objs.append(_exit(25, 19))
+	_scatter(grid, objs, 602, 28, [Rect2i(3, 1, 10, 10), Rect2i(22, 16, 6, 6)])
+	_ensure_paths(grid, objs, Vector2i(24, 18), [Vector2i(9, 7), Vector2i(25, 19)])
+	return {"name": "Ретрансляционная вышка", "floor": grid, "objs": objs, "waste": true, "poi": "tower",
+		"spawns": {"enter": Vector2i(24, 18)}, "light": 30.0}
+
+
+func _poi_den() -> Dictionary:
+	var w := 26
+	var h := 20
+	var grid := _sand(w, h, 701, 6)
+	# склоны оврага — дальние стены, сверху и слева
+	for x in w:
+		grid[0][x] = "R"
+	for y in h:
+		grid[y][0] = "R"
+	var objs: Array = []
+	objs.append(_big("bigburrow", 11, 1, 2, 2, "Главная нора логова", "poi_den"))
+	for pos in [Vector2i(3, 1), Vector2i(7, 1), Vector2i(17, 1), Vector2i(21, 1), Vector2i(1, 6), Vector2i(1, 11)]:
+		objs.append(_prop("burrow", pos.x, pos.y, "Нора"))
+	objs.append(_mob("pes", _daily("den_pes_a"), 8, 5, 4))
+	objs.append(_mob("pes", _daily("den_pes_b"), 16, 6, 4))
+	for pos in [Vector2i(10, 6), Vector2i(14, 4), Vector2i(5, 9), Vector2i(19, 8)]:
+		objs.append(_prop("bones", pos.x, pos.y, "Обглоданные кости", "", false))
+	objs.append(_exit(23, 17))
+	_scatter(grid, objs, 702, 22, [Rect2i(9, 1, 6, 5), Rect2i(20, 14, 6, 6)])
+	_ensure_paths(grid, objs, Vector2i(22, 16), [Vector2i(12, 3), Vector2i(23, 17)])
+	return {"name": "Логово диких псов", "floor": grid, "objs": objs, "waste": true, "poi": "den",
+		"spawns": {"enter": Vector2i(22, 16)}, "light": 30.0}

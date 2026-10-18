@@ -5,6 +5,8 @@ var stock: Array = []
 var buy_box: VBoxContainer
 var sell_box: VBoxContainer
 var money: Label
+var title_text := "ЛАВКА"
+var about: RichTextLabel
 
 
 func _ready() -> void:
@@ -18,7 +20,7 @@ func _ready() -> void:
 	body.position = Vector2(30, 16)
 	body.size = Vector2(580, 328)
 	add_child(body)
-	var title := Pal.label("ЛАВКА БАРТОЛОМЕЯ", Pal.G5, 12, true)
+	var title := Pal.label(title_text, Pal.G5, 12, true)
 	title.position = Vector2(44, 22)
 	add_child(title)
 	money = Pal.label("", Pal.G5, 11, true)
@@ -33,7 +35,7 @@ func _ready() -> void:
 	for side in 2:
 		var sc := ScrollContainer.new()
 		sc.position = Vector2(44 if side == 0 else 330, 60)
-		sc.size = Vector2(270, 250)
+		sc.size = Vector2(270, 186)
 		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		add_child(sc)
 		var vb := VBoxContainer.new()
@@ -43,6 +45,12 @@ func _ready() -> void:
 			buy_box = vb
 		else:
 			sell_box = vb
+	# Описание предмета под курсором: у оружия — характеристики и текст из хранилища.
+	about = Pal.rich("[color=%s]Наведите курсор на предмет, чтобы прочитать описание.[/color]" % Pal.hex(Pal.G3), 8)
+	about.fit_content = false
+	about.position = Vector2(44, 250)
+	about.size = Vector2(440, 86)
+	add_child(about)
 	var close_b := Pal.button("УЙТИ", queue_free, 10)
 	close_b.position = Vector2(500, 316)
 	close_b.size = Vector2(96, 20)
@@ -68,7 +76,7 @@ func _fill() -> void:
 		var price: int = G.price(D.ITEMS[it].price)
 		var b := Pal.button("%s — %d Су" % [it, price], _buy.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.tooltip_text = D.ITEMS[it].desc
+		b.mouse_entered.connect(_show_about.bind(it))
 		b.disabled = G.p.su < price
 		buy_box.add_child(b)
 	var keys: Array = G.p.inv.keys()
@@ -79,10 +87,14 @@ func _fill() -> void:
 			continue
 		var b := Pal.button("%s ×%d — %d Су" % [it, G.p.inv[it], _sell_price(it)], _sell.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.tooltip_text = info.desc
+		b.mouse_entered.connect(_show_about.bind(it))
 		var equipped: bool = it == G.p.weapon or it == G.p.melee or it == G.p.armor
 		b.disabled = equipped and G.p.inv[it] <= 1
 		sell_box.add_child(b)
+
+
+func _show_about(it: String) -> void:
+	about.text = "[b]%s[/b]\n%s" % [it, D.item_desc(it)]
 
 
 func _buy(it: String) -> void:

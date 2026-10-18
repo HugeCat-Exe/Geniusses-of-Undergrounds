@@ -185,6 +185,21 @@ func _floor(kind: String, variant: int) -> ImageTexture:
 					c = 1 if rng.randf() > 0.1 else 2
 					if v >= 15 and v <= 16 and (u / 4) % 2 == 0:
 						c = 5 if variant != 2 else 1
+				"water":
+					c = 1
+					var wv := sin(u * 0.7 + variant * 2.1) + sin(v * 0.35 + u * 0.15)
+					if wv > 1.3:
+						c = 4
+					elif wv > 0.7:
+						c = 2
+					elif wv < -1.4:
+						c = 0
+				"planks":
+					c = 3 if (v / 4) % 2 == 0 else 2
+					if v % 4 == 0:
+						c = 1
+					if rng.randf() < 0.04:
+						c = 0
 				"plaza":
 					c = 2
 					if (u % 8 == 0) != (v % 8 == 0):
@@ -558,11 +573,195 @@ func _prop(kind: String) -> ImageTexture:
 			cv.line(30, 2, 30, 39, 2)
 			cv.put(10, 11, 8)
 			cv.put(22, 11, 9)
+		"bus":
+			cv = _big_bus()
+		"tower":
+			cv = _big_tower()
+		"bigburrow":
+			cv = _big_burrow()
+		"pump":
+			cv = Canvas.new(16, 32)
+			cv.rect(2, 6, 12, 24, 3)
+			cv.rect(4, 9, 8, 6, 1, false)
+			cv.line(5, 11, 10, 11, 6)
+			cv.rect(1, 3, 14, 4, 7)
+			cv.line(14, 16, 15, 26, 2)
+			cv.put(15, 27, 4)
+			cv.rect(3, 29, 10, 2, 1, false)
+		"pylon":
+			cv = Canvas.new(22, 60)
+			cv.line(11, 59, 11, 6, 2, 2)
+			cv.rect(1, 2, 20, 14, 2, false)
+			cv.rect(2, 3, 18, 12, 7)
+			cv.rect(4, 6, 3, 6, 9, false)
+			cv.rect(9, 6, 3, 6, 9, false)
+			cv.rect(14, 6, 3, 6, 9, false)
+		"burrow":
+			cv = Canvas.new(30, 16)
+			cv.ellipse(15, 9, 14, 6, 3)
+			cv.ellipse(15, 9, 9, 4, 0, false)
+			cv.ellipse(15, 8, 9, 3, 1, false)
+			cv.put(7, 12, 6)
+			cv.put(23, 5, 6)
+		"reeds":
+			cv = Canvas.new(20, 24)
+			for i in 7:
+				var rx := 2 + i * 3
+				cv.line(rx, 23, rx + (i % 3) - 1, 6 + (i * 5) % 9, 3 if i % 2 == 0 else 2)
+				cv.put(rx + (i % 3) - 1, 5 + (i * 5) % 9, 4)
+		"post":
+			cv = Canvas.new(28, 30)
+			cv.rect(3, 4, 3, 25, 2)
+			cv.rect(22, 4, 3, 25, 2)
+			cv.line(4, 8, 13, 13, 4)
+			cv.line(13, 13, 23, 8, 4)
+			cv.rect(10, 18, 8, 9, 3)
+			cv.line(10, 18, 17, 18, 5)
+		"stump":
+			cv = Canvas.new(26, 46)
+			cv.rect(4, 6, 18, 39, 2)
+			cv.line(4, 6, 21, 6, 3)
+			cv.line(8, 6, 6, 1, 2)
+			cv.line(18, 6, 20, 2, 2)
+			for k in 4:
+				cv.line(5, 14 + k * 8, 20, 12 + k * 8, 1)
 		_:
 			cv = Canvas.new(8, 8)
 			cv.rect(0, 0, 8, 8, 4)
 	cv.outline(0)
 	return to_tex(cv)
+
+
+# ---------------- Большие предметы ----------------
+## След предмета w×h клеток; нижняя вершина следа — на нижней кромке картинки (так их ставит world.gd).
+
+func _foot(w: int, h: int, top: int) -> Dictionary:
+	var cw := (w + h) * 16
+	var ch := 8 * (w + h) + top + 2
+	return {"cv": Canvas.new(cw, ch), "o": Vector2(h * 16, ch - 2 - 8 * (w + h))}
+
+
+func _ip(o: Vector2, gx: float, gy: float, z: float) -> Vector2:
+	return o + Vector2((gx - gy) * 16.0, (gx + gy) * 8.0 - z)
+
+
+## Опрокинутый автобус: 5×2 клетки, колёса кверху, ряд окон у земли, ржавая полоса.
+func _big_bus() -> Canvas:
+	var f := _foot(5, 2, 30)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var x0 := 0.2
+	var x1 := 4.8
+	var y0 := 0.25
+	var y1 := 1.75
+	var z := 24.0
+	# тень на песке
+	cv.poly(PackedVector2Array([_ip(o, x0 - 0.1, y0, 0), _ip(o, x1 + 0.3, y0, 0), _ip(o, x1 + 0.3, y1 + 0.3, 0), _ip(o, x0 - 0.1, y1 + 0.3, 0)]), 1, false)
+	# длинный бок (к камере слева)
+	cv.poly(PackedVector2Array([_ip(o, x0, y1, z), _ip(o, x1, y1, z), _ip(o, x1, y1, 0), _ip(o, x0, y1, 0)]), 3)
+	# торец (к камере справа)
+	cv.poly(PackedVector2Array([_ip(o, x1, y1, z), _ip(o, x1, y0, z), _ip(o, x1, y0, 0), _ip(o, x1, y1, 0)]), 2)
+	# днище, ставшее крышей
+	cv.poly(PackedVector2Array([_ip(o, x0, y0, z), _ip(o, x1, y0, z), _ip(o, x1, y1, z), _ip(o, x0, y1, z)]), 2)
+	# окна у земли (автобус вверх колёсами)
+	for i in 7:
+		var gx := x0 + 0.35 + i * 0.6
+		cv.poly(PackedVector2Array([_ip(o, gx, y1, 10), _ip(o, gx + 0.42, y1, 10), _ip(o, gx + 0.42, y1, 3), _ip(o, gx, y1, 3)]), 1, false)
+		if i % 3 == 1:
+			cv.line(_ip(o, gx + 0.1, y1, 9).x, _ip(o, gx + 0.1, y1, 9).y, _ip(o, gx + 0.3, y1, 4).x, _ip(o, gx + 0.3, y1, 4).y, 4)
+	# ржавая полоса
+	var a := _ip(o, x0, y1, 16)
+	var b := _ip(o, x1, y1, 16)
+	cv.line(a.x, a.y, b.x, b.y, 8, 2)
+	# окно водителя на торце
+	cv.poly(PackedVector2Array([_ip(o, x1, y1 - 0.2, 12), _ip(o, x1, y0 + 0.2, 12), _ip(o, x1, y0 + 0.2, 3), _ip(o, x1, y1 - 0.2, 3)]), 1, false)
+	# колёса и мосты кверху
+	for wx in [x0 + 0.7, x1 - 0.9]:
+		var p1 := _ip(o, wx, y0 + 0.3, z)
+		var p2 := _ip(o, wx, y1 - 0.3, z)
+		cv.line(p1.x, p1.y - 2, p2.x, p2.y - 2, 1, 2)
+		for p in [p1, p2]:
+			cv.ellipse(p.x, p.y - 4, 5, 4, 1)
+			cv.ellipse(p.x, p.y - 4, 2, 1.5, 4, false)
+	return cv
+
+
+## Ретрансляционная вышка Института: 3×3 клетки, решётчатые ноги, площадка, антенна и красный огонь.
+func _big_tower() -> Canvas:
+	var f := _foot(3, 3, 170)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	# бетонное основание
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 0.1, 0), _ip(o, 2.9, 0.1, 0), _ip(o, 2.9, 2.9, 0), _ip(o, 0.1, 2.9, 0)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 2.9, 0), _ip(o, 2.9, 2.9, 0), _ip(o, 2.9, 2.9, -4), _ip(o, 0.1, 2.9, -4)]), 1, false)
+	var feet := [Vector2(0.4, 0.4), Vector2(2.6, 0.4), Vector2(2.6, 2.6), Vector2(0.4, 2.6)]
+	var top := 140.0
+	var tops: Array = []
+	for ft in feet:
+		tops.append(Vector2(1.5, 1.5) + (ft - Vector2(1.5, 1.5)) * 0.22)
+	var levels := [0.0, 0.2, 0.38, 0.54, 0.68, 0.8, 0.9, 1.0]
+	# дальние ноги темнее, ближние светлее
+	for idx in [0, 1, 3, 2]:
+		var c := 2 if idx == 0 else (3 if idx != 2 else 4)
+		var a: Vector2 = feet[idx]
+		var b: Vector2 = tops[idx]
+		var pa := _ip(o, a.x, a.y, 0)
+		var pb := _ip(o, b.x, b.y, top)
+		cv.line(pa.x, pa.y, pb.x, pb.y, c, 2)
+	for li in levels.size() - 1:
+		var t0: float = levels[li]
+		var t1: float = levels[li + 1]
+		for k in 4:
+			var i0: int = k
+			var i1: int = (k + 1) % 4
+			var c2 := 2 if (k == 0 or k == 3) else 3
+			var a0: Vector2 = (feet[i0] as Vector2).lerp(tops[i0], t0)
+			var b0: Vector2 = (feet[i1] as Vector2).lerp(tops[i1], t0)
+			var a1: Vector2 = (feet[i0] as Vector2).lerp(tops[i0], t1)
+			var b1: Vector2 = (feet[i1] as Vector2).lerp(tops[i1], t1)
+			var q0 := _ip(o, a0.x, a0.y, top * t0)
+			var q1 := _ip(o, b0.x, b0.y, top * t0)
+			var q2 := _ip(o, a1.x, a1.y, top * t1)
+			var q3 := _ip(o, b1.x, b1.y, top * t1)
+			cv.line(q0.x, q0.y, q1.x, q1.y, c2)
+			cv.line(q0.x, q0.y, q3.x, q3.y, c2)
+			cv.line(q1.x, q1.y, q2.x, q2.y, c2)
+	# площадка и антенны
+	var pl := PackedVector2Array()
+	for t in tops:
+		var tv: Vector2 = Vector2(1.5, 1.5) + ((t as Vector2) - Vector2(1.5, 1.5)) * 1.6
+		pl.append(_ip(o, tv.x, tv.y, top))
+	cv.poly(pl, 4)
+	var m0 := _ip(o, 1.5, 1.5, top)
+	cv.line(m0.x, m0.y, m0.x, m0.y - 26, 4, 2)
+	cv.line(m0.x - 6, m0.y - 14, m0.x + 6, m0.y - 18, 3)
+	cv.ellipse(m0.x - 9, m0.y - 8, 5, 6, 5)
+	cv.ellipse(m0.x - 9, m0.y - 8, 2, 3, 2, false)
+	cv.ellipse(m0.x + 1, m0.y - 28, 2, 2, 9, false)
+	cv.put(int(m0.x) + 1, int(m0.y) - 31, 8)
+	# будка у подножия
+	var bx := _ip(o, 2.75, 2.3, 0)
+	cv.rect(int(bx.x) - 8, int(bx.y) - 16, 14, 16, 3)
+	cv.rect(int(bx.x) - 5, int(bx.y) - 12, 5, 7, 1, false)
+	return cv
+
+
+## Главная нора логова: 2×2 клетки, насыпь с чёрным провалом и костями.
+func _big_burrow() -> Canvas:
+	var f := _foot(2, 2, 26)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var c := _ip(o, 1.0, 1.0, 0)
+	cv.ellipse(c.x, c.y - 6, 30, 14, 3)
+	cv.ellipse(c.x, c.y - 10, 22, 10, 4)
+	cv.ellipse(c.x + 2, c.y - 6, 13, 7, 0, false)
+	cv.ellipse(c.x + 2, c.y - 8, 12, 5, 1, false)
+	for k in 4:
+		var bp := c + Vector2(-24 + k * 15, 4 - (k % 2) * 6)
+		cv.line(bp.x, bp.y, bp.x + 7, bp.y - 2, 5)
+		cv.put(int(bp.x), int(bp.y), 6)
+		cv.put(int(bp.x) + 7, int(bp.y) - 2, 6)
+	return cv
 
 
 # ---------------- Человечки на карте ----------------

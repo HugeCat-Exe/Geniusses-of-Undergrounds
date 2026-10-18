@@ -171,7 +171,7 @@ func _inventory() -> void:
 		var l := Pal.label("%s%s ×%d" % ["● " if equipped else "", it, p.inv[it]], Pal.G5 if equipped else Pal.G4, 9)
 		l.custom_minimum_size = Vector2(170, 0)
 		row.add_child(l)
-		var dsc := Pal.label(info.desc, Pal.G3, 8)
+		var dsc := Pal.label(D.item_desc(it), Pal.G3, 8)
 		dsc.custom_minimum_size = Vector2(250, 0)
 		dsc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(dsc)

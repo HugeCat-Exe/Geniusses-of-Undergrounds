@@ -329,7 +329,8 @@ func enter(id: String) -> void:
 		"caldera":
 			G.main().show_world("waste", "road")
 		_:
-			G.main().open_dialogue(LOCS[id].node, _refresh_hud)
+			# Открытые места — настоящие карты, по ним можно ходить.
+			G.main().show_world("poi_" + id, "enter")
 
 
 # ---------------- Интерфейс ----------------

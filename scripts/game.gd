@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.4"
+const VERSION := "0.5"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -37,7 +37,8 @@ func start_game(c: Dictionary) -> void:
 	p.inv = {}
 	quiet = true
 	add_item(pistol)
-	add_item("Нож")
+	p.melee = D.START_MELEE[p.faction]
+	add_item(p.melee)
 	add_item("Футболка")
 	add_item(D.ITEMS[pistol].ammo)
 	add_item("Бинт", 2)
