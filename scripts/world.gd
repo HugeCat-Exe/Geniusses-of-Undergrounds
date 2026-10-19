@@ -61,6 +61,13 @@ var flip := false
 var mob_t := 0.0
 var cur_mob = null
 var cam: Camera2D
+var shake_amt := 0.0      # толчок камеры, гаснет сам
+var wt := 0.0             # время на карте: для «дыхания», мерцания ламп и пыли
+var motes: Array = []     # пылинки (в Кальдере) или песок (в Пустоши)
+var puffs: Array = []     # облачка пыли из-под ног
+var cam_look := Vector2.ZERO
+var enc_wait := 0.0       # пауза между «!» над врагом и началом боя
+const GLOWS := ["lamp", "neon", "terminal", "jobscreen", "autodoc", "bar", "lift"]
 
 var hud: Control
 var hud_text: RichTextLabel
@@ -110,6 +117,8 @@ func setup(map_name: String, spawn: String) -> void:
 			continue
 		var ob: Dictionary = o.duplicate()
 		ob.pos = Vector2i(o.x, o.y)
+		ob.kind = str(o.get("tex", ""))
+		ob.ph = float(absi(hash(str(o.get("id", o.title)) + str(o.x))) % 1000) / 159.0
 		if ob.type == "npc":
 			ob.tex = Art.person_tex(ob.look)
 		else:
@@ -129,15 +138,50 @@ func setup(map_name: String, spawn: String) -> void:
 			ppos = map.spawns.values()[0]
 	pf = Vector2(ppos)
 	G.p.pos = [ppos.x, ppos.y]
+	_place_job_spots()
 	mate_pos = pf + Vector2(-1, 0)
 	esc_pos = pf + Vector2(0, -1)
+
+
+## Вещи для подработок «найти» лежат не в одном месте, а в случайном углу локации
+## (своём для каждого задания): нужно пройтись и поискать.
+func _place_job_spots() -> void:
+	var poi: String = map.get("poi", "")
+	if poi == "":
+		return
+	for j in G.p.jobs:
+		if j.kind != "find" or j.state != "active" or not j.get("spot", false) or j.poi != poi:
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(str(j.id) + "spot")
+		var cands: Array = []
+		for f in floors:
+			var t: Vector2i = f.pos
+			if obj_at.has(t) or astar.is_point_solid(t) or _cheb(t, ppos) < 5:
+				continue
+			var open := true
+			for dv in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if not walkable(t + dv):
+					open = false
+			if open and astar.get_id_path(ppos, t).size() > 0:
+				cands.append(t)
+		if cands.is_empty():
+			continue
+		var t: Vector2i = cands[rng.randi() % cands.size()]
+		var ob := {"type": "prop", "tex": Art.prop_tex("cache"), "title": "Тайник: %s?" % j.item, "action": "jobspot:" + str(j.id),
+			"block": false, "pos": t, "x": t.x, "y": t.y, "reach": 1}
+		objs.append(ob)
+		obj_at[t] = ob
 
 
 func _ready() -> void:
 	cam = Camera2D.new()
 	add_child(cam)
-	cam.position = iso(pf)
+	cam.position = iso(pf) + Vector2(0, -10)
 	cam.position_smoothing_enabled = true
+	cam.position_smoothing_speed = 7.0
+	cam.reset_smoothing.call_deferred()
+	_init_motes()
 	cam.position_smoothing_speed = 8.0
 	_build_hud()
 	if waste:
@@ -208,7 +252,7 @@ func set_paused(_v: bool) -> void:
 
 
 func blocked() -> bool:
-	return G.main().has_overlay()
+	return enc_wait > 0.0 or G.main().has_overlay()
 
 
 # ---------------- ввод ----------------
@@ -317,6 +361,19 @@ func _interact(o: Dictionary) -> void:
 	if o.type == "mate":
 		G.main().open_dialogue("ry_start")
 		return
+	if o.action.begins_with("jobspot:"):
+		var jid: String = o.action.get_slice(":", 1)
+		var j = G.job_by_id(jid)
+		objs.erase(o)
+		for t in _cells(o):
+			obj_at.erase(t)
+		if j == null:
+			return
+		var risk := "\n\nНо рядом кто-то есть: %s." % D.ENEMIES[j.guard].name.to_lower() if j.guard != "" else ""
+		G.temp_nodes["jobspot"] = {"who": "", "text": "Под ржавым листом, в куче хлама, что-то лежит. Похоже, это [b]%s[/b].%s" % [j.item, risk],
+			"choices": [{"t": "Забрать", "fx": [["find_job", jid]], "next": "end"}]}
+		G.main().open_dialogue("jobspot")
+		return
 	if o.action.begins_with("go:"):
 		var parts: PackedStringArray = o.action.split(":")
 		G.say("%s." % o.title)
@@ -328,6 +385,18 @@ func _interact(o: Dictionary) -> void:
 # ---------------- цикл ----------------
 
 func _process(delta: float) -> void:
+	wt += delta
+	if enc_wait > 0.0:
+		enc_wait -= delta
+		if enc_wait <= 0.0:
+			enc_wait = 0.0
+			_begin_encounter()
+	shake_amt = move_toward(shake_amt, 0.0, delta * 9.0)
+	cam.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake_amt
+	for m in mobs:
+		if m.get("alert", 0.0) > 0.0:
+			m.alert -= delta
+	_update_fx(delta)
 	var stop := blocked()
 	if not stop:
 		G.tick(delta)
@@ -348,7 +417,12 @@ func _process(delta: float) -> void:
 		mate_pos = mate_pos.move_toward(Vector2(mate_trail[0]), delta * SPEED * 0.95)
 	if has_escort() and not esc_trail.is_empty():
 		esc_pos = esc_pos.move_toward(Vector2(esc_trail[0]), delta * SPEED * 0.9)
-	cam.position = iso(pf) + Vector2(0, -10)
+	# камера чуть забегает вперёд по ходу движения
+	var look := Vector2.ZERO
+	if not path.is_empty():
+		look = (iso(Vector2(path[0])) - iso(pf)).normalized() * 14.0
+	cam_look = cam_look.lerp(look, minf(1.0, delta * 2.5))
+	cam.position = iso(pf) + Vector2(0, -10) + cam_look
 	if night_rect != null:
 		night_amt = move_toward(night_amt, 1.0 if G.is_night() else 0.0, delta * 0.5)
 		night_rect.visible = night_amt > 0.01
@@ -390,6 +464,9 @@ func _move(delta: float) -> void:
 			esc_trail.pop_front()
 		ppos = path.pop_front()
 		G.p.pos = [ppos.x, ppos.y]
+		if waste or map.get("raid", false):
+			for k in 2:
+				puffs.append({"p": iso(pf) + Vector2(randf_range(-4, 4), randf_range(1, 3)), "t": 0.0, "v": Vector2(randf_range(-6, 6), randf_range(-5, -1))})
 		_on_step()
 		if path.is_empty():
 			frame = 0
@@ -450,6 +527,22 @@ func start_encounter(m: Dictionary) -> void:
 	if blocked():
 		return
 	cur_mob = m
+	# Рядом с врагом могут быть такие же: честно предупреждаем, что бой будет не один.
+	var pack := _pack_of(m)
+	if pack.size() > 0 and m.enemy != "muezzin":
+		G.say("Осторожно: рядом ещё %s (%d). После этого боя они нападут следом." % [D.ENEMIES[pack[0].enemy].name.to_lower(), pack.size()])
+		for o in pack:
+			o["warned"] = true
+	_alert(m)
+	path.clear()
+	pending = null
+	enc_wait = 0.45
+
+
+func _begin_encounter() -> void:
+	var m = cur_mob
+	if m == null or G.main().has_overlay():
+		return
 	if m.enemy == "padal" and not G.flag("talked_" + m.id):
 		G.set_flag("talked_" + m.id)
 		G.main().open_dialogue("raider_meet")
@@ -480,13 +573,14 @@ func _on_combat_end(result: String) -> void:
 			if m != null:
 				G.p.killed.append(m.id)
 				mobs.erase(m)
+				_after_win(m)
 		"fled":
 			if m != null:
 				m.stun = 6.0
 		"down":
 			var lost := int(G.p.su * 0.25)
 			G.p.su -= lost
-			G.say("Вы очнулись в пыли. Кто-то обчистил карманы: -%d Су." % lost)
+			G.say("Вы очнулись в пыли. Кто-то взломал ваш пейджер и перевёл себе %d Су." % lost)
 			if m != null:
 				m.stun = 20.0
 				m.pos = m.home
@@ -494,6 +588,114 @@ func _on_combat_end(result: String) -> void:
 			G.main().game_over("Гений %s погиб в Пустоши. Тело так и не нашли." % G.p.callsign)
 			return
 	_update_hud()
+
+
+## Другие подвижные враги в трёх клетках от этого.
+func _pack_of(m: Dictionary) -> Array:
+	var res: Array = []
+	for o in mobs:
+		if o != m and not D.ENEMIES[o.enemy].get("static", false) and _cheb(o.pos, m.pos) <= 3:
+			res.append(o)
+	return res
+
+
+## После победы: соседям даётся передышка, чтобы новый бой не начался в ту же секунду.
+## Без Муэдзина стая разбегается и не возвращается до завтра.
+func _after_win(m: Dictionary) -> void:
+	if m.enemy == "muezzin":
+		var fled := 0
+		for o in mobs.duplicate():
+			if o.enemy == "pes":
+				G.p.killed.append(o.id)
+				mobs.erase(o)
+				fled += 1
+		if fled > 0:
+			G.say("Лишившись Муэдзина, псы с визгом разбегаются по норам.")
+		return
+	var near := 0
+	for o in mobs:
+		if _cheb(o.pos, ppos) <= 3 and not D.ENEMIES[o.enemy].get("static", false):
+			o.stun = maxf(o.stun, 2.5)
+			near += 1
+	if near > 0:
+		G.say("Это был не последний: рядом ещё %d. Есть пара секунд, чтобы отойти." % near)
+
+
+## «!» над врагом и короткий толчок камеры, когда он замечает Гения.
+func _alert(m: Dictionary) -> void:
+	m["alert"] = 0.6
+	shake_amt = 3.0
+
+
+## Пыль в воздухе: в Кальдере медленно всплывает, в Пустоши ветер гонит песок.
+func _init_motes() -> void:
+	motes.clear()
+	for i in 46:
+		motes.append(_new_mote(true))
+
+
+func _new_mote(anywhere: bool) -> Dictionary:
+	var c := iso(pf) + Vector2(0, -10)
+	var pos := c + Vector2(randf_range(-340, 340), randf_range(-200, 200))
+	if not anywhere:
+		pos.x = c.x - 340 if waste else pos.x
+		if not waste:
+			pos.y = c.y + 200
+	var v := Vector2(randf_range(40, 90), randf_range(-4, 6)) if waste else Vector2(randf_range(-3, 3), randf_range(-9, -3))
+	return {"p": pos, "v": v, "ph": randf() * TAU, "a": randf_range(0.25, 0.7)}
+
+
+func _update_fx(delta: float) -> void:
+	var c := iso(pf) + Vector2(0, -10)
+	for i in motes.size():
+		var m: Dictionary = motes[i]
+		m.p += m.v * delta + Vector2(sin(wt * 0.8 + m.ph) * 4.0 * delta, 0)
+		if absf(m.p.x - c.x) > 360 or absf(m.p.y - c.y) > 220:
+			motes[i] = _new_mote(false)
+	for pz in puffs:
+		pz.t += delta
+		pz.p += pz.v * delta
+	puffs = puffs.filter(func(q): return q.t < 0.45)
+
+
+## Пол под лампами и экранами чуть светится и мерцает.
+func _draw_glows() -> void:
+	for o in objs:
+		if not (o.get("kind", "") in GLOWS):
+			continue
+		var ph: float = o.get("ph", 0.0)
+		var f := 0.8 + 0.2 * sin(wt * 11.0 + ph * 5.0) * sin(wt * 6.3 + ph)
+		if fmod(wt + ph * 3.0, 9.0) < 0.1:
+			f = 0.35
+		var c := iso(Vector2(o.pos))
+		var col := Pal.R2 if o.kind in ["neon", "bar"] else Pal.G5
+		draw_set_transform(c + Vector2(0, 2), 0.0, Vector2(1.0, 0.5))
+		draw_circle(Vector2.ZERO, 34.0, Color(col, 0.035 * f))
+		draw_circle(Vector2.ZERO, 20.0, Color(col, 0.05 * f))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _shadow(pos: Vector2, rx: float = 6.0) -> void:
+	draw_set_transform(iso(pos) + Vector2(0, 3), 0.0, Vector2(1.0, 0.42))
+	draw_circle(Vector2.ZERO, rx, Color(0, 0, 0, 0.38))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Покачивание на месте: раз в пару секунд фигура «вдыхает» на пиксель вверх.
+func _breath(ph: float) -> float:
+	return -1.0 if sin(wt * 2.1 + ph) > 0.55 else 0.0
+
+
+func _draw_motes() -> void:
+	for m in motes:
+		var a: float = m.a * (0.6 + 0.4 * sin(wt * 2.0 + m.ph))
+		if waste:
+			draw_line(m.p, m.p - m.v.normalized() * 3.0, Color(Pal.G3, a * 0.6), 1.0)
+		else:
+			draw_rect(Rect2(m.p.round(), Vector2(1, 1)), Color(Pal.G4, a * 0.7))
+	for pz in puffs:
+		var k: float = pz.t / 0.45
+		draw_circle(pz.p, 1.5 + k * 3.0, Color(Pal.G3, 0.35 * (1.0 - k)))
 
 
 # ---------------- отрисовка ----------------
@@ -523,6 +725,18 @@ func _draw() -> void:
 	for f in floors:
 		var p: Vector2i = f.pos
 		draw_texture(f.tex, iso(Vector2(p)) - Vector2(16, 8), _shade(Vector2(p)))
+	_draw_glows()
+	for o in objs:
+		if o.type == "npc":
+			_shadow(Vector2(o.pos))
+	for m in mobs:
+		if not (night_amt > 0.5 and m.fpos.distance_to(pf) > 1.6):
+			_shadow(m.fpos, 8.0 if m.enemy == "muezzin" else 6.0)
+	if has_mate():
+		_shadow(mate_pos)
+	if has_escort():
+		_shadow(esc_pos)
+	_shadow(pf)
 	# подсветка клетки под курсором
 	var mt := to_grid(get_global_mouse_position())
 	if in_bounds(mt) and not blocked():
@@ -555,15 +769,21 @@ func _draw() -> void:
 			items.append([front.x + front.y, front.x, tex, iso(Vector2(p)) - Vector2(0, 8) - anchor, 1.0, Vector2(p) + Vector2(ow - 1, oh - 1) * 0.5, false])
 			continue
 		var off := Vector2(-tex.get_width() / 2.0, 6 - tex.get_height())
+		var oflip := false
 		if o.type == "npc":
-			off = Vector2(-8, 4 - 28)
-		items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), false])
+			off = Vector2(-8, 4 - 28 + _breath(o.get("ph", 0.0)))
+			# жители поворачиваются к Гению, когда он рядом
+			if _cheb(p, ppos) <= 3:
+				oflip = (p.x - p.y) > (pf.x - pf.y) + 0.3
+		items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), oflip])
 	for m in mobs:
 		# ночью в Пустоши врагов не видно, пока они не подойдут вплотную
 		if night_amt > 0.5 and m.fpos.distance_to(pf) > 1.6:
 			continue
 		var tex := _mob_tex(m)
-		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height()), 1.0, m.fpos, false])
+		var dd: float = clampf(m.fpos.distance_to(Vector2(m.pos)), 0.0, 1.0)
+		var hop := -sin(dd * PI) * 2.0 if dd > 0.01 else _breath(float(absi(hash(m.id)) % 100) / 16.0)
+		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height() + hop), 1.0, m.fpos, false])
 	if has_mate():
 		var mtex := Art.person_tex(Maps.NPC_LOOKS.ryzhaya.person, frame)
 		items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, mtex, iso(mate_pos) + Vector2(-8, 4 - 28), 1.0, mate_pos, flip])
@@ -571,7 +791,8 @@ func _draw() -> void:
 		var etex := Art.person_tex(Maps.NPC_LOOKS.stray.person, frame)
 		items.append([esc_pos.x + esc_pos.y + 0.03, esc_pos.x, etex, iso(esc_pos) + Vector2(-8, 4 - 28), 1.0, esc_pos, flip])
 	var ptex := Art.person_tex(G.person_look(), frame)
-	items.append([pdepth + 0.05, pf.x, ptex, iso(pf) + Vector2(-8, 4 - 28), 1.0, pf, flip])
+	var bob := (-1.0 if frame == 1 else 0.0) if not path.is_empty() else _breath(0.0)
+	items.append([pdepth + 0.05, pf.x, ptex, iso(pf) + Vector2(-8, 4 - 28 + bob), 1.0, pf, flip])
 	items.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
 	for it in items:
 		var col := _shade(it[5])
@@ -580,6 +801,15 @@ func _draw() -> void:
 			draw_texture_rect(it[2], Rect2(it[3] + Vector2(it[2].get_width(), 0), Vector2(-it[2].get_width(), it[2].get_height())), false, col)
 		else:
 			draw_texture(it[2], it[3], col)
+	# «!» над врагом, который заметил Гения
+	for m in mobs:
+		if m.get("alert", 0.0) > 0.0:
+			var tex2 := _mob_tex(m)
+			var top := iso(m.fpos) + Vector2(-1, 4 - tex2.get_height() - 12 - (0.6 - m.alert) * 6.0)
+			draw_rect(Rect2(top - Vector2(1, 1), Vector2(4, 11)), Pal.BG)
+			draw_rect(Rect2(top, Vector2(2, 6)), Pal.R3)
+			draw_rect(Rect2(top + Vector2(0, 7), Vector2(2, 2)), Pal.R3)
+	_draw_motes()
 
 
 func _solid_floor(t: Vector2i) -> bool:
@@ -616,6 +846,8 @@ func _mob_tex(m: Dictionary) -> Texture2D:
 			return Art.person_tex(Maps.NPC_LOOKS.raider.person, frame)
 		"slepysh":
 			return Art.cached("mob_slepysh", func(): return _small_slepysh())
+		"slepets":
+			return Art.cached("mob_slepets", func(): return _small_slepets())
 		"plant":
 			return Art.cached("mob_plant", func(): return _small_plant())
 		_:
@@ -658,6 +890,21 @@ func _small_slepysh() -> Texture2D:
 	cv.line(14, 9, 21, 15, 4)
 	cv.line(6, 9, 2, 15, 4)
 	cv.line(17, 7, 21, 7, 0)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+func _small_slepets() -> Texture2D:
+	var cv := ArtLib.Canvas.new(28, 22)
+	cv.ellipse(12, 13, 8, 5, 4)
+	cv.ellipse(21, 7, 5, 4.5, 5)
+	cv.line(17, 13, 25, 21, 4)
+	cv.line(15, 15, 20, 21, 4)
+	cv.line(6, 13, 2, 21, 4)
+	cv.line(9, 15, 7, 21, 4)
+	for i in 3:
+		cv.line(7 + i * 4, 9, 8 + i * 4, 6, 2)
+	cv.line(19, 8, 25, 8, 9)
 	cv.outline(0)
 	return Art.to_tex(cv)
 

@@ -21,6 +21,7 @@ var chars := 0.0
 var current_who := ""
 var current_id := ""
 var injury_result := ""
+var cure_result := ""
 ## Первый узел разговора: здесь звучит голос черты и появляются её реплики.
 var first_id := ""
 var voice: Dictionary = {}
@@ -135,6 +136,10 @@ func _show(id: String) -> void:
 	var list: Array = _dynamic_choices(n)
 	var live: Array = []
 	# «Живые черты»: голос в начале разговора и свои реплики черт.
+	if current_who != "" and id == first_id and Story.WHO[current_who].get("rel", false):
+		var gr := G.rel_greeting(current_who, Story.WHO[current_who].name, Story.WHO[current_who].get("fem", false))
+		if gr != "":
+			text.text = "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.G3), gr] + text.text
 	if current_who != "" and current_who != "raider" and id == first_id:
 		if not voice_checked:
 			voice_checked = true
@@ -192,9 +197,20 @@ func _dynamic_choices(n: Dictionary) -> Array:
 			if j.giver == current_who and j.state == "done":
 				res.append({"t": "Сдать: %s%s" % [j.title, (" (+%d Су)" % j.su) if j.su > 0 else ""],
 					"fx": [["turn_in", j.id]], "next": "thanks_" + current_who if nodes.has("thanks_" + current_who) else current_id})
+	if n.has("cure"):
+		var psy: bool = n.cure == "psy"
+		var list: Array = G.p.got_psy if psy else G.p.got_phys
+		var cost := 60 if psy else 90
+		var used := G.flag("cure_%s_%d" % [n.cure, G.p.day])
+		for tr in list:
+			var t := "%s «%s» (%d Су)" % ["Вынуть из головы" if psy else "Реконструкция:", tr, cost]
+			if used:
+				res.append({"t": t + " — только завтра", "next": current_id})
+			elif G.p.su >= cost:
+				res.append({"t": t, "fx": [["cure", n.cure, tr]], "next": "stranger_cure_result" if psy else "cure_result"})
 	if n.has("poi"):
 		for j in G.p.jobs:
-			if j.kind == "find" and j.poi == n.poi and j.state == "active":
+			if j.kind == "find" and j.poi == n.poi and j.state == "active" and not j.get("spot", false):
 				var risk: String = " (там %s)" % D.ENEMIES[j.guard].name.to_lower() if j.guard != "" else ""
 				res.append({"t": "Искать: %s%s" % [j.item, risk], "fx": [["find_job", j.id]], "next": "end"})
 	if n.get("board", false):
@@ -489,24 +505,59 @@ func _cond(c: String) -> bool:
 	return false
 
 
+## Снять приобретённую черту: физическую у автодока, психологическую у незнакомца в лесу.
+func _cure(kind: String, tr: String) -> String:
+	var psy := kind == "psy"
+	G.set_flag("cure_%s_%d" % [kind, G.p.day])
+	G.p.su -= 60 if psy else 90
+	var res: String
+	if psy:
+		G.pass_hours(4)
+		var r := G.roll("Воля", 12)
+		if r.ok:
+			G.p.got_psy.erase(tr)
+			res = "%s\n\nНезнакомец кладёт ладони вам на виски. Четыре часа вы слушаете, как лес дышит. Потом что-то тонкое и холодное вытягивается из затылка, и в голове становится непривычно тихо.\n\n— Готово. Черты «%s» больше нет. Не приноси её обратно.\n\n[color=#7ff07a](Черта снята)[/color]" % [G.roll_text(r), tr]
+		else:
+			var m := G.hurt(15, "mind")
+			res = "%s\n\nВы держитесь сколько можете, но голос внутри цепляется крепче. Незнакомец отнимает руки.\n\n— Не сегодня. Она вросла глубже, чем я думал. Приходи завтра.\n\n[color=#ff6650](Черта «%s» осталась, −%d ООР. Су не вернуть.)[/color]" % [G.roll_text(r), tr, m]
+	else:
+		if randf() < 0.65:
+			G.p.got_phys.erase(tr)
+			res = "Ремни затягиваются, манипуляторы опускаются. Машина гудит, режет и шьёт час с лишним. Экран: «РЕКОНСТРУКЦИЯ ЗАВЕРШЕНА».\n\n[color=#7ff07a](Травма «%s» устранена)[/color]" % tr
+		else:
+			var h := G.hurt(20, "body")
+			G.p.hp = maxi(1, G.p.hp)
+			res = "Посреди программы автодок дёргается и замирает. Экран: «ОШИБКА 0x3F. ОБРАТИТЕСЬ К СПЕЦИАЛИСТУ». Манипулятор на прощание задевает живое.\n\n[color=#ff6650](Травма «%s» осталась, −%d ООЗ. Су не возвращаются.)[/color]" % [tr, h]
+	G.changed.emit()
+	return res
+
+
 func _doc_heal() -> int:
 	return ceili((G.max_hp() - G.p.hp) / 2.0)
 
 
 func _doc_cost() -> int:
-	return G.price(_doc_heal())
+	return _who_price(_doc_heal())
+
+
+## Цена у собеседника: отношение с ним тоже влияет.
+func _who_price(base: int) -> int:
+	G.shop_who = current_who
+	var v := G.price(base)
+	G.shop_who = ""
+	return v
 
 
 func _heal_cost() -> int:
 	if G.flag("free_heal"):
 		return 0
-	return G.price((G.max_hp() - G.p.hp) * 2)
+	return _who_price((G.max_hp() - G.p.hp) * 2)
 
 
 func _subst(s: String) -> String:
 	return s.replace("{callsign}", G.p.callsign).replace("{faction}", D.FACTIONS[G.p.faction].name) \
 		.replace("{heal_cost}", str(_heal_cost())).replace("{dogs}", str(int(G.p.flags.get("dogs", 0)))) \
-		.replace("{injury_result}", injury_result).replace("{doc_heal}", str(_doc_heal())).replace("{doc_cost}", str(_doc_cost())) \
+		.replace("{injury_result}", injury_result).replace("{cure_result}", cure_result).replace("{doc_heal}", str(_doc_heal())).replace("{doc_cost}", str(_doc_cost())) \
 		.replace("{day}", str(G.p.day)).replace("{hour}", G.clock()).replace("{loot}", G.last_note)
 
 
@@ -573,14 +624,15 @@ func _fx(list: Array) -> void:
 				G.p.su = maxi(0, G.p.su - 25)
 				G.changed.emit()
 				if not r.ok:
-					G.say("Кошелёк почему-то стал легче на 25 Су.")
+					G.say("Пейджер тихо пискнул. Баланс почему-то стал меньше на 25 Су.")
 			"shop":
 				var stock: Array = Story.SHOPS[f[1]].duplicate()
 				for u in D.SHOP_UNLOCKS.get(f[1], []):
 					if G.flag("job_done_" + u[0]):
 						stock.append(u[1])
 				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА"}.get(f[1], "ЛАВКА")
-				after.append(func(): G.main().open_shop(stock, st_title))
+				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith"}.get(f[1], "")
+				after.append(func(): G.main().open_shop(stock, st_title, owner))
 			"fight":
 				after.append(func(): G.main().world.fight_current())
 			"spare":
@@ -634,6 +686,8 @@ func _fx(list: Array) -> void:
 				after.append(func(): G.main().battle(en2, win))
 			"day_flag":
 				G.p.flags[f[1]] = G.p.day
+			"cure":
+				cure_result = _cure(f[1], f[2])
 			"autodoc":
 				var h := _doc_heal()
 				G.p.su -= _doc_cost()

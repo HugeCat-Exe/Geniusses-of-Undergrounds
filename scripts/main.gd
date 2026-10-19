@@ -17,6 +17,7 @@ var crt: ColorRect
 var current: Node
 var world: Node2D
 var crt_on := true
+var fade: ColorRect
 var fullscreen := true
 
 const CRT_SHADER := """
@@ -71,6 +72,18 @@ func _ready() -> void:
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.theme = Pal.theme
 	ov_layer.add_child(overlay)
+
+	# затемнение при смене экрана
+	var fade_layer := CanvasLayer.new()
+	fade_layer.layer = 19
+	add_child(fade_layer)
+	fade = ColorRect.new()
+	fade.color = Color(0, 0, 0, 0)
+	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade_layer.add_child(fade)
+	# окна (диалог, пейджер, лавка, бой) не выскакивают, а быстро проявляются
+	overlay.child_entered_tree.connect(_pop_in)
 
 	var crt_layer := CanvasLayer.new()
 	crt_layer.layer = 20
@@ -150,6 +163,20 @@ func _apply_window() -> void:
 	DisplayServer.window_set_position(area.position + (area.size - sz) / 2)
 
 
+## Экран проявляется из темноты: смена локации, карта мира, гибель.
+func fade_in(t: float = 0.4) -> void:
+	fade.color.a = 1.0
+	var tw := fade.create_tween()
+	tw.tween_property(fade, "color:a", 0.0, t).set_ease(Tween.EASE_OUT)
+
+
+func _pop_in(n: Node) -> void:
+	if n is Control:
+		var c: Control = n
+		c.modulate.a = 0.0
+		c.create_tween().tween_property(c, "modulate:a", 1.0, 0.25 if n is Combat else 0.13)
+
+
 func _clear() -> void:
 	for c in overlay.get_children():
 		c.queue_free()
@@ -179,6 +206,7 @@ func show_map() -> void:
 	G.p.map = "worldmap"
 	current = WorldMap.new()
 	ui.add_child(current)
+	fade_in()
 	G.autosave()
 
 
@@ -198,6 +226,7 @@ func show_world(map: String, spawn: String = "") -> void:
 	world.setup(map, spawn)
 	screen_root.add_child(world)
 	current = world
+	fade_in()
 	G.autosave()
 
 
@@ -298,7 +327,9 @@ func open_pager(tab: int = 0) -> void:
 	overlay.add_child(pg)
 
 
-func open_shop(stock: Array, title: String = "ЛАВКА") -> void:
+func open_shop(stock: Array, title: String = "ЛАВКА", owner: String = "") -> void:
+	G.shop_who = owner
+	G.p["deal_today"] = G.deal_item(stock, owner)
 	var s := Shop.new()
 	s.stock = stock
 	s.title_text = title
@@ -328,7 +359,7 @@ func _battle_end(result: String, win_node: String, job_id: String) -> void:
 		"down":
 			var lost := int(G.p.su * 0.25)
 			G.p.su -= lost
-			G.say("Гений очнулся в пыли. Кто-то обчистил карманы: −%d Су." % lost)
+			G.say("Гений очнулся в пыли. Кто-то взломал ваш пейджер и перевёл себе %d Су." % lost)
 		"win":
 			if job_id != "":
 				G.job_found(job_id)
@@ -387,7 +418,7 @@ func explore_now() -> void:
 			return
 		"loot":
 			var w: Array = r.what
-			var what: String = "%d Су в чужом кошельке" % w[1] if w[0] == "su" else "%s ×%d" % [w[0], w[1]]
+			var what: String = "чужая Су-карта, на ней %d Су" % w[1] if w[0] == "su" else "%s ×%d" % [w[0], w[1]]
 			txt += "Под ржавым листом железа кто-то устроил тайник и не вернулся за ним.\n\n[color=#7ff07a](Найдено: %s)[/color]" % what
 			G.say("Найдено в Пустоши: %s." % what)
 		_:
@@ -400,6 +431,7 @@ func explore_now() -> void:
 
 func game_over(text: String) -> void:
 	_clear()
+	fade_in(1.2)
 	var root := ColorRect.new()
 	root.color = Pal.BG
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

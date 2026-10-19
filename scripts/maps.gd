@@ -142,6 +142,8 @@ const NPC_LOOKS := {
 		"portrait": {"sex": "М", "race": "Крысолюд", "coat": 4, "hair": 3, "traits": ["Большие уши"]}},
 	"stray": {"person": {"coat": 1, "hair": 2, "skin": 4},
 		"portrait": {"sex": "М", "coat": 1, "hair": 2, "beard": true, "traits": ["Морщины", "Ножевые шрамы"]}},
+	"stranger": {"person": {"coat": 1, "hat": true, "skin": 3, "accent": 3},
+		"portrait": {"sex": "М", "coat": 1, "collar": 3, "bald": true, "mask": true, "glasses": true}},
 	"raider": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
 		"portrait": {"sex": "М", "coat": 2, "collar": 9, "bald": true, "scar": true, "traits": ["Ножевые шрамы", "Зубы крысолюда"]}},
 }
@@ -773,8 +775,9 @@ func _raid2() -> Dictionary:
 	objs.append(_prop("cache", 1, 7, "Сундук под водой", "raid_c7"))
 	objs.append(_prop("cache", 9, 7, "Мастерская оружейника", "raid_c8"))
 	objs.append(_prop("bones", 13, 9, "Кости", "", false))
-	objs.append(_raid_mob("slepysh", "d", 5, 4, 4))
-	objs.append(_raid_mob("slepysh", "e", 14, 2, 4))
+	# на шестом ярусе живут старшие, слепцы: крупнее, злее, слышат сердце
+	objs.append(_raid_mob("slepets", "d", 5, 4, 4))
+	objs.append(_raid_mob("slepets", "e", 14, 2, 4))
 	objs.append(_raid_mob("slepysh", "f", 12, 9, 5))
 	objs.append(_raid_mob("slepysh", "g", 4, 9, 4))
 	var grid := _grid(RAID2)
@@ -831,9 +834,11 @@ func _poi_forest() -> Dictionary:
 	objs.append(_mob("plant", _daily("forest_plant_b"), 7, 6, 1))
 	objs.append(_mob("plant", _daily("forest_plant_c"), 22, 9, 1))
 	objs.append(_mob("pes", _daily("forest_pes"), 10, 15, 5))
+	# Незнакомец сидит на пепельной прогалине и лечит голову от того, что в неё нашептала Запутанность.
+	objs.append(_npc("stranger", 8, 11, "Незнакомец в капюшоне", "stranger_start", 1))
 	objs.append(_exit(27, 19))
 	_scatter(grid, objs, 902, 18, [Rect2i(24, 16, 6, 6)])
-	_ensure_paths(grid, objs, Vector2i(26, 18), [Vector2i(6, 5), Vector2i(15, 5), Vector2i(4, 13), Vector2i(23, 8), Vector2i(16, 10), Vector2i(27, 19)])
+	_ensure_paths(grid, objs, Vector2i(26, 18), [Vector2i(6, 5), Vector2i(15, 5), Vector2i(4, 13), Vector2i(23, 8), Vector2i(16, 10), Vector2i(27, 19), Vector2i(9, 12)])
 	_rumor(grid, objs, "forest")
 	return {"name": "Запутанный лес", "floor": grid, "objs": objs, "waste": true, "poi": "forest",
 		"spawns": {"enter": Vector2i(26, 18)}, "light": 30.0}

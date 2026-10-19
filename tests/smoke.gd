@@ -493,6 +493,7 @@ func run(main: Node) -> void:
 	G.add_item("Каска шахтёра")
 	G.add_item("Камень души")
 	print(G.use_item("Каска шахтёра"), " ", G.use_item("Камень души"), " armor ", G.armor_total())
+	await _smoke_09()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -567,6 +568,112 @@ func _overlay_of_type(_t: String):
 		if c.get("enemy_id") != null:
 			return c
 	return null
+
+
+## Проверки версии 0.9.
+func _smoke_09() -> void:
+	# старое сохранение: счётчик заданий пересчитывается по флагам
+	G.p.flags.erase("save_ver")
+	G.p.flags["board_done"] = 0
+	for k in ["job_done_d1_0", "job_done_d2_3", "job_done_d3_1"]:
+		G.p.flags[k] = true
+	G._migrate()
+	print("SMOKE 09 migrate board_done ", G.p.flags.board_done)
+	# кулдауны
+	G.p.flags["jobcd_1"] = G.p.day
+	var mistel := false
+	for o in G.board_offers():
+		if o.giver == "mistel":
+			mistel = true
+	print("SMOKE 09 cooldown mistel ", G.job_cooldown(1), " offered ", mistel)
+	# тайник для задания в случайном месте
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var j := G._make_job(D.JOBS[5], rng, "d99_5")
+	G.take_job(j)
+	M.show_world("poi_" + j.poi, "enter")
+	await _wait(0.8)
+	var spot = null
+	for o in M.world.objs:
+		if str(o.get("action", "")).begins_with("jobspot:"):
+			spot = o
+	print("SMOKE 09 spot poi ", j.poi, " found ", spot != null, " text ", j.text.substr(0, 60))
+	await _shot("40_jobspot")
+	if spot != null:
+		M.world._interact(spot)
+		await _wait(0.6)
+		await _shot("41_jobspot_dlg")
+		_close_overlays()
+		G.job_found(j.id)
+	print("SMOKE 09 spot job ", G.job_by_id("d99_5").state if G.job_by_id("d99_5") != null else "none")
+	# лечение черт
+	var ph: String = D.PHYS.keys()[0]
+	var ps: String = D.PSY.keys()[0]
+	G.p.got_phys.append(ph)
+	G.p.got_psy.append(ps)
+	G.p.su += 400
+	M.open_dialogue("autodoc")
+	await _wait(0.8)
+	await _shot("42_autodoc")
+	var dl = M.overlay.get_child(M.overlay.get_child_count() - 1)
+	print("SMOKE 09 cure phys ", dl._cure("phys", ph).substr(0, 40), " left ", G.p.got_phys.size())
+	_close_overlays()
+	M.show_world("poi_forest", "enter")
+	await _wait(0.6)
+	var st := false
+	for o in M.world.objs:
+		if o.get("id", "") == "stranger":
+			st = true
+	M.open_dialogue("stranger_start")
+	await _wait(1.0)
+	await _shot("43_stranger")
+	dl = M.overlay.get_child(M.overlay.get_child_count() - 1)
+	print("SMOKE 09 stranger ", st, " cure psy ", dl._cure("psy", ps).substr(0, 30), " left ", G.p.got_psy.size())
+	_close_overlays()
+	# отношения: скидка и приветствие
+	G.p.rel["trader"] = 50
+	G.shop_who = "trader"
+	print("SMOKE 09 rel price 100 -> ", G.price(100), " greet ", G.rel_greeting("trader", "Бартоломей", false).substr(0, 30))
+	G.shop_who = ""
+	M.open_shop(preload("res://scripts/story.gd").SHOPS.trader, "ЛАВКА", "trader")
+	await _wait(0.5)
+	await _shot("44_shop_rel")
+	_close_overlays()
+	# шестой ярус: слепцы
+	M.show_world("raid2", "top")
+	await _wait(0.6)
+	var sl := 0
+	for m in M.world.mobs:
+		if m.enemy == "slepets":
+			sl += 1
+	print("SMOKE 09 raid2 slepets ", sl)
+	# «!» и задержка перед боем
+	if not M.world.mobs.is_empty():
+		var mb = M.world.mobs[0]
+		M.world.start_encounter(mb)
+		await _wait(0.15)
+		await _shot("45_alert")
+		await _wait(0.8)
+		print("SMOKE 09 encounter opened ", M.has_overlay())
+		await _shot("46_slepets_combat")
+		var cb = M.overlay.get_child(M.overlay.get_child_count() - 1)
+		if cb.has_method("_attack"):
+			cb.busy = false
+			cb._attack(true, cb.parts[1])
+			await _wait(0.2)
+			await _shot("47_combat_pop")
+			await _wait(3.0)
+		_close_overlays()
+	# пейджер: имущество не вылезает за экран
+	G.add_item("Бинт")
+	G.add_item("Прицел (пистолет)")
+	M.open_pager(1)
+	await _wait(0.5)
+	var pg = M.overlay.get_child(M.overlay.get_child_count() - 1)
+	print("SMOKE 09 pager content width ", pg.content.size.x, " scroll ", pg.scroll.size.x)
+	await _shot("48_pager_inv")
+	_close_overlays()
+	await _wait(0.2)
 
 
 func _close_overlays() -> void:

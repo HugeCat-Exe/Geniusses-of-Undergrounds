@@ -1,5 +1,5 @@
 extends Control
-## Бой в духе Fear and Hunger: пошаговый, удары по частям тела, раны, рассудок, монетка.
+## Бой в духе Fear and Hunger: пошаговый, удары по частям тела, раны, рассудок, бегство.
 
 var enemy_id: String
 var on_end: Callable
@@ -23,6 +23,11 @@ var busy := false
 var enemy_streak := 0
 var finished := false
 var scale_k := 3.0
+var bt := 0.0         # время боя: враг «дышит»
+var lunge := 0.0      # рывок врага на Гения (0..1)
+var knock := 0.0      # отдача от попадания по врагу (0..1)
+var dead_k := 0.0     # поверженный враг оседает и тускнеет
+var hurt_rect: ColorRect
 
 
 func _ready() -> void:
@@ -88,8 +93,54 @@ func _ready() -> void:
 	actions.add_theme_constant_override("v_separation", 3)
 	asc.add_child(actions)
 
+	hurt_rect = ColorRect.new()
+	hurt_rect.color = Color(Pal.R1, 0.0)
+	hurt_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hurt_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(hurt_rect)
+
 	_log("[color=%s]%s[/color]" % [Pal.hex(Pal.G3), E.intro])
 	_start()
+
+
+func _process(delta: float) -> void:
+	bt += delta
+	view.queue_redraw()
+
+
+## Всплывающая цифра: урон, «мимо», крит. pos — в координатах экрана боя.
+func _pop(text: String, pos: Vector2, col: Color, big := false) -> void:
+	var l := Pal.label(text, col, 14 if big else 11, true)
+	l.position = pos - Vector2(30, 8)
+	l.size = Vector2(60, 16)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_color_override("font_outline_color", Pal.BG)
+	l.add_theme_constant_override("outline_size", 4)
+	l.z_index = 5
+	add_child(l)
+	var tw := l.create_tween().set_parallel(true)
+	tw.tween_property(l, "position:y", l.position.y - 22, 0.8).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(l, "modulate:a", 0.0, 0.35).set_delay(0.5)
+	tw.chain().tween_callback(l.queue_free)
+
+
+## Центр части тела врага на экране боя.
+func _part_pos(part: Dictionary) -> Vector2:
+	var r: Rect2 = art.parts.get(part.name, Rect2(16, 16, 32, 32))
+	return view.position + (r.position + r.size / 2.0) * scale_k
+
+
+func _tw(prop: String, peak: float, up: float, down: float) -> void:
+	var tw := create_tween()
+	tw.tween_method(func(v): set(prop, v), 0.0, peak, up)
+	tw.tween_method(func(v): set(prop, v), peak, 0.0, down)
+
+
+## Гению больно: экран вспыхивает красным, цифра над его полоской здоровья.
+func _hurt_fx(amount: int, mind: bool) -> void:
+	hurt_rect.color = Color(Pal.R1 if not mind else Pal.G1, 0.45)
+	create_tween().tween_property(hurt_rect, "color:a", 0.0, 0.35)
+	_pop("−%d %s" % [amount, "ООР" if mind else "ООЗ"], Vector2(132, 262), Pal.G5 if mind else Pal.R3)
 
 
 func _player_speed() -> int:
@@ -171,7 +222,12 @@ func _update_status() -> void:
 
 
 func _draw_view() -> void:
-	view.draw_texture_rect(art.tex, Rect2(Vector2.ZERO, Vector2(192, 192)), false)
+	# враг дышит, рвётся вперёд при атаке, отшатывается от попаданий, оседает после смерти
+	var off := Vector2(0, sin(bt * 2.2) * 1.5) + Vector2(-6, 8) * lunge + Vector2(8, -2) * knock + Vector2(0, 14) * dead_k
+	var sc := 1.0 + lunge * 0.1 + sin(bt * 2.2) * 0.008
+	view.draw_set_transform(Vector2(96, 96) + off, 0.0, Vector2(sc, sc))
+	view.draw_texture_rect(art.tex, Rect2(Vector2(-96, -96), Vector2(192, 192)), false, Color(1, 1, 1, 1.0 - dead_k * 0.75))
+	view.draw_set_transform(Vector2(96, 96) + off + Vector2(-96, -96) * sc, 0.0, Vector2(sc, sc))
 	for p in parts:
 		var r: Rect2 = art.parts.get(p.name, Rect2())
 		var rr := Rect2(r.position * scale_k, r.size * scale_k)
@@ -180,7 +236,8 @@ func _draw_view() -> void:
 			view.draw_line(rr.position, rr.end, Pal.R2, 2.0)
 			view.draw_line(Vector2(rr.position.x, rr.end.y), Vector2(rr.end.x, rr.position.y), Pal.R2, 2.0)
 		if p.name == hover_part:
-			view.draw_rect(rr, Pal.R3, false, 2.0)
+			view.draw_rect(rr, Color(Pal.R3, 0.7 + 0.3 * sin(bt * 8.0)), false, 2.0)
+	view.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _clear_actions() -> void:
@@ -191,6 +248,9 @@ func _clear_actions() -> void:
 func _act(label: String, cb: Callable, enabled := true) -> Button:
 	var b := Pal.button(label, cb, 9)
 	b.custom_minimum_size = Vector2(178, 18)
+	b.clip_text = true
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.tooltip_text = label
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.disabled = not enabled or busy
 	actions.add_child(b)
@@ -222,7 +282,7 @@ func _menu() -> void:
 	_act("Самозащита [ТЕЛ]", _defend)
 	_act("Предмет", _items_menu)
 	_act("Сменить оружие (бесплатно)", _weapons_menu, _spare_weapons().size() > 0)
-	_act("Подбросить монетку (бежать)", _flee)
+	_act("Бежать [Акробатика]", _flee)
 
 
 func _attack_bonus(melee: bool, part: Dictionary) -> int:
@@ -282,6 +342,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 		_log("[color=%s]Осечка: руки подводят («Неуклюжий»), к20=%d.[/color]" % [Pal.hex(Pal.R3), d])
 	elif not hit:
 		_log("Вы %s в «%s» (%s): к20=%d %+d против %d — [color=%s]мимо[/color]." % [verb, part.name, wname, d, bonus, E.evade, Pal.hex(Pal.G2)])
+		_pop("мимо", _part_pos(part), Pal.G3)
 	else:
 		var dmg := int(round(base * randf_range(0.85, 1.15)))
 		if rage > 0:
@@ -303,6 +364,8 @@ func _attack(melee: bool, part: Dictionary) -> void:
 				if q.name == "Туловище":
 					q.hp -= int(dmg * 0.35)
 		_flash()
+		_tw("knock", 1.0, 0.05, 0.25)
+		_pop(("КРИТ %d" if d >= crit_on else "%d") % dmg, _part_pos(part), Pal.R3 if d >= crit_on else Pal.G5, d >= crit_on)
 		if part.hp <= 0:
 			_log("[color=%s]«%s» уничтожено.[/color]" % [Pal.hex(Pal.R3), part.name])
 			for a in part.get("disables", []):
@@ -432,13 +495,13 @@ func _flee() -> void:
 		return
 	var dc := 14 + (4 if "Ноги" in G.p.wounds else 0)
 	var r := G.roll("Акробатика", dc, "flee")
-	_log("Вы подбрасываете монетку... %s" % G.roll_text(r))
+	_log("Вы ищете, куда рвануть... %s" % G.roll_text(r))
 	if r.ok:
-		_log("[color=%s]Орёл. Вы вырываетесь и бежите.[/color]" % Pal.hex(Pal.G5))
+		_log("[color=%s]Есть просвет! Вы вырываетесь и бежите.[/color]" % Pal.hex(Pal.G5))
 		await _wait(0.6)
 		_end("fled")
 		return
-	_log("[color=%s]Решка. Путь отрезан.[/color]" % Pal.hex(Pal.R3))
+	_log("[color=%s]Не вышло. Путь отрезан.[/color]" % Pal.hex(Pal.R3))
 	await _wait(0.5)
 	await _round_end()
 	_after_enemy()
@@ -477,11 +540,14 @@ func _ally_turn() -> void:
 	var ch := 0.55 + 0.07 * maxi(0, tier - 1) + 0.03 * int(target.mod)
 	if randf() > ch:
 		_log("[color=%s]Рыжая стреляет в «%s» — мимо. Ругается сквозь зубы.[/color]" % [Pal.hex(Pal.G3), target.name])
+		_pop("мимо", _part_pos(target), Pal.G3)
 		await _wait(0.4)
 		return
 	var dmg := maxi(1, randi_range(9, 15) + 2 * maxi(0, tier - 2) - int(E.def))
 	target.hp -= dmg
 	_log("[color=%s]Рыжая стреляет из револьвера в «%s»: %d урона.[/color]" % [Pal.hex(Pal.G5), target.name, dmg])
+	_pop("%d" % dmg, _part_pos(target) + Vector2(10, 6), Pal.G4)
+	_tw("knock", 0.7, 0.05, 0.2)
 	if not target.get("kill", false):
 		for q in parts:
 			if q.name == "Туловище":
@@ -518,6 +584,8 @@ func _enemy_turn() -> void:
 	if a.get("prayer", false):
 		await _prayer(a)
 		return
+	_tw("lunge", 1.0, 0.1, 0.25)
+	await _wait(0.1)
 	var roll_w := randf()
 	var target := "Туловище"
 	if roll_w < 0.15:
@@ -539,6 +607,7 @@ func _enemy_turn() -> void:
 		where = "вас"
 	if not hit:
 		_log("%s %s %s — [color=%s]промах[/color]." % [E.name, a.text, where if a.kind == "mind" else _acc(target), Pal.hex(Pal.G3)])
+		_pop("уклон", Vector2(132, 262), Pal.G4)
 		return
 	var dmg := float(a.dmg) * randf_range(0.85, 1.15)
 	if target == "Голова" and a.kind == "body":
@@ -547,6 +616,7 @@ func _enemy_turn() -> void:
 		dmg *= 0.5
 	var dealt := G.hurt(int(round(dmg)), a.kind)
 	_shake()
+	_hurt_fx(dealt, a.kind == "mind")
 	if a.kind == "mind":
 		_log("%s %s вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
 		_check_mind()
@@ -580,6 +650,7 @@ func _prayer(a: Dictionary) -> void:
 	var dmg := int(round(float(a.dmg) * randf_range(0.9, 1.1)))
 	var dealt := G.hurt(dmg, "mind")
 	_shake()
+	_hurt_fx(dealt, true)
 	_log("%s %s вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
 	var hp := G.hurt(int(a.get("body", 0)), "body")
 	if hp > 0:
@@ -648,6 +719,7 @@ func _enemy_dead() -> bool:
 
 func _victory() -> void:
 	finished = true
+	create_tween().tween_method(func(v): dead_k = v, 0.0, 1.0, 0.7).set_ease(Tween.EASE_IN)
 	_log("\n[color=%s]%s повержен.[/color]" % [Pal.hex(Pal.G5), E.name])
 	var su := randi_range(E.su[0], E.su[1])
 	if su > 0:

@@ -1222,6 +1222,28 @@ func enemy_art(kind: String) -> Dictionary:
 			for i in 4:
 				cv.line(20 + i * 5, 34, 21 + i * 5, 37, 3)
 			parts = {"Голова": Rect2(37, 22, 18, 16), "Туловище": Rect2(16, 31, 30, 18), "Руки": Rect2(4, 40, 58, 24)}
+		"slepets":
+			# взрослый слепыш: выше, четыре руки, костяные наросты на спине
+			cv.ellipse(28, 36, 15, 12, 4)
+			cv.ellipse(44, 18, 9, 9, 5)
+			cv.line(38, 30, 54, 40, 4, 2)
+			cv.line(54, 40, 60, 56, 4, 2)
+			cv.line(36, 38, 50, 52, 3, 2)
+			cv.line(50, 52, 52, 63, 3, 2)
+			cv.line(18, 36, 8, 48, 4, 2)
+			cv.line(8, 48, 4, 62, 4, 2)
+			cv.line(22, 44, 16, 60, 3, 2)
+			cv.line(30, 46, 32, 62, 3, 2)
+			for i in 5:
+				cv.poly(PackedVector2Array([Vector2(14 + i * 6, 27 - (i % 2) * 2), Vector2(17 + i * 6, 18 - (i % 2) * 3), Vector2(20 + i * 6, 27)]), 2)
+			cv.line(38, 21, 51, 21, 0)
+			cv.line(39, 22, 50, 22, 9)
+			for i in 6:
+				cv.put(39 + i * 2, 23, 6)
+			for i in 4:
+				cv.put(59 + (i % 2), 56 + i, 6)
+				cv.put(3 + (i % 2), 60 + i / 2, 6)
+			parts = {"Голова": Rect2(35, 9, 19, 19), "Туловище": Rect2(13, 24, 31, 24), "Руки": Rect2(2, 30, 60, 34)}
 		"plant":
 			cv.line(32, 63, 32, 34, 3, 3)
 			for i in 6:

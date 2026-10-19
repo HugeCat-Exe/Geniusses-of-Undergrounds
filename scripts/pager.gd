@@ -120,7 +120,7 @@ func _sheet() -> void:
 	var idt := Pal.rich("", 9)
 	idt.custom_minimum_size = Vector2(186, 0)
 	idt.meta_hover_started.connect(_on_meta)
-	idt.text = "[b]%s[/b]\n%s\n%s · %s · %s\n%s\nРодом из: %s\n[color=%s]«%s»[/color]\n\n[url=ООЗ][color=%s]ООЗ %d/%d[/color][/url]   [url=ООР][color=%s]ООР %d/%d[/color][/url]\n[url=Воля]Воля[/url] %d/%d\n[url=Защита]Защита[/url]: физ. %d · псих. %d\nУдача: перебросов сегодня %d\nСытость %d · Су %d · День %d" % [
+	idt.text = "[b]%s[/b]\n%s\n%s · %s · %s\n%s\nРодом из: %s\n[color=%s]«%s»[/color]\n\n[url=ООЗ][color=%s]ООЗ %d/%d[/color][/url]   [url=ООР][color=%s]ООР %d/%d[/color][/url]\n[url=Воля]Воля[/url] %d/%d\n[url=Защита]Защита[/url]: физ. %d · псих. %d\nУдача: перебросов сегодня %d\nСытость %d · [url=Су]Су[/url] %d · День %d" % [
 		p.callsign, p.name, p.race, "М" if p.sex == "М" else "Ж", p.age, D.FACTIONS[p.faction].name, p.birth,
 		Pal.hex(Pal.G3), p.motive if p.motive != "" else "—",
 		Pal.hex(Pal.R3), p.hp, G.max_hp(), Pal.hex(Pal.G5), p.mind, G.max_mind(),
@@ -168,7 +168,7 @@ func _inventory() -> void:
 	for sl in [["head", "Шлем"], ["legs", "Штаны"], ["feet", "Обувь"], ["amulet", "Амулет"]]:
 		var it: String = gear.get(sl[0], "")
 		slots += "[b]%s:[/b] %s   " % [sl[1], it if it != "" else "—"]
-	content.add_child(Pal.rich("[b]Огнестрел:[/b] %s\n[b]Ближний бой:[/b] %s (урон %d)\n[b]Одежда:[/b] %s · всего защиты %d\n%s\n[b]Капитал:[/b] %d Су" % [
+	content.add_child(Pal.rich("[b]Огнестрел:[/b] %s\n[b]Ближний бой:[/b] %s (урон %d)\n[b]Одежда:[/b] %s · всего защиты %d\n%s\n[b]На счету пейджера:[/b] %d Су" % [
 		w, p.melee, D.ITEMS[p.melee].dmg, p.armor, G.armor_total(), slots, p.su], 9))
 	content.add_child(HSeparator.new())
 	var keys: Array = p.inv.keys()
@@ -179,14 +179,16 @@ func _inventory() -> void:
 		content.add_child(row)
 		var equipped: bool = G.equipped(it)
 		var l := Pal.label("%s%s ×%d" % ["● " if equipped else "", it, p.inv[it]], Pal.G5 if equipped else Pal.G4, 9)
-		l.custom_minimum_size = Vector2(170, 0)
+		l.custom_minimum_size = Vector2(150, 0)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(l)
 		# В имуществе у оружия только тип и урон; полное описание — в лавке.
 		var short: String = info.desc
 		if info.type == "weapon":
 			short = "%s · урон %d" % [str(info.get("kind", "ближний бой" if info.get("melee", false) else "огнестрел")).to_lower(), int(info.dmg)]
 		var dsc := Pal.label(short, Pal.G3, 8)
-		dsc.custom_minimum_size = Vector2(250, 0)
+		dsc.custom_minimum_size = Vector2(120, 0)
+		dsc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		dsc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(dsc)
 		var act := ""
@@ -195,30 +197,48 @@ func _inventory() -> void:
 			"armor", "amulet": act = "Надеть" if not equipped else ""
 			"weapon": act = "Взять" if not equipped else ""
 			"mod": act = "Установить"
+		# кнопки стопкой справа, чтобы строка никогда не вылезала за экран пейджера
+		var btns := VBoxContainer.new()
+		btns.add_theme_constant_override("separation", 2)
+		btns.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		if act != "":
 			var b := Pal.button(act, _use.bind(it), 8)
-			b.custom_minimum_size = Vector2(80, 0)
-			row.add_child(b)
+			b.custom_minimum_size = Vector2(92, 0)
+			btns.add_child(b)
 		if it == "Бинт":
 			var sb := Pal.button("Зашить раны", _stitch, 8)
+			sb.custom_minimum_size = Vector2(92, 0)
 			sb.tooltip_text = "Попробовать залатать себя самому: мини-игра с иглой, исход зависит от Медицины и броска."
-			row.add_child(sb)
+			btns.add_child(sb)
+		if btns.get_child_count() > 0:
+			row.add_child(btns)
+		else:
+			btns.free()
 	# обвесы на оружии в руках
 	for wn in [p.weapon, p.melee]:
 		if wn == "" or not D.ITEMS.has(wn):
 			continue
 		var nslots := int(D.ITEMS[wn].get("mods", 2))
-		var row2 := HBoxContainer.new()
-		content.add_child(row2)
+		content.add_child(HSeparator.new())
 		var ml := Pal.label("Обвесы на %s (%s, слотов %d): %s" % [wn, G.weapon_class(wn).to_lower(), nslots, ", ".join(G.wmods(wn)) if not G.wmods(wn).is_empty() else "нет"], Pal.G3, 8)
-		ml.custom_minimum_size = Vector2(420, 0)
 		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		row2.add_child(ml)
-		for m in G.wmods(wn):
-			var rb := Pal.button("Снять: %s" % m.get_slice(" (", 0), _unmod.bind(wn, m), 8)
-			row2.add_child(rb)
+		ml.custom_minimum_size = Vector2(200, 0)
+		content.add_child(ml)
+		if not G.wmods(wn).is_empty():
+			var flow := HFlowContainer.new()
+			flow.add_theme_constant_override("h_separation", 4)
+			flow.add_theme_constant_override("v_separation", 2)
+			content.add_child(flow)
+			for m in G.wmods(wn):
+				flow.add_child(Pal.button("Снять: %s" % m.get_slice(" (", 0), _unmod.bind(wn, m), 8))
 	if p.weapon != "":
-		content.add_child(Pal.button("Перезарядить %s" % p.weapon, _reload, 9))
+		var rrow := HBoxContainer.new()
+		content.add_child(rrow)
+		var rb := Pal.button("Перезарядить: %s" % p.weapon, _reload, 9)
+		rb.clip_text = true
+		rb.custom_minimum_size = Vector2(200, 0)
+		rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rrow.add_child(rb)
 
 
 ## Светское: отношения с жителями и спутники.

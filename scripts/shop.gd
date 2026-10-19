@@ -70,11 +70,15 @@ func _fill() -> void:
 	money.text = "%d Су" % G.p.su
 	if m != 0:
 		money.text += "  ·  ХАР: цены %+d%%" % (-3 * m)
+	var rk := G.rel_price_k(G.shop_who)
+	if rk != 1.0:
+		money.text += "  ·  отношение: %+d%%" % roundi((rk - 1.0) * 100)
 	for c in buy_box.get_children() + sell_box.get_children():
 		c.queue_free()
 	for it in stock:
-		var price: int = G.price(D.ITEMS[it].price)
-		var b := Pal.button("%s — %d Су" % [it, price], _buy.bind(it), 9)
+		var price: int = G.price(D.ITEMS[it].price, it)
+		var deal: bool = it == G.p.get("deal_today", "")
+		var b := Pal.button("%s — %d Су%s" % [it, price, "  ★ для своих −25%" if deal else ""], _buy.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.mouse_entered.connect(_show_about.bind(it))
 		b.disabled = G.p.su < price
@@ -97,8 +101,12 @@ func _show_about(it: String) -> void:
 	about.text = "[b]%s[/b]\n%s" % [it, D.item_desc(it)]
 
 
+func _exit_tree() -> void:
+	G.shop_who = ""
+
+
 func _buy(it: String) -> void:
-	var price: int = G.price(D.ITEMS[it].price)
+	var price: int = G.price(D.ITEMS[it].price, it)
 	if G.p.su < price:
 		return
 	G.p.su -= price

@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.8"
+const VERSION := "0.9"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -212,8 +212,34 @@ func has_perk(name: String, c: Dictionary = p) -> bool:
 
 
 ## Цены у торговцев: −3% за каждый +1 мода ХАР, +3% за каждый −1.
-func price(base: int) -> int:
+## Чья лавка сейчас открыта: от отношения с хозяином зависят цены.
+var shop_who := ""
+
+
+## Множитель цен по отношению: врагам дороже, приятелям и близким дешевле.
+func rel_price_k(who: String) -> float:
+	if who == "":
+		return 1.0
+	match rel_tier(who).idx:
+		-2: return 1.25
+		-1: return 1.1
+		2: return 0.93
+		3: return 0.88
+	return 1.0
+
+
+## «Для своих»: знакомым хозяин каждый день уступает одну вещь на четверть дешевле.
+func deal_item(stock: Array, who: String) -> String:
+	if who == "" or stock.is_empty() or rel_tier(who).idx < 1:
+		return ""
+	return stock[absi(hash(str(p.seed) + who + "deal" + str(p.day))) % stock.size()]
+
+
+func price(base: int, item: String = "") -> int:
 	var k := 1.0 - 0.03 * mod("ХАР")
+	k *= rel_price_k(shop_who)
+	if item != "" and item == p.get("deal_today", ""):
+		k *= 0.75
 	# «Паранойя»: торговцы чувствуют недоверие. «Страшный человек»: скидка из страха.
 	if trait_has("Паранойя"):
 		k += 0.05
@@ -235,7 +261,49 @@ func phobia_open(n: int) -> void:
 
 
 func sell_price(base: int) -> int:
-	return maxi(1, roundi(base * (1.0 + 0.03 * mod("ХАР"))))
+	var k := 1.0 + 0.03 * mod("ХАР")
+	if shop_who != "" and rel_tier(shop_who).idx >= 2:
+		k += 0.05
+	return maxi(1, roundi(base * k))
+
+
+## Приветствие по отношению: от «прикидывает, где закопать» до «садись, рассказывай».
+const REL_GREET := {
+	-2: "{name} смотрит на вас так, будто прикидывает, где закопать тело. Цены для вас выросли.",
+	-1: "Вас встречают холодно, без улыбки. Здесь вам не рады.",
+	1: "Вас узнают и коротко кивают.",
+	2: "{name} улыбается: «А, это ты. Заходи, свои».",
+	3: "{name} по-настоящему рад{а} вам: «Садись, рассказывай. Живой, и слава Сефирам».",
+}
+## Мелкие услуги для приятелей: раз в день, не всегда.
+const REL_FAVOR := {
+	"cook": ["feed", 25, "Грета молча ставит перед вами миску: «За счёт дома. Худой ты какой-то». (+25 сытости)"],
+	"surgeon": ["item", "Бинт", "Кост, не глядя, кидает вам бинт: «Чтобы не шёл ко мне с каждой царапиной». (+1 Бинт)"],
+	"gunsmith": ["item", "Пистолетные патроны", "Сава подталкивает к вам пачку патронов: «Бракованные гильзы, но стреляют». (+1 Пистолетные патроны)"],
+	"bartender": ["item", "Самогон", "Гарри наливает и подвигает стакан: «Этот за мой счёт». (+1 Самогон)"],
+	"trader": ["item", "Сухпаёк", "Бартоломей суёт вам сухпаёк: «Просрочен, но тебе можно». (+1 Сухпаёк)"],
+	"old": ["calm", 6, "Ефим кладёт сухую ладонь вам на плечо, и в голове становится тише. (+6 ООР)"],
+	"mistel": ["feed", 15, "Ода угощает вас лепёшкой: «Дети велели передать». (+15 сытости)"],
+}
+
+
+## Строка в начале разговора: как к Гению относятся и не перепало ли чего.
+func rel_greeting(who: String, name: String, fem: bool) -> String:
+	var t := rel_tier(who)
+	var txt := ""
+	if REL_GREET.has(t.idx):
+		txt = str(REL_GREET[t.idx]).replace("{name}", name.get_slice(",", 0)).replace("{а}", "а" if fem else "")
+	var key := "favor_%s_%d" % [who, p.day]
+	if t.idx >= 2 and REL_FAVOR.has(who) and not flag(key):
+		set_flag(key)
+		if hash(str(p.seed) + key) % 2 == 0:
+			var fv: Array = REL_FAVOR[who]
+			match fv[0]:
+				"feed": feed(int(fv[1]))
+				"item": add_item(fv[1])
+				"calm": calm(int(fv[1]))
+			txt += "\n" + fv[2]
+	return txt
 
 
 ## Бесплатные перебросы удачи: 1 + мод УДЧ / 2 в день, если мод не отрицательный.
@@ -534,6 +602,9 @@ func _make_job(tpl: Dictionary, rng: RandomNumberGenerator, id: String) -> Dicti
 	var j: Dictionary = tpl.duplicate(true)
 	j["id"] = id
 	j["state"] = "active"
+	if tpl.has("pois"):
+		j["poi"] = tpl.pois[rng.randi() % tpl.pois.size()]
+		j["text"] = str(tpl.text).replace("{place}", D.LOCS[j.poi].name)
 	if j.kind == "kill":
 		var need: int = rng.randi_range(tpl.need[0], tpl.need[1])
 		j["need"] = need
@@ -547,9 +618,14 @@ func _make_job(tpl: Dictionary, rng: RandomNumberGenerator, id: String) -> Dicti
 func board_offers() -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(str(p.seed) + "board" + str(p.day))
-	var pool: Array = range(D.JOBS.size())
+	var pool: Array = []
+	for k in D.JOBS.size():
+		if job_cooldown(k) <= 0:
+			pool.append(k)
 	var res: Array = []
 	for i in 3:
+		if pool.is_empty():
+			break
 		var k: int = pool.pop_at(rng.randi() % pool.size())
 		var id := "d%d_%d" % [p.day, k]
 		var taken := false
@@ -559,6 +635,12 @@ func board_offers() -> Array:
 		if not taken and not flag("job_done_" + id):
 			res.append(_make_job(D.JOBS[k], rng, id))
 	return res
+
+
+## Сколько дней ещё ждать, пока этот житель снова попросит о том же (0 — можно).
+func job_cooldown(k: int) -> int:
+	var last := int(p.flags.get("jobcd_%d" % k, -99))
+	return maxi(0, last + int(D.JOBS[k].get("cd", 1)) - int(p.day))
 
 
 ## Особые задания: открываются постепенно. Возвращает [[предложение или null, причина замка]].
@@ -649,8 +731,10 @@ func on_kill(enemy: String) -> void:
 		p.flags["dogs"] = int(p.flags.get("dogs", 0)) + 1
 		if p.quests.get("dogs", "") == "active" and int(p.flags.dogs) >= 3:
 			quest("dogs", "done")
+	# слепец — взрослый слепыш: засчитывается и в задания на слепышей
+	var alias := "slepysh" if enemy == "slepets" else enemy
 	for j in p.jobs:
-		if j.state == "active" and j.kind == "kill" and j.enemy == enemy:
+		if j.state == "active" and j.kind == "kill" and (j.enemy == enemy or j.enemy == alias):
 			j.have = int(j.have) + 1
 			if j.have >= j.need:
 				j.state = "done"
@@ -684,8 +768,12 @@ func turn_in(id: String) -> void:
 		rel_add(j.giver, int(j.rel))
 	if j.giver == "ryzhaya":
 		p.flags["ry_errands"] = int(p.flags.get("ry_errands", 0)) + 1
-	if j.giver == "board" and not str(j.id).begins_with("sp_"):
+	# любое обычное задание (с доски или от жителя), кроме особых и личных просьб
+	if str(j.id).begins_with("d"):
 		p.flags["board_done"] = int(p.flags.get("board_done", 0)) + 1
+		p.flags["jobcd_" + str(j.id).get_slice("_", 1)] = int(p.day)
+		if int(p.flags.board_done) == 3 and not p.quests.has("spice"):
+			say("Слух по Кальдере: Матушка Грета на третьем ярусе ищет надёжного человека.")
 	set_flag("job_done_" + j.id)
 	if j.has("unlock"):
 		say(j.unlock)
@@ -1129,7 +1217,21 @@ func load_slot(i: int) -> bool:
 		return false
 	p = _fix_numbers(data.p)
 	log_lines = data.get("log", [])
+	_migrate()
 	return true
+
+
+## Старые сохранения: до 0.9 счётчик сданных заданий учитывал только задания от самой доски,
+## а их почти нет. Пересчитываем по флагам job_done_d… (все обычные подработки).
+func _migrate() -> void:
+	if int(p.flags.get("save_ver", 0)) >= 9:
+		return
+	var n := 0
+	for k in p.flags:
+		if str(k).begins_with("job_done_d"):
+			n += 1
+	p.flags["board_done"] = maxi(int(p.flags.get("board_done", 0)), n)
+	p.flags["save_ver"] = 9
 
 
 func any_save() -> int:

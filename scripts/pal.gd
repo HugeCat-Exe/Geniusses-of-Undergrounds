@@ -119,6 +119,14 @@ func button(text: String, cb: Callable, size: int = 10) -> Button:
 	b.add_theme_font_size_override("font_size", size)
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(cb)
+	# отклик: кнопка чуть вспыхивает под курсором и при нажатии
+	b.mouse_entered.connect(func():
+		if not b.disabled:
+			b.create_tween().tween_property(b, "modulate", Color(1.3, 1.3, 1.3), 0.08))
+	b.mouse_exited.connect(func(): b.create_tween().tween_property(b, "modulate", Color.WHITE, 0.15))
+	b.button_down.connect(func():
+		b.modulate = Color(1.7, 1.7, 1.7)
+		b.create_tween().tween_property(b, "modulate", Color(1.3, 1.3, 1.3), 0.12))
 	return b
 
 
