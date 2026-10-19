@@ -610,6 +610,37 @@ func _prop(kind: String) -> ImageTexture:
 			cv.put(3, 4, 6)
 			cv.put(15, 4, 6)
 			cv.put(9, 3, 9)
+		"herb_ash":
+			# пепельный тимьян: тонкие серые веточки с мелкими листочками
+			cv = Canvas.new(18, 18)
+			for i in 4:
+				var x0 := 4 + i * 3
+				cv.line(9, 17, x0, 3 + (i % 2) * 2, 2)
+				for k in 3:
+					cv.put(x0 + (1 if i < 2 else -1) * (k % 2), 5 + (i % 2) * 2 + k * 3, 4)
+			cv.put(9, 2, 5)
+		"herb_mint":
+			# собачья мята: низкий куст с широкими листьями
+			cv = Canvas.new(20, 14)
+			cv.ellipse(6, 8, 5, 3, 3)
+			cv.ellipse(14, 8, 5, 3, 3)
+			cv.ellipse(10, 5, 5, 3.5, 4)
+			cv.line(10, 13, 10, 6, 2)
+			cv.line(6, 8, 9, 10, 5)
+			cv.line(14, 8, 11, 10, 5)
+			cv.put(10, 3, 6)
+		"herb_pepper":
+			# звёздный перец: стебель с красными стручками-звёздочками
+			cv = Canvas.new(18, 20)
+			cv.line(9, 19, 9, 6, 3)
+			cv.line(9, 12, 4, 8, 3)
+			cv.line(9, 10, 14, 6, 3)
+			for c in [Vector2i(4, 7), Vector2i(14, 5), Vector2i(9, 4)]:
+				cv.put(c.x, c.y, 9)
+				cv.put(c.x - 1, c.y, 8)
+				cv.put(c.x + 1, c.y, 8)
+				cv.put(c.x, c.y - 1, 8)
+				cv.put(c.x, c.y + 1, 8)
 		"roots":
 			cv = Canvas.new(24, 14)
 			cv.ellipse(12, 9, 10, 4, 2)

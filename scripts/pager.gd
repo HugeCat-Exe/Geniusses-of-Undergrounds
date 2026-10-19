@@ -273,6 +273,14 @@ func _social() -> void:
 		var col := Pal.R3 if t.idx < 0 else (Pal.G5 if t.idx >= 2 else Pal.G4)
 		var star := "★ " if who_all[id].get("bond", false) else "   "
 		content.add_child(Pal.rich("%s[color=%s]%s[/color] — %s (%d)%s" % [star, Pal.hex(col), who_all[id].name, t.name, t.pts, nxt], 9))
+		if who_all[id].get("bond", false):
+			# пять сердец: ♥ заполнено, ♡ пусто
+			var n := G.hearts(id)
+			var hs := G.heart_state(id)
+			var row := "[color=%s]%s[/color][color=%s]%s[/color]  [color=%s]%s[/color]" % [Pal.hex(Pal.R3), "♥ ".repeat(n), Pal.hex(Pal.G2), "♡ ".repeat(5 - n), Pal.hex(Pal.G3), hs.text]
+			var hl := Pal.rich("      " + row, 9)
+			hl.add_theme_font_override("normal_font", load("res://fonts/DejaVuSansMono.ttf"))
+			content.add_child(hl)
 
 
 func _split() -> void:
@@ -303,8 +311,9 @@ func _reload() -> void:
 
 
 func _quests() -> void:
-	if G.p.get("companion", "") == "ryzhaya":
-		content.add_child(Pal.rich("[color=%s][b]Спутница: Рыжая[/b] · отношение «%s»[/color]" % [Pal.hex(Pal.G5), G.rel_tier("ryzhaya").name], 9))
+	var cmp: String = G.p.get("companion", "")
+	if cmp != "":
+		content.add_child(Pal.rich("[color=%s][b]Спутница: %s[/b] · отношение «%s»[/color]" % [Pal.hex(Pal.G5), "Рыжая" if cmp == "ryzhaya" else "Дана", G.rel_tier(cmp).name], 9))
 		content.add_child(HSeparator.new())
 	for j in G.p.jobs:
 		var prog := ""

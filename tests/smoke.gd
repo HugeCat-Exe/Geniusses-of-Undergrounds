@@ -494,6 +494,7 @@ func run(main: Node) -> void:
 	G.add_item("Камень души")
 	print(G.use_item("Каска шахтёра"), " ", G.use_item("Камень души"), " armor ", G.armor_total())
 	await _smoke_09()
+	await _smoke_091()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -674,6 +675,76 @@ func _smoke_09() -> void:
 	await _shot("48_pager_inv")
 	_close_overlays()
 	await _wait(0.2)
+
+
+## Проверки версии 0.9.1.
+func _smoke_091() -> void:
+	# Дана: спутница-защитница
+	G.p.rel["patrol"] = 30
+	M.show_world("caldera2", "")
+	await _wait(0.6)
+	M.open_dialogue("dana_start")
+	await _wait(0.8)
+	await _shot("50_dana")
+	_close_overlays()
+	G.set_companion("patrol")
+	await _wait(0.8)
+	print("SMOKE 091 dana companion ", G.p.companion, " mate ", M.world.has_mate(), " dana npc on map ", M.world.cut_find("patrol") != null)
+	await _shot("51_dana_follow")
+	M.start_combat("pes", func(_r): pass)
+	await _wait(1.2)
+	var cb = M.overlay.get_child(M.overlay.get_child_count() - 1)
+	await cb._dana_turn()
+	await _wait(0.3)
+	await _shot("52_dana_combat")
+	print("SMOKE 091 dana skip ", cb.enemy_skip)
+	_close_overlays()
+	G.set_companion("")
+	await _wait(0.6)
+	# HUD
+	M.world._update_hud()
+	print("SMOKE 091 hud ", M.world.hud_text.text.get_slice("Оружие", 1).substr(0, 30))
+	# сердца
+	G.p.rel["ryzhaya"] = 50
+	print("SMOKE 091 hearts ry ", G.heart_state("ryzhaya").text, " | dana ", G.heart_state("patrol").text)
+	M.open_pager(3)
+	await _wait(0.5)
+	await _shot("53_hearts")
+	_close_overlays()
+	# катсцена (тестовая, не из игры)
+	M.show_world("caldera2", "")
+	await _wait(0.6)
+	var done := [false]
+	M.world.play_cutscene([["spawn", "patrol", 10, 6], ["cam", 10, 6], ["walk", "patrol", 12, 6], ["face", "patrol", "left"],
+		["emote", "patrol", "♥"], ["say", "patrol", "— Тестовая сцена. Сердца пишет Михаил."], ["say", "", "Авторский текст."], ["cam"]], func(): done[0] = true)
+	await _wait(1.6)
+	await _shot("54_cutscene")
+	for k in 40:
+		if done[0]:
+			break
+		await _wait(0.25)
+	print("SMOKE 091 cutscene done ", done[0], " blocked ", M.world.blocked())
+	# свойство постсмертия
+	var lvk := D.KEYS.find("ЛВК")
+	var bad := ""
+	for tr in D.PHYS:
+		if D.PHYS[tr][lvk] <= -4:
+			bad = tr
+	if bad != "":
+		for k in 3:
+			G.p.got_phys.append(bad)
+	print("SMOKE 091 perk cause ", bad, " -> ", G.perk_cause("Неуклюжий"), " perks ", G.perks())
+	G.p.got_phys.clear()
+	# подвал: всегда ночь
+	M.show_world("raid1", "top")
+	await _wait(0.8)
+	print("SMOKE 091 raid dark ", M.world.dark, " lamps ", M.world.lamp_pos.size())
+	await _shot("55_raid_dark")
+	# травы
+	G.quest("spice", "active")
+	M.show_world("waste", "")
+	await _wait(0.6)
+	await _shot("56_herb")
 
 
 func _close_overlays() -> void:

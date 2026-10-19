@@ -28,6 +28,7 @@ var lunge := 0.0      # рывок врага на Гения (0..1)
 var knock := 0.0      # отдача от попадания по врагу (0..1)
 var dead_k := 0.0     # поверженный враг оседает и тускнеет
 var hurt_rect: ColorRect
+var enemy_skip := false   # Дана сбила врага с ног: он пропускает ход
 
 
 func _ready() -> void:
@@ -215,6 +216,8 @@ func _update_status() -> void:
 	s += "Ближний: %s · защ. %d · уклон. %d" % [p.melee, G.phys_def(), G.evasion()]
 	if p.get("companion", "") == "ryzhaya":
 		s += "\n[color=%s]Рыжая рядом: стреляет сама[/color]" % Pal.hex(Pal.G5)
+	elif p.get("companion", "") == "patrol":
+		s += "\n[color=%s]Дана рядом: прикрывает щитом[/color]" % Pal.hex(Pal.G5)
 	if p.wounds.size() > 0:
 		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
 	status.text = s
@@ -511,6 +514,12 @@ func _flee() -> void:
 
 ## Конец раунда: сначала стреляет спутница (бесплатно), потом ходит враг.
 func _round_end() -> void:
+	if G.p.get("companion", "") == "patrol" and not finished:
+		await _dana_turn()
+		if _enemy_dead():
+			await _wait(0.4)
+			_victory()
+			return
 	if G.p.get("companion", "") == "ryzhaya" and not finished:
 		await _ally_turn()
 		# «Вожак»: раз в бой спутница действует дважды.
@@ -523,6 +532,32 @@ func _round_end() -> void:
 			_victory()
 			return
 	await _enemy_turn()
+
+
+## Дана: бьёт дубинкой не всегда, зато может сбить врага с ног, и тогда он пропускает ход.
+func _dana_turn() -> void:
+	var alive: Array = parts.filter(func(q): return q.hp > 0)
+	if alive.is_empty():
+		return
+	var tier: int = G.rel_tier("patrol").idx
+	if randf() < 0.22 + 0.04 * maxi(0, tier - 1):
+		enemy_skip = true
+		_log("[color=%s]Дана бьёт щитом с разворота. %s падает и не успевает ответить.[/color]" % [Pal.hex(Pal.G5), E.name])
+		_pop("сбит с ног", view.position + Vector2(96, 30), Pal.G4)
+		_tw("knock", 1.0, 0.05, 0.3)
+		await _wait(0.5)
+		return
+	if randf() < 0.55:
+		var target: Dictionary = alive.pick_random()
+		var dmg := maxi(1, randi_range(6, 10) + maxi(0, tier - 2) * 2 - int(E.def))
+		target.hp -= dmg
+		_log("[color=%s]Дана бьёт дубинкой в «%s»: %d урона.[/color]" % [Pal.hex(Pal.G5), target.name, dmg])
+		_pop("%d" % dmg, _part_pos(target) + Vector2(-10, 6), Pal.G4)
+		_tw("knock", 0.6, 0.05, 0.2)
+		if target.hp <= 0:
+			_log("[color=%s]«%s» уничтожено.[/color]" % [Pal.hex(Pal.R3), target.name])
+		_update_status()
+		await _wait(0.4)
 
 
 func _ally_turn() -> void:
@@ -580,6 +615,10 @@ func _enemy_turn() -> void:
 	if atks.is_empty():
 		_log("%s корчится, но больше не может атаковать." % E.name)
 		return
+	if enemy_skip:
+		enemy_skip = false
+		_log("%s поднимается с земли и пропускает ход." % E.name)
+		return
 	var a: Dictionary = atks.pick_random()
 	if a.get("prayer", false):
 		await _prayer(a)
@@ -608,6 +647,11 @@ func _enemy_turn() -> void:
 	if not hit:
 		_log("%s %s %s — [color=%s]промах[/color]." % [E.name, a.text, where if a.kind == "mind" else _acc(target), Pal.hex(Pal.G3)])
 		_pop("уклон", Vector2(132, 262), Pal.G4)
+		return
+	# Дана может принять удар на щит
+	if a.kind == "body" and G.p.get("companion", "") == "patrol" and randf() < 0.2 + 0.04 * maxi(0, G.rel_tier("patrol").idx - 1):
+		_log("[color=%s]Дана шагает вперёд и принимает удар на щит. Вас даже не задело.[/color]" % Pal.hex(Pal.G5))
+		_pop("щит", Vector2(132, 262), Pal.G4)
 		return
 	var dmg := float(a.dmg) * randf_range(0.85, 1.15)
 	if target == "Голова" and a.kind == "body":

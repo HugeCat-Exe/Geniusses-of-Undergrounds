@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.9"
+const VERSION := "0.9.1"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -205,6 +205,47 @@ func perks(c: Dictionary = p) -> Array:
 		elif v <= 4:
 			res.append(D.PERKS[k][1])
 	return res
+
+
+## Свойство постсмертия: его не было при создании, оно появилось от травм.
+## Возвращает травмы, из-за которых оно есть (пусто — врождённое).
+func perk_cause(name: String, c: Dictionary = p) -> Array:
+	var base := c.duplicate()
+	base.got_phys = []
+	base.got_psy = []
+	if name in perks(base):
+		return []
+	var k := ""
+	var good := false
+	for a in D.ATTRS:
+		if D.PERKS[a][0] == name or D.PERKS[a][1] == name:
+			k = a
+			good = D.PERKS[a][0] == name
+	var i := D.KEYS.find(k)
+	var res: Array = []
+	for tr in c.got_phys:
+		var v: float = D.PHYS[tr][i]
+		if (v < 0 and not good) or (v > 0 and good):
+			res.append(tr)
+	for tr in c.got_psy:
+		var v2: float = D.PSY[tr][i]
+		if (v2 < 0 and not good) or (v2 > 0 and good):
+			res.append(tr)
+	return res
+
+
+## Какие свойства постсмертия уйдут вместе с травмой.
+func perks_from(trauma: String) -> Array:
+	var res: Array = []
+	for x in perks():
+		if trauma in perk_cause(x):
+			res.append(x)
+	return res
+
+
+## Реконструкция у автодока дорожает с каждым разом.
+func autodoc_cure_price() -> int:
+	return 1200 + 300 * int(p.flags.get("autodoc_cures", 0))
 
 
 func has_perk(name: String, c: Dictionary = p) -> bool:
@@ -532,7 +573,7 @@ func new_day() -> void:
 func set_companion(id: String) -> void:
 	var old: String = p.get("companion", "")
 	p.companion = id
-	if id == "" and old != "":
+	if old != "" and old != id:
 		say("%s возвращается на своё место: %s." % [WHO_NAME(old), D.COMPANION_HOME.get(old, "в Кальдеру")])
 	changed.emit()
 	world_dirty = true
@@ -549,6 +590,55 @@ func refresh_world() -> void:
 	if m.world:
 		var mp: String = p.map
 		m.show_world.call_deferred(mp, "")
+
+
+# ---------- Сердца (у кого ★) ----------
+
+const Hearts := preload("res://scripts/hearts.gd")
+
+
+func hearts(who: String) -> int:
+	return int(p.get("hearts", {}).get(who, 0))
+
+
+## Состояние следующего сердца: {state, text, heart}. state: locked / wait / unwritten / ready / full.
+func heart_state(who: String) -> Dictionary:
+	if not Hearts.HEARTS.has(who):
+		return {"state": "none", "text": ""}
+	var n := hearts(who)
+	if n >= 5:
+		return {"state": "full", "text": "Все пять сердец заполнены."}
+	if rel_tier(who).idx < 3:
+		return {"state": "locked", "text": "Сердца откроются на ступени «Близкие знакомые»."}
+	var last := int(p.get("heart_day", {}).get(who, -99))
+	if n > 0 and int(p.day) < last + Hearts.GAP_DAYS:
+		var left := last + Hearts.GAP_DAYS - int(p.day)
+		return {"state": "wait", "text": "Следующее сердце: через %d дн." % left}
+	var h: Dictionary = Hearts.HEARTS[who][n]
+	if h.is_empty():
+		return {"state": "unwritten", "text": "Сердце %d: сюжет ещё не написан." % (n + 1)}
+	return {"state": "ready", "text": "Сердце %d «%s»: загляните сюда — %s." % [n + 1, h.get("title", "…"), h.get("where", h.map)], "heart": h}
+
+
+## Готовая сцена сердца, которая происходит на этой карте (или null).
+func heart_here(map_name: String):
+	for who in Hearts.HEARTS:
+		var st := heart_state(who)
+		if st.state == "ready" and st.heart.map == map_name:
+			return {"who": who, "scene": st.heart.scene}
+	return null
+
+
+func heart_done(who: String) -> void:
+	if not p.has("hearts"):
+		p["hearts"] = {}
+	if not p.has("heart_day"):
+		p["heart_day"] = {}
+	p.hearts[who] = hearts(who) + 1
+	p.heart_day[who] = int(p.day)
+	say("%s: сердце %d из 5 заполнено." % [WHO_NAME(who), hearts(who)])
+	changed.emit()
+	autosave()
 
 
 func WHO_NAME(who: String) -> String:
@@ -711,9 +801,13 @@ func escort_arrive() -> void:
 	var j = escort_job()
 	if j == null or j.state != "escort":
 		return
-	say("Бедолага оглядывается, будто не верит, и уходит вглубь яруса. У него теперь есть дом.")
+	var su := int(j.su)
 	turn_in(j.id)
 	set_flag("rescued_once")
+	# отдельная сцена: человек благодарит, Институт переводит оплату на пейджер
+	temp_nodes["stray_thanks"] = {"who": "stray", "text": "У ворот Кальдеры бедолага останавливается, будто не верит, что дошёл. Трогает холодную стену, потом хватает вас за руку обеими ладонями.\n\n— Я думал, там и останусь. В том посёлке. Спасибо, Гений. Я... я не знаю, чем отдать.\n\nОн уходит вглубь яруса, оглядываясь на каждом шагу. У него теперь есть дом.\n\nПейджер дважды пищит. На экране: «ИНСТИТУТ ПО ЭТИКЕ. ЗАДАНИЕ «СИГНАЛ ИЗ ПОСЁЛКА» ЗАКРЫТО. ПЕРЕВЕДЕНО: %d СУ».\n\n[color=#7ff07a](+%d Су на счёт пейджера)[/color]" % [su, su],
+		"choices": [{"t": "Не за что.", "next": "end"}]}
+	main().open_dialogue.call_deferred("stray_thanks")
 
 
 func job_by_id(id: String):

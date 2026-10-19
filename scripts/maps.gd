@@ -258,7 +258,8 @@ func _caldera2() -> Dictionary:
 	# лифт в нише
 	objs.append(_prop("lift", 19, 1, "Грузовой лифт", "lift"))
 	objs.append(_prop("jobscreen", 6, 4, "Экран заданий Института", "board"))
-	objs.append(_npc("patrol", 16, 7, "Патрульная Дана", "res_patrol", 1))
+	if G.p.get("companion", "") != "patrol":
+		objs.append(_npc("patrol", 16, 7, "Патрульная Дана", "dana_start", 1))
 	objs.append(_prop("crate", 15, 5, "Ящики"))
 	objs.append(_prop("barrel", 18, 5, "Бочка"))
 	objs.append(_prop("cable", 14, 4, "Провода"))
@@ -409,7 +410,7 @@ func _waste() -> Dictionary:
 	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
 	objs.append(_prop("hatch", 2, 2, "Шахта Кальдеры", "to_caldera"))
 	if G.p.quests.get("spice", "") == "active" and not G.has("Пепельный тимьян"):
-		objs.append(_prop("herb", 5, 4, "Пепельный тимьян", "herb_1", false))
+		objs.append(_prop("herb_ash", 5, 4, "Пепельный тимьян", "herb_1", false))
 	objs.append(_prop("roadend", 1, 12, "Обрывок дороги · точка эвакуации", "evac"))
 	objs.append(_big("bus", 3, 8, 5, 2, "Опрокинутый автобус"))
 	objs.append(_prop("wreck", 34, 27, "Разбитый караван"))
@@ -682,7 +683,7 @@ func _poi_den() -> Dictionary:
 	for pos in [Vector2i(10, 6), Vector2i(14, 4), Vector2i(5, 9), Vector2i(19, 8)]:
 		objs.append(_prop("bones", pos.x, pos.y, "Обглоданные кости", "", false))
 	if G.p.quests.get("spice", "") == "active" and not G.has("Собачья мята"):
-		objs.append(_prop("herb", 6, 3, "Собачья мята", "herb_2", false))
+		objs.append(_prop("herb_mint", 6, 3, "Собачья мята", "herb_2", false))
 	objs.append(_exit(23, 17))
 	_scatter(grid, objs, 702, 22, [Rect2i(9, 1, 6, 5), Rect2i(20, 14, 6, 6)])
 	_ensure_paths(grid, objs, Vector2i(22, 16), [Vector2i(12, 3), Vector2i(23, 17)])
@@ -754,7 +755,10 @@ func _raid1() -> Dictionary:
 	objs.append(_prop("cache", 1, 7, "Аптечный шкаф", "raid_c3"))
 	objs.append(_prop("table", 3, 7, "Опрокинутый стол"))
 	objs.append(_prop("barrel", 8, 7, "Остывшая жаровня"))
+	# в подвале всегда ночь: светло только у редких слабых ламп
 	objs.append(_prop("lamp", 11, 7, "Мигающая лампа"))
+	objs.append(_prop("lamp", 17, 4, "Слабая лампа"))
+	objs.append(_prop("lamp", 6, 12, "Слабая лампа"))
 	objs.append(_prop("cache", 16, 7, "Сейф без дверцы", "raid_c4"))
 	objs.append(_prop("shelf", 18, 7, "Стеллаж с инструментом"))
 	objs.append(_prop("stairs_down", 1, 12, "Лестница вниз, на ярус 6", "go:raid2:top"))
@@ -762,8 +766,8 @@ func _raid1() -> Dictionary:
 	objs.append(_raid_mob("slepysh", "b", 11, 9, 4))
 	objs.append(_raid_mob("slepysh", "c", 19, 9, 4))
 	var grid := _grid(RAID1)
-	return {"name": "Ярус 5 · Заброшенный", "floor": grid, "objs": objs, "waste": false, "depth": 0, "raid": true,
-		"spawns": {"top": Vector2i(2, 3), "bottom": Vector2i(4, 12)}, "light": 4.5}
+	return {"name": "Ярус 5 · Заброшенный", "floor": grid, "objs": objs, "waste": false, "depth": 0, "raid": true, "dark": true,
+		"spawns": {"top": Vector2i(2, 3), "bottom": Vector2i(4, 12)}, "light": 2.0}
 
 
 func _raid2() -> Dictionary:
@@ -775,14 +779,17 @@ func _raid2() -> Dictionary:
 	objs.append(_prop("cache", 1, 7, "Сундук под водой", "raid_c7"))
 	objs.append(_prop("cache", 9, 7, "Мастерская оружейника", "raid_c8"))
 	objs.append(_prop("bones", 13, 9, "Кости", "", false))
+	objs.append(_prop("lamp", 14, 1, "Слабая лампа"))
+	objs.append(_prop("lamp", 5, 8, "Слабая лампа"))
+	objs.append(_prop("lamp", 17, 9, "Слабая лампа"))
 	# на шестом ярусе живут старшие, слепцы: крупнее, злее, слышат сердце
 	objs.append(_raid_mob("slepets", "d", 5, 4, 4))
 	objs.append(_raid_mob("slepets", "e", 14, 2, 4))
 	objs.append(_raid_mob("slepysh", "f", 12, 9, 5))
 	objs.append(_raid_mob("slepysh", "g", 4, 9, 4))
 	var grid := _grid(RAID2)
-	return {"name": "Ярус 6 · Затопленный", "floor": grid, "objs": objs, "waste": false, "depth": 0, "raid": true,
-		"spawns": {"top": Vector2i(2, 3)}, "light": 4.0}
+	return {"name": "Ярус 6 · Затопленный", "floor": grid, "objs": objs, "waste": false, "depth": 0, "raid": true, "dark": true,
+		"spawns": {"top": Vector2i(2, 3)}, "light": 2.0}
 
 
 ## Тайник из слуха Гарри: у тропы, рядом с точкой входа.
@@ -829,7 +836,7 @@ func _poi_forest() -> Dictionary:
 	objs.append(_prop("roots", 4, 12, "Свежие коренья", "forest_forage_3"))
 	objs.append(_prop("roots", 23, 7, "Светлые листья", "forest_forage_4"))
 	if G.p.quests.get("spice", "") == "active" and not G.has("Звёздный перец"):
-		objs.append(_prop("herb", 16, 9, "Звёздный перец", "herb_3", false))
+		objs.append(_prop("herb_pepper", 16, 9, "Звёздный перец", "herb_3", false))
 	objs.append(_mob("plant", _daily("forest_plant_a"), 15, 8, 1))
 	objs.append(_mob("plant", _daily("forest_plant_b"), 7, 6, 1))
 	objs.append(_mob("plant", _daily("forest_plant_c"), 22, 9, 1))

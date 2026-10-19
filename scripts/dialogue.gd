@@ -200,14 +200,18 @@ func _dynamic_choices(n: Dictionary) -> Array:
 	if n.has("cure"):
 		var psy: bool = n.cure == "psy"
 		var list: Array = G.p.got_psy if psy else G.p.got_phys
-		var cost := 60 if psy else 90
+		var cost := 350 if psy else G.autodoc_cure_price()
 		var used := G.flag("cure_%s_%d" % [n.cure, G.p.day])
 		for tr in list:
 			var t := "%s «%s» (%d Су)" % ["Вынуть из головы" if psy else "Реконструкция:", tr, cost]
+			if not psy and G.perks_from(tr).size() > 0:
+				t = "Реконструкция: «%s», уйдёт «%s» (%d Су)" % [tr, ", ".join(G.perks_from(tr)), cost]
 			if used:
 				res.append({"t": t + " — только завтра", "next": current_id})
 			elif G.p.su >= cost:
 				res.append({"t": t, "fx": [["cure", n.cure, tr]], "next": "stranger_cure_result" if psy else "cure_result"})
+			else:
+				res.append({"t": t + " — не хватает Су", "next": current_id})
 	if n.has("poi"):
 		for j in G.p.jobs:
 			if j.kind == "find" and j.poi == n.poi and j.state == "active" and not j.get("spot", false):
@@ -454,7 +458,7 @@ func _cond(c: String) -> bool:
 		"wounds":
 			return G.p.wounds.size() > 0 and G.p.su >= 40
 		"injury":
-			return G.p.got_phys.size() > 0 and G.p.su >= 120
+			return G.p.got_phys.size() > 0 and G.p.su >= 1600
 		"old_stone":
 			return G.rel_tier("old").idx >= 1
 		"prayed_today":
@@ -467,6 +471,11 @@ func _cond(c: String) -> bool:
 			return G.p.hp < G.max_hp() and G.p.su >= _doc_cost()
 		"companion":
 			return G.p.get("companion", "") == "ryzhaya"
+		"dana_job_ok":
+			for j in G.p.jobs:
+				if j.giver == "patrol":
+					return false
+			return int(G.p.day) >= int(G.p.flags.get("dana_job_day", -99)) + 2
 		"ry_job_active":
 			for j in G.p.jobs:
 				if j.giver == "ryzhaya":
@@ -485,6 +494,8 @@ func _cond(c: String) -> bool:
 		return G.spice_ready()
 	if c == "spice_all":
 		return G.p.quests.get("spice", "") == "active" and G.spice_herbs() == 3
+	if c.begins_with("comp:"):
+		return G.p.get("companion", "") == c.substr(5)
 	if c.begins_with("today:"):
 		return int(G.p.flags.get(c.substr(6), -1)) == G.p.day
 	if c.begins_with("raid_taken:"):
@@ -509,7 +520,7 @@ func _cond(c: String) -> bool:
 func _cure(kind: String, tr: String) -> String:
 	var psy := kind == "psy"
 	G.set_flag("cure_%s_%d" % [kind, G.p.day])
-	G.p.su -= 60 if psy else 90
+	G.p.su -= 350 if psy else G.autodoc_cure_price()
 	var res: String
 	if psy:
 		G.pass_hours(4)
@@ -522,6 +533,7 @@ func _cure(kind: String, tr: String) -> String:
 			res = "%s\n\nВы держитесь сколько можете, но голос внутри цепляется крепче. Незнакомец отнимает руки.\n\n— Не сегодня. Она вросла глубже, чем я думал. Приходи завтра.\n\n[color=#ff6650](Черта «%s» осталась, −%d ООР. Су не вернуть.)[/color]" % [G.roll_text(r), tr, m]
 	else:
 		if randf() < 0.65:
+			G.p.flags["autodoc_cures"] = int(G.p.flags.get("autodoc_cures", 0)) + 1
 			G.p.got_phys.erase(tr)
 			res = "Ремни затягиваются, манипуляторы опускаются. Машина гудит, режет и шьёт час с лишним. Экран: «РЕКОНСТРУКЦИЯ ЗАВЕРШЕНА».\n\n[color=#7ff07a](Травма «%s» устранена)[/color]" % tr
 		else:
@@ -598,7 +610,7 @@ func _fx(list: Array) -> void:
 				G.changed.emit()
 			"remove_injury":
 				var tr: String = G.p.got_phys[G.p.got_phys.size() - 1]
-				if randf() < 0.8:
+				if true:
 					G.p.got_phys.erase(tr)
 					injury_result = "Кост работает молча и долго. Когда вы приходите в себя, травмы «%s» больше нет.\n\n— Не благодари. Плати." % tr
 				else:
@@ -663,6 +675,10 @@ func _fx(list: Array) -> void:
 				G.turn_in(f[1])
 			"take_offer":
 				G.take_job(f[1])
+			"dana_job":
+				G.p.flags["dana_job_day"] = int(G.p.day)
+				var rngd := RandomNumberGenerator.new()
+				G.take_job(G._make_job(D.DANA_JOBS[int(f[1])], rngd, "dana_%d_%d" % [int(f[1]), G.p.day]))
 			"ry_job":
 				var tpl: Dictionary = D.RY_EARRING if f[1] == "earring" else D.RY_JOBS[int(f[1])]
 				var rng := RandomNumberGenerator.new()
@@ -694,6 +710,8 @@ func _fx(list: Array) -> void:
 				G.heal(h)
 			"companion":
 				G.set_companion(f[1])
+			"mark_day":
+				G.p.flags[f[1]] = int(G.p.day)
 			"mark":
 				if not (f[1] in G.p.known):
 					G.p.known.append(f[1])

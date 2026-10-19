@@ -110,9 +110,9 @@ func _build() -> void:
 	desc.text = ""
 	match step:
 		0:
-			_field("Позывной", c.callsign, _set_text.bind("callsign"))
-			_field("Полное имя", c.name, _set_text.bind("name"))
-			_field("Ключевая фраза", c.motive, _set_text.bind("motive"))
+			_field("Позывной", c.callsign, _set_text.bind("callsign"), 28)
+			_field("Полное имя", c.name, _set_text.bind("name"), 40)
+			_field("Ключевая фраза", c.motive, _set_text.bind("motive"), 80)
 		1:
 			for s in ["М", "Ж"]:
 				_option("Мужской" if s == "М" else "Женский", c.sex == s, _pick.bind("sex", s), _mods_text(D.SEXES[s]))
@@ -160,11 +160,11 @@ func _build() -> void:
 	_refresh()
 
 
-func _field(caption: String, value: String, cb: Callable) -> void:
+func _field(caption: String, value: String, cb: Callable, maxlen: int = 28) -> void:
 	list.add_child(Pal.label(caption + ":", Pal.G3))
 	var le := LineEdit.new()
 	le.text = value
-	le.max_length = 28
+	le.max_length = maxlen
 	le.text_changed.connect(cb)
 	list.add_child(le)
 
@@ -355,7 +355,9 @@ static func sheet_text(ch: Dictionary, creating: bool) -> String:
 		var parts: Array = []
 		for x in pk:
 			var good: bool = x in ["Тяжеловес", "Эрудит", "Чуткий", "Ловкач", "Вожак", "Везунчик"]
-			parts.append("[url=%s][color=%s]%s[/color][/url]" % [x, Pal.hex(Pal.G5) if good else Pal.hex(Pal.R3), x])
+			var cause: Array = G.perk_cause(x, ch) if not creating else []
+			var why := " (постсмертие: %s)" % ", ".join(cause) if cause.size() > 0 else ""
+			parts.append("[url=%s][color=%s]%s%s[/color][/url]" % [x, Pal.hex(Pal.G5) if good else Pal.hex(Pal.R3), x, why])
 		s += "\n[color=%s]Свойства:[/color] %s\n" % [Pal.hex(Pal.G3), ", ".join(parts)]
 	var tr: Array = []
 	for t in ch.phys + ch.psy:

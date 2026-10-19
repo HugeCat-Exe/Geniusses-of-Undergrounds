@@ -26,6 +26,11 @@ var mate_pos := Vector2.ZERO
 var mate_trail: Array = []
 var esc_pos := Vector2.ZERO   # спасённый бедолага идёт следом
 var esc_trail: Array = []
+# у спутников своё направление взгляда и шаг: раньше они разворачивались вместе с Гением и «дёргались»
+var mate_flip := false
+var esc_flip := false
+var mate_walk := 0.0
+var esc_walk := 0.0
 var clock_t := 0.0
 var night_rect: ColorRect
 var night_amt := 0.0
@@ -67,6 +72,11 @@ var motes: Array = []     # пылинки (в Кальдере) или песо
 var puffs: Array = []     # облачка пыли из-под ног
 var cam_look := Vector2.ZERO
 var enc_wait := 0.0       # пауза между «!» над врагом и началом боя
+var cut_active := false   # идёт катсцена: управление у сценария
+var cam_override = null   # клетка, куда смотрит камера в катсцене
+var emotes := {}          # кто -> [значок, сколько ещё висит]
+var dark := false         # подвал (ярусы 5–6): всегда ночь, свет только у ламп
+var lamp_pos: Array = []
 const GLOWS := ["lamp", "neon", "terminal", "jobscreen", "autodoc", "bar", "lift"]
 
 var hud: Control
@@ -84,6 +94,7 @@ func setup(map_name: String, spawn: String) -> void:
 	waste = map.waste
 	light = map.light
 	depth = map.get("depth", 0)
+	dark = map.get("dark", false)
 	astar.region = Rect2i(0, 0, W, H)
 	astar.cell_size = Vector2(1, 1)
 	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
@@ -129,6 +140,9 @@ func setup(map_name: String, spawn: String) -> void:
 			obj_at[t] = ob
 			if ob.block:
 				astar.set_point_solid(t, true)
+	for ob in objs:
+		if ob.get("kind", "") == "lamp":
+			lamp_pos.append(Vector2(ob.pos))
 	if spawn != "" and map.spawns.has(spawn):
 		ppos = map.spawns[spawn]
 	else:
@@ -174,6 +188,110 @@ func _place_job_spots() -> void:
 		obj_at[t] = ob
 
 
+# ---------------- катсцены ----------------
+
+## Найти участника сцены: житель на карте по id.
+func cut_find(who: String) -> Variant:
+	for o in objs:
+		if o.type == "npc" and o.get("id", "") == who:
+			return o
+	return null
+
+
+func add_cut_actor(who: String, t: Vector2i) -> void:
+	if cut_find(who) != null:
+		return
+	var ob := {"type": "npc", "id": who, "pos": t, "x": t.x, "y": t.y, "title": preload("res://scripts/story.gd").WHO.get(who, {}).get("name", who),
+		"action": "", "block": false, "reach": 1, "look": Maps.NPC_LOOKS[who].person, "kind": "", "ph": 0.0, "cut_temp": true}
+	ob.tex = Art.person_tex(ob.look)
+	objs.append(ob)
+	obj_at[t] = ob
+
+
+func remove_cut_actor(o) -> void:
+	if o == null:
+		return
+	objs.erase(o)
+	if obj_at.get(o.pos) == o:
+		obj_at.erase(o.pos)
+	if o.get("block", false):
+		astar.set_point_solid(o.pos, false)
+
+
+func cut_face(who: String, left: bool) -> void:
+	if who == "genius":
+		flip = left
+	elif who == "mate":
+		mate_flip = left
+	else:
+		var o = cut_find(who)
+		if o != null:
+			o["face"] = left
+
+
+func cut_emote(who: String, e: String) -> void:
+	emotes[who] = [e, 1.4]
+
+
+## Пройти к клетке по-настоящему, клетка за клеткой.
+func cut_walk(who: String, t: Vector2i) -> void:
+	if who == "genius":
+		_path_to(t)
+		while not path.is_empty() and is_inside_tree():
+			await get_tree().process_frame
+		return
+	if who == "mate":
+		for c in astar.get_id_path(Vector2i(mate_pos.round()), t):
+			while mate_pos.distance_to(Vector2(c)) > 0.01:
+				var r := _follow(mate_pos, Vector2(c), get_process_delta_time() * SPEED * 0.8, mate_flip)
+				mate_pos = r[0]
+				mate_flip = r[1]
+				mate_walk += get_process_delta_time()
+				await get_tree().process_frame
+		mate_walk = 0.0
+		return
+	var o = cut_find(who)
+	if o == null:
+		return
+	var was_solid: bool = o.get("block", false)
+	astar.set_point_solid(o.pos, false)
+	obj_at.erase(o.pos)
+	var ids := astar.get_id_path(o.pos, t)
+	var fp := Vector2(o.pos)
+	for i in range(1, ids.size()):
+		var c := Vector2(ids[i])
+		var lr := (c - fp).x - (c - fp).y
+		if absf(lr) > 0.05:
+			o["face"] = lr < 0
+		while fp.distance_to(c) > 0.01:
+			fp = fp.move_toward(c, get_process_delta_time() * SPEED * 0.6)
+			o["cpos"] = fp
+			o["walk"] = o.get("walk", 0.0) + get_process_delta_time()
+			await get_tree().process_frame
+	o.pos = t
+	o.erase("cpos")
+	o["walk"] = 0.0
+	obj_at[t] = o
+	if was_solid:
+		astar.set_point_solid(t, true)
+
+
+## Сердце готово и сцена происходит здесь: запускаем.
+func _check_heart() -> void:
+	var h = G.heart_here(G.p.map)
+	if h == null:
+		return
+	play_cutscene(h.scene, func(): G.heart_done(h.who))
+
+
+func play_cutscene(list: Array, on_done: Callable = Callable()) -> void:
+	var cs = preload("res://scripts/cutscene.gd").new()
+	add_child(cs)
+	if on_done.is_valid():
+		cs.finished.connect(on_done)
+	cs.play(self, list)
+
+
 func _ready() -> void:
 	cam = Camera2D.new()
 	add_child(cam)
@@ -182,6 +300,7 @@ func _ready() -> void:
 	cam.position_smoothing_speed = 7.0
 	cam.reset_smoothing.call_deferred()
 	_init_motes()
+	_check_heart.call_deferred()
 	cam.position_smoothing_speed = 8.0
 	_build_hud()
 	if waste:
@@ -252,7 +371,7 @@ func set_paused(_v: bool) -> void:
 
 
 func blocked() -> bool:
-	return enc_wait > 0.0 or G.main().has_overlay()
+	return cut_active or enc_wait > 0.0 or G.main().has_overlay()
 
 
 # ---------------- ввод ----------------
@@ -286,7 +405,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _target_at(t: Vector2i):
 	if has_mate() and Vector2i(mate_pos.round()) == t:
-		return {"type": "mate", "pos": t, "title": "Рыжая", "reach": 1, "action": "ry_start"}
+		var dn: bool = G.p.companion == "patrol"
+		return {"type": "mate", "pos": t, "title": "Дана" if dn else "Рыжая", "reach": 1, "action": "dana_start" if dn else "ry_start"}
 	for m in mobs:
 		if m.pos == t:
 			return m
@@ -330,7 +450,7 @@ func has_escort() -> bool:
 
 
 func has_mate() -> bool:
-	return G.p.get("companion", "") == "ryzhaya"
+	return G.p.get("companion", "") in ["ryzhaya", "patrol"]
 
 
 func _cheb(a: Vector2i, b: Vector2i) -> int:
@@ -359,7 +479,7 @@ func _interact(o: Dictionary) -> void:
 		start_encounter(o)
 		return
 	if o.type == "mate":
-		G.main().open_dialogue("ry_start")
+		G.main().open_dialogue(o.action)
 		return
 	if o.action.begins_with("jobspot:"):
 		var jid: String = o.action.get_slice(":", 1)
@@ -397,6 +517,12 @@ func _process(delta: float) -> void:
 		if m.get("alert", 0.0) > 0.0:
 			m.alert -= delta
 	_update_fx(delta)
+	for k in emotes.keys():
+		emotes[k][1] -= delta
+		if emotes[k][1] <= 0.0:
+			emotes.erase(k)
+	if cut_active:
+		_move(delta)
 	var stop := blocked()
 	if not stop:
 		G.tick(delta)
@@ -414,15 +540,23 @@ func _process(delta: float) -> void:
 		if m.stun > 0.0 and not stop:
 			m.stun -= delta
 	if has_mate() and not mate_trail.is_empty():
-		mate_pos = mate_pos.move_toward(Vector2(mate_trail[0]), delta * SPEED * 0.95)
+		var r := _follow(mate_pos, Vector2(mate_trail[0]), delta * SPEED * 0.95, mate_flip)
+		mate_pos = r[0]
+		mate_flip = r[1]
+		mate_walk = mate_walk + delta if r[2] else 0.0
 	if has_escort() and not esc_trail.is_empty():
-		esc_pos = esc_pos.move_toward(Vector2(esc_trail[0]), delta * SPEED * 0.9)
+		var r2 := _follow(esc_pos, Vector2(esc_trail[0]), delta * SPEED * 0.9, esc_flip)
+		esc_pos = r2[0]
+		esc_flip = r2[1]
+		esc_walk = esc_walk + delta if r2[2] else 0.0
 	# камера чуть забегает вперёд по ходу движения
 	var look := Vector2.ZERO
 	if not path.is_empty():
 		look = (iso(Vector2(path[0])) - iso(pf)).normalized() * 14.0
 	cam_look = cam_look.lerp(look, minf(1.0, delta * 2.5))
 	cam.position = iso(pf) + Vector2(0, -10) + cam_look
+	if cam_override != null:
+		cam.position = iso(cam_override) + Vector2(0, -10)
 	if night_rect != null:
 		night_amt = move_toward(night_amt, 1.0 if G.is_night() else 0.0, delta * 0.5)
 		night_rect.visible = night_amt > 0.01
@@ -432,6 +566,8 @@ func _process(delta: float) -> void:
 
 
 func _move(delta: float) -> void:
+	if path.is_empty() and cut_active:
+		return
 	if path.is_empty():
 		var dir := _key_dir()
 		if dir != Vector2i.ZERO:
@@ -627,6 +763,22 @@ func _alert(m: Dictionary) -> void:
 	shake_amt = 3.0
 
 
+## Шаг спутника к точке следа: [новая позиция, взгляд, идёт ли]. Поворачивается только при заметном сдвиге.
+func _follow(pos: Vector2, target: Vector2, step: float, fl: bool) -> Array:
+	var d := target - pos
+	if d.length() < 0.02:
+		return [target, fl, false]
+	var lr := d.x - d.y
+	if absf(lr) > 0.05:
+		fl = lr < 0
+	return [pos.move_toward(target, step), fl, true]
+
+
+## Кадр ходьбы спутника по его собственному шагу.
+func _walk_frame(t: float) -> int:
+	return 0 if t <= 0.0 else int(t / 0.14) % 2
+
+
 ## Пыль в воздухе: в Кальдере медленно всплывает, в Пустоши ветер гонит песок.
 func _init_motes() -> void:
 	motes.clear()
@@ -670,8 +822,9 @@ func _draw_glows() -> void:
 		var c := iso(Vector2(o.pos))
 		var col := Pal.R2 if o.kind in ["neon", "bar"] else Pal.G5
 		draw_set_transform(c + Vector2(0, 2), 0.0, Vector2(1.0, 0.5))
-		draw_circle(Vector2.ZERO, 34.0, Color(col, 0.035 * f))
-		draw_circle(Vector2.ZERO, 20.0, Color(col, 0.05 * f))
+		var k := 2.2 if dark and o.kind == "lamp" else 1.0
+		draw_circle(Vector2.ZERO, 34.0 * (1.4 if k > 1.0 else 1.0), Color(col, 0.035 * f * k))
+		draw_circle(Vector2.ZERO, 20.0, Color(col, 0.05 * f * k))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -686,9 +839,42 @@ func _breath(ph: float) -> float:
 	return -1.0 if sin(wt * 2.1 + ph) > 0.55 else 0.0
 
 
+## Значки над головами в катсценах: «!», «?», «♥», «...».
+func _draw_emotes() -> void:
+	for who in emotes:
+		var pos := pf
+		if who == "mate":
+			pos = mate_pos
+		elif who != "genius":
+			var o = cut_find(who)
+			if o == null:
+				continue
+			pos = o.get("cpos", Vector2(o.pos))
+		var e: String = emotes[who][0]
+		var t: float = emotes[who][1]
+		var c := iso(pos) + Vector2(0, -34 - minf(1.0, (1.4 - t) * 4.0) * 4.0)
+		draw_rect(Rect2(c - Vector2(7, 6), Vector2(14, 12)), Pal.BG)
+		draw_rect(Rect2(c - Vector2(7, 6), Vector2(14, 12)), Pal.G3, false, 1.0)
+		match e:
+			"!":
+				draw_rect(Rect2(c + Vector2(-1, -4), Vector2(2, 5)), Pal.R3)
+				draw_rect(Rect2(c + Vector2(-1, 2), Vector2(2, 2)), Pal.R3)
+			"♥":
+				for r in [[-4, -3, 3, 2], [1, -3, 3, 2], [-5, -2, 10, 2], [-4, 0, 8, 2], [-2, 2, 4, 1], [-1, 3, 2, 1]]:
+					draw_rect(Rect2(c + Vector2(r[0], r[1]), Vector2(r[2], r[3])), Pal.R3)
+			"?":
+				for r in [[-2, -4, 4, 1], [2, -3, 1, 2], [0, -1, 2, 1], [0, 0, 1, 2], [0, 3, 1, 1]]:
+					draw_rect(Rect2(c + Vector2(r[0], r[1]), Vector2(r[2], r[3])), Pal.G5)
+			_:
+				for k in 3:
+					draw_rect(Rect2(c + Vector2(-4 + k * 3, 0), Vector2(2, 2)), Pal.G5)
+
+
 func _draw_motes() -> void:
 	for m in motes:
 		var a: float = m.a * (0.6 + 0.4 * sin(wt * 2.0 + m.ph))
+		if dark:
+			a *= 0.3
 		if waste:
 			draw_line(m.p, m.p - m.v.normalized() * 3.0, Color(Pal.G3, a * 0.6), 1.0)
 		else:
@@ -702,8 +888,21 @@ func _draw_motes() -> void:
 
 func _shade(pos: Vector2) -> Color:
 	var d := pos.distance_to(pf)
+	if dark:
+		var f2 := _lit(pos)
+		return Color(f2, f2, f2, 1.0)
 	var f := clampf(1.0 - maxf(0.0, d - light) / 7.0, 0.28, 1.0)
 	return Color(f, f, f, 1.0)
+
+
+## Освещённость в подвале: фонарик Гения на пару клеток и пятна света у ламп.
+func _lit(pos: Vector2) -> float:
+	var f := clampf(1.0 - maxf(0.0, pos.distance_to(pf) - light) / 2.5, 0.06, 1.0)
+	for lp in lamp_pos:
+		var ph: float = fmod(lp.x * 1.7 + lp.y, 6.0)
+		var fl := 0.9 + 0.1 * sin(wt * 9.0 + ph)
+		f = maxf(f, clampf(1.0 - maxf(0.0, pos.distance_to(lp) - 1.6) / 2.2, 0.0, 1.0) * fl)
+	return f
 
 
 func _draw() -> void:
@@ -726,17 +925,6 @@ func _draw() -> void:
 		var p: Vector2i = f.pos
 		draw_texture(f.tex, iso(Vector2(p)) - Vector2(16, 8), _shade(Vector2(p)))
 	_draw_glows()
-	for o in objs:
-		if o.type == "npc":
-			_shadow(Vector2(o.pos))
-	for m in mobs:
-		if not (night_amt > 0.5 and m.fpos.distance_to(pf) > 1.6):
-			_shadow(m.fpos, 8.0 if m.enemy == "muezzin" else 6.0)
-	if has_mate():
-		_shadow(mate_pos)
-	if has_escort():
-		_shadow(esc_pos)
-	_shadow(pf)
 	# подсветка клетки под курсором
 	var mt := to_grid(get_global_mouse_position())
 	if in_bounds(mt) and not blocked():
@@ -771,30 +959,51 @@ func _draw() -> void:
 		var off := Vector2(-tex.get_width() / 2.0, 6 - tex.get_height())
 		var oflip := false
 		if o.type == "npc":
-			off = Vector2(-8, 4 - 28 + _breath(o.get("ph", 0.0)))
-			# жители поворачиваются к Гению, когда он рядом
-			if _cheb(p, ppos) <= 3:
+			var wk: float = o.get("walk", 0.0)
+			if wk > 0.0:
+				tex = Art.person_tex(o.look, _walk_frame(wk))
+			off = Vector2(-8, 4 - 28 + (_breath(o.get("ph", 0.0)) if wk <= 0.0 else (-1.0 if _walk_frame(wk) == 1 else 0.0)))
+			# жители поворачиваются к Гению, когда он рядом (в катсцене — куда скажет сценарий)
+			if o.has("face"):
+				oflip = o.face
+			elif _cheb(p, ppos) <= 3:
 				oflip = (p.x - p.y) > (pf.x - pf.y) + 0.3
-		items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), oflip])
+		if o.type == "npc":
+			var cp: Vector2 = o.get("cpos", Vector2(p))
+			items.append([cp.x + cp.y, cp.x, tex, iso(cp) + off, 1.0, cp, oflip, 6.0])
+		else:
+			items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), oflip])
 	for m in mobs:
-		# ночью в Пустоши врагов не видно, пока они не подойдут вплотную
-		if night_amt > 0.5 and m.fpos.distance_to(pf) > 1.6:
+		# ночью в Пустоши и в тёмном подвале врагов не видно, пока они не подойдут вплотную
+		if (night_amt > 0.5 or dark) and m.fpos.distance_to(pf) > 1.6 and (not dark or _lit(m.fpos) < 0.45):
 			continue
 		var tex := _mob_tex(m)
 		var dd: float = clampf(m.fpos.distance_to(Vector2(m.pos)), 0.0, 1.0)
 		var hop := -sin(dd * PI) * 2.0 if dd > 0.01 else _breath(float(absi(hash(m.id)) % 100) / 16.0)
-		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height() + hop), 1.0, m.fpos, false])
+		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height() + hop), 1.0, m.fpos, false, 8.0 if m.enemy == "muezzin" else 6.0])
 	if has_mate():
-		var mtex := Art.person_tex(Maps.NPC_LOOKS.ryzhaya.person, frame)
-		items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, mtex, iso(mate_pos) + Vector2(-8, 4 - 28), 1.0, mate_pos, flip])
+		var mtex := Art.person_tex(Maps.NPC_LOOKS[G.p.companion].person, _walk_frame(mate_walk))
+		var mb := (-1.0 if _walk_frame(mate_walk) == 1 else 0.0) if mate_walk > 0.0 else _breath(1.7)
+		items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, mtex, iso(mate_pos) + Vector2(-8, 4 - 28 + mb), 1.0, mate_pos, mate_flip, 6.0])
 	if has_escort():
-		var etex := Art.person_tex(Maps.NPC_LOOKS.stray.person, frame)
-		items.append([esc_pos.x + esc_pos.y + 0.03, esc_pos.x, etex, iso(esc_pos) + Vector2(-8, 4 - 28), 1.0, esc_pos, flip])
+		var etex := Art.person_tex(Maps.NPC_LOOKS.stray.person, _walk_frame(esc_walk))
+		var eb := (-1.0 if _walk_frame(esc_walk) == 1 else 0.0) if esc_walk > 0.0 else _breath(3.1)
+		items.append([esc_pos.x + esc_pos.y + 0.03, esc_pos.x, etex, iso(esc_pos) + Vector2(-8, 4 - 28 + eb), 1.0, esc_pos, esc_flip, 6.0])
 	var ptex := Art.person_tex(G.person_look(), frame)
 	var bob := (-1.0 if frame == 1 else 0.0) if not path.is_empty() else _breath(0.0)
-	items.append([pdepth + 0.05, pf.x, ptex, iso(pf) + Vector2(-8, 4 - 28 + bob), 1.0, pf, flip])
+	items.append([pdepth + 0.05, pf.x, ptex, iso(pf) + Vector2(-8, 4 - 28 + bob), 1.0, pf, flip, 6.0])
+	# Тени встают в общую очередь прямо перед своим хозяином: раньше они рисовались вместе с полом,
+	# и большие предметы (автобус, дома) перекрывали тень, хотя сам персонаж стоял перед ними.
+	var shadows: Array = []
+	for it in items:
+		if it.size() > 7:
+			shadows.append([it[0] - 0.0005, it[1], null, it[5], it[7], it[5], false])
+	items.append_array(shadows)
 	items.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
 	for it in items:
+		if it[2] == null:
+			_shadow(it[3], it[4])
+			continue
 		var col := _shade(it[5])
 		col.a = it[4]
 		if it[6]:
@@ -809,6 +1018,7 @@ func _draw() -> void:
 			draw_rect(Rect2(top - Vector2(1, 1), Vector2(4, 11)), Pal.BG)
 			draw_rect(Rect2(top, Vector2(2, 6)), Pal.R3)
 			draw_rect(Rect2(top + Vector2(0, 7), Vector2(2, 2)), Pal.R3)
+	_draw_emotes()
 	_draw_motes()
 
 
@@ -1005,8 +1215,8 @@ func _update_hud() -> void:
 	s += "День %d · %s%s\n" % [p.day, G.clock(), "  [color=%s]ночь[/color]" % Pal.hex(Pal.G3) if G.is_night() else ""]
 	var wtxt := "—"
 	if p.weapon != "":
-		wtxt = "%s %d/%d" % [p.weapon, p.mag, G.ammo_left() - p.mag]
-	s += "Су %d   %s" % [p.su, wtxt]
+		wtxt = "%s %d/%d · %d" % [p.weapon, p.mag, G.mag_size(p.weapon), G.ammo_left() - p.mag]
+	s += "Су %d\nОружие: %s" % [p.su, wtxt]
 	if p.wounds.size() > 0:
 		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
 	hud_text.text = s
