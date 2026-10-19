@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.9.1"
+const VERSION := "0.9.2"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -22,7 +22,7 @@ func new_character() -> Dictionary:
 		"age": "Взрослый", "birth": "Тристаль", "phys": [], "psy": [], "main": [],
 		"got_phys": [], "got_psy": [], "motive": "",
 		"hp": 1, "mind": 1, "food": 80, "su": 300, "will": 0,
-		"inv": {}, "weapon": "", "melee": "Нож", "armor": "Футболка", "mag": 0,
+		"inv": {}, "weapon": "", "melee": "Нож", "armor": "Футболка", "mag": 0, "loose": {},
 		"wounds": [], "mags": {}, "flags": {}, "quests": {}, "killed": [],
 		"map": "caldera", "pos": [0, 0], "steps": 0, "day": 1, "hour": 8,
 		"map_at": "caldera", "known": ["caldera"], "pity": {}, "seed": randi(),
@@ -533,9 +533,9 @@ func clock() -> String:
 	return "%02d:%02d" % [int(p.hour), int(p.get("minf", 0.0))]
 
 
-## Ночь: с 21:00 до 5:00.
+## Ночь: с 20:00 до 5:00.
 func is_night() -> bool:
-	return int(p.hour) >= 21 or int(p.hour) < 5
+	return int(p.hour) >= 20 or int(p.hour) < 5
 
 
 func pass_hours(h: int) -> void:
@@ -938,7 +938,14 @@ func ammo_left() -> int:
 	if p.weapon == "":
 		return 0
 	var it: Dictionary = D.ITEMS[p.weapon]
-	return p.mag + p.inv.get(it.ammo, 0) * D.ITEMS[it.ammo].count
+	return p.mag + rounds_left(it.ammo)
+
+
+## Патроны в запасе: россыпь из начатой пачки + целые пачки.
+func rounds_left(ammo: String) -> int:
+	if not p.has("loose"):
+		p.loose = {}
+	return int(p.loose.get(ammo, 0)) + p.inv.get(ammo, 0) * int(D.ITEMS[ammo].count)
 
 
 ## Использовать предмет из имущества. Возвращает текст результата.
@@ -985,7 +992,7 @@ func use_item(item: String) -> String:
 			p.weapon = item
 			p.mag = int(p.mags.get(item, 0))
 			var extra := ""
-			if p.mag == 0 and has(it.ammo):
+			if p.mag == 0 and rounds_left(it.ammo) > 0:
 				extra = " " + reload()
 			changed.emit()
 			return "В руке: %s (в магазине %d).%s" % [item, p.mag, extra]
@@ -1220,17 +1227,28 @@ func melee_mult(w: String) -> float:
 	return 1.25 if has_wmod(w, "heavy") else 1.0
 
 
-## Перезарядка: тратит пачку патронов, если магазин пуст наполовину и больше.
+## Перезарядка: берёт ровно столько патронов, сколько не хватает в магазине.
+## Сначала из начатой пачки, потом вскрывает новые; остаток пачки остаётся в запасе.
 func reload() -> String:
 	if p.weapon == "":
 		return "Нет огнестрела."
 	var w: Dictionary = D.ITEMS[p.weapon]
 	if p.mag >= mag_size(p.weapon):
 		return "Магазин полон."
-	if not has(w.ammo):
+	if rounds_left(w.ammo) <= 0:
 		return "Нет боеприпасов: %s." % w.ammo
-	remove_item(w.ammo)
-	p.mag = mag_size(p.weapon)
+	var need: int = mag_size(p.weapon) - p.mag
+	var loose: int = int(p.loose.get(w.ammo, 0))
+	while loose < need and has(w.ammo):
+		remove_item(w.ammo)
+		loose += int(D.ITEMS[w.ammo].count)
+	var take: int = mini(need, loose)
+	p.mag += take
+	loose -= take
+	if loose > 0:
+		p.loose[w.ammo] = loose
+	else:
+		p.loose.erase(w.ammo)
 	changed.emit()
 	return "Перезарядка: %s (%d)." % [p.weapon, p.mag]
 

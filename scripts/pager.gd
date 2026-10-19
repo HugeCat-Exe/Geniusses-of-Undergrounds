@@ -276,8 +276,7 @@ func _social() -> void:
 		if who_all[id].get("bond", false):
 			# пять сердец: ♥ заполнено, ♡ пусто
 			var n := G.hearts(id)
-			var hs := G.heart_state(id)
-			var row := "[color=%s]%s[/color][color=%s]%s[/color]  [color=%s]%s[/color]" % [Pal.hex(Pal.R3), "♥ ".repeat(n), Pal.hex(Pal.G2), "♡ ".repeat(5 - n), Pal.hex(Pal.G3), hs.text]
+			var row := "[color=%s]%s[/color][color=%s]%s[/color]" % [Pal.hex(Pal.R3), "♥ ".repeat(n), Pal.hex(Pal.G2), "♡ ".repeat(5 - n)]
 			var hl := Pal.rich("      " + row, 9)
 			hl.add_theme_font_override("normal_font", load("res://fonts/DejaVuSansMono.ttf"))
 			content.add_child(hl)

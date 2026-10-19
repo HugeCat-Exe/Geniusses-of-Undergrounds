@@ -1007,7 +1007,12 @@ func _draw() -> void:
 		var col := _shade(it[5])
 		col.a = it[4]
 		if it[6]:
-			draw_texture_rect(it[2], Rect2(it[3] + Vector2(it[2].get_width(), 0), Vector2(-it[2].get_width(), it[2].get_height())), false, col)
+			# Зеркалим вокруг середины картинки: прямоугольник с отрицательной шириной Godot рисует
+			# со сдвигом на ширину спрайта, отчего житель «отпрыгивал», а тень оставалась на месте.
+			var w: float = it[2].get_width()
+			draw_set_transform(Vector2(it[3].x * 2.0 + w, 0.0), 0.0, Vector2(-1, 1))
+			draw_texture(it[2], it[3], col)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		else:
 			draw_texture(it[2], it[3], col)
 	# «!» над врагом, который заметил Гения

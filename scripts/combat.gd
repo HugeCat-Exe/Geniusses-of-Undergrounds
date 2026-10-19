@@ -279,7 +279,7 @@ func _menu() -> void:
 	else:
 		_act("Выстрел: нет огнестрела", func(): pass, false)
 	_act("Удар: %s" % p.melee, _pick_target.bind(true))
-	var w_ok: bool = p.weapon != "" and p.mag < G.mag_size(p.weapon) and G.has(D.ITEMS[p.weapon].ammo)
+	var w_ok: bool = p.weapon != "" and p.mag < G.mag_size(p.weapon) and G.rounds_left(D.ITEMS[p.weapon].ammo) > 0
 	_act("Перезарядка", _reload, w_ok)
 	_act("Анализ [ВСП]" if not analyzed else "Анализ: проведён", _analyze, not analyzed)
 	_act("Самозащита [ТЕЛ]", _defend)

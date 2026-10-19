@@ -359,6 +359,14 @@ func run(main: Node) -> void:
 	G.add_item("Прицел (карабин)")
 	print("SMOKE mod wrong ", G.use_item("Прицел (карабин)"))
 	print("SMOKE weapon class ", G.p.weapon, " ", G.weapon_class(G.p.weapon), " mag ", G.mag_size(G.p.weapon), " reload ", G.reload_time(G.p.weapon))
+	if G.p.weapon != "":
+		var am: String = D.ITEMS[G.p.weapon].ammo
+		G.add_item(am)
+		var before := G.ammo_left()
+		G.p.mag = maxi(0, G.mag_size(G.p.weapon) - 1)
+		var total := G.ammo_left()
+		G.reload()
+		print("SMOKE ammo reload ok=", G.ammo_left() == total and G.p.mag == G.mag_size(G.p.weapon), " before ", before, " total ", total, " after ", G.ammo_left(), " loose ", G.p.loose)
 	for nm in D.ITEMS:
 		if D.ITEMS[nm].get("type", "") == "mod" and D.ITEMS[nm].fits == G.weapon_class(G.p.weapon) and D.ITEMS[nm].mod == "mag":
 			G.add_item(nm)
