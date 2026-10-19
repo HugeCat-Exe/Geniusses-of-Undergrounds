@@ -59,6 +59,39 @@ const FLOOR4 := [
 	"#,,,,,,,,,,,,,,,,,,,,#",
 	"######################",
 ]
+## Рейд: заброшенные ярусы под кварталами, за заваренным люком.
+const RAID1 := [
+	"########################",
+	"#///,,,#,,,,,,,#,,,,,,,#",
+	"#///,,,#,,,,,,,#,,,,,,,#",
+	"#,,,,,,#,,,,,,,#,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,,,#",
+	"###,####,,,,,,,####,####",
+	"#,,,,,,#,,,,,,,#,,,,,,,#",
+	"#,,,,,,#,,,,,,,#,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,#,,,,,,,#,,,,,,,#",
+	"####,###,,,,,,,###,#####",
+	"#///,,,,,,,,,,,,,,,,,,,#",
+	"#///,,,,,,,,,,,,,,,,,,,#",
+	"########################",
+]
+const RAID2 := [
+	"####################",
+	"#///,,,,#,,,,,,,,,,#",
+	"#///,,,,#,,,,,,,,,,#",
+	"#,,,,,,,#,,,,,,,,,,#",
+	"#,,,,,,,,,,,wwww,,,#",
+	"#,,,,,,,#,,,wwww,,,#",
+	"####,####,,,wwww,,,#",
+	"#,,,,,,,#,,,,,,,,,,#",
+	"#,,,,,,,#,,,,,,,,,,#",
+	"#,,,,,,,,,,,,,,,,,,#",
+	"#,,,,,,,#,,,,,,,,,,#",
+	"#,,,,,,,#,,,,,,,,,,#",
+	"####################",
+]
 ## Домик Рыжей изнутри.
 const RY_HOME := [
 	"##########",
@@ -128,6 +161,12 @@ func get_map(name: String) -> Dictionary:
 			return _ry_home()
 		"poi_ruins":
 			return _poi_ruins()
+		"poi_forest":
+			return _poi_forest()
+		"raid1":
+			return _raid1()
+		"raid2":
+			return _raid2()
 		"poi_station":
 			return _poi_station()
 		"poi_river":
@@ -216,7 +255,7 @@ func _caldera2() -> Dictionary:
 	objs.append(_npc("trader", 15, 3, "Старьёвщик Бартоломей", "trader_start", 1))
 	# лифт в нише
 	objs.append(_prop("lift", 19, 1, "Грузовой лифт", "lift"))
-	objs.append(_prop("board", 6, 4, "Доска объявлений", "board"))
+	objs.append(_prop("jobscreen", 6, 4, "Экран заданий Института", "board"))
 	objs.append(_npc("patrol", 16, 7, "Патрульная Дана", "res_patrol", 1))
 	objs.append(_prop("crate", 15, 5, "Ящики"))
 	objs.append(_prop("barrel", 18, 5, "Бочка"))
@@ -279,7 +318,8 @@ func _caldera4() -> Dictionary:
 	objs.append(_npc("zoya", 5, 3, "Прачка Зоя", "zoya_start", 1))
 	objs.append(_prop("shack", 7, 1, "Дом прачки Зои"))
 	objs.append(_prop("shack", 10, 1, "Мастерская деда Мирона"))
-	objs.append(_prop("crate", 11, 2, "Ящик с деталями"))
+	objs.append(_prop("crate", 11, 1, "Ящик с деталями"))
+	objs.append(_prop("hatch", 12, 1, "Заваренный люк вниз", "raid_hatch"))
 	objs.append(_npc("miron", 9, 3, "Дед Мирон", "miron_start", 1))
 	# домик Рыжей: войти можно только по-приятельски
 	objs.append(_big("ryhouse", 14, 1, 3, 2, "Домик Рыжей", "ry_door"))
@@ -297,7 +337,7 @@ func _caldera4() -> Dictionary:
 	_lamps(objs, [Vector2i(5, 5), Vector2i(17, 5), Vector2i(8, 9)])
 	var grid := _grid(FLOOR4)
 	return {"name": "Кальдера · Ярус 4 · Кварталы", "floor": grid, "objs": objs, "waste": false, "depth": 0,
-		"spawns": {"down3": Vector2i(3, 3), "lift": Vector2i(2, 5), "ryhouse": Vector2i(15, 4)}, "light": 9.0}
+		"spawns": {"down3": Vector2i(3, 3), "lift": Vector2i(2, 5), "ryhouse": Vector2i(15, 4), "raid": Vector2i(12, 3)}, "light": 9.0}
 
 
 func _ry_home() -> Dictionary:
@@ -364,8 +404,10 @@ func _waste() -> Dictionary:
 	for y in [12, 13]:
 		for x in range(0, 8):
 			grid[y][x] = "k"
-	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
+	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
 	objs.append(_prop("hatch", 2, 2, "Шахта Кальдеры", "to_caldera"))
+	if G.p.quests.get("spice", "") == "active" and not G.has("Пепельный тимьян"):
+		objs.append(_prop("herb", 5, 4, "Пепельный тимьян", "herb_1", false))
 	objs.append(_prop("roadend", 1, 12, "Обрывок дороги · точка эвакуации", "evac"))
 	objs.append(_big("bus", 3, 8, 5, 2, "Опрокинутый автобус"))
 	objs.append(_prop("wreck", 34, 27, "Разбитый караван"))
@@ -566,6 +608,7 @@ func _poi_station() -> Dictionary:
 	objs.append(_exit(23, 16))
 	_scatter(grid, objs, 402, 26, [Rect2i(2, 1, 9, 6), Rect2i(2, 8, 21, 6), Rect2i(20, 14, 6, 4)])
 	_ensure_paths(grid, objs, Vector2i(22, 15), [Vector2i(4, 3), Vector2i(23, 16)])
+	_rumor(grid, objs, "station")
 	return {"name": "Заброшенная заправка", "floor": grid, "objs": objs, "waste": true, "poi": "station",
 		"spawns": {"enter": Vector2i(22, 15)}, "light": 30.0}
 
@@ -590,6 +633,7 @@ func _poi_river() -> Dictionary:
 	objs.append(_exit(30, 22))
 	_scatter(grid, objs, 502, 30, [Rect2i(0, 8, w, 8), Rect2i(15, 15, 4, 4), Rect2i(27, 19, 7, 5)])
 	_ensure_paths(grid, objs, Vector2i(29, 21), [Vector2i(10, 16), Vector2i(16, 15), Vector2i(17, 8), Vector2i(6, 4), Vector2i(30, 22)])
+	_rumor(grid, objs, "river")
 	return {"name": "Река Лета", "floor": grid, "objs": objs, "waste": true, "poi": "river",
 		"spawns": {"enter": Vector2i(29, 21)}, "light": 30.0}
 
@@ -609,6 +653,7 @@ func _poi_tower() -> Dictionary:
 	objs.append(_exit(25, 19))
 	_scatter(grid, objs, 602, 28, [Rect2i(3, 1, 10, 10), Rect2i(22, 16, 6, 6)])
 	_ensure_paths(grid, objs, Vector2i(24, 18), [Vector2i(9, 7), Vector2i(25, 19)])
+	_rumor(grid, objs, "tower")
 	return {"name": "Ретрансляционная вышка", "floor": grid, "objs": objs, "waste": true, "poi": "tower",
 		"spawns": {"enter": Vector2i(24, 18)}, "light": 30.0}
 
@@ -634,9 +679,12 @@ func _poi_den() -> Dictionary:
 		objs.append(_mob("muezzin", "den_muezzin_%d" % dead, 19, 3, 3))
 	for pos in [Vector2i(10, 6), Vector2i(14, 4), Vector2i(5, 9), Vector2i(19, 8)]:
 		objs.append(_prop("bones", pos.x, pos.y, "Обглоданные кости", "", false))
+	if G.p.quests.get("spice", "") == "active" and not G.has("Собачья мята"):
+		objs.append(_prop("herb", 6, 3, "Собачья мята", "herb_2", false))
 	objs.append(_exit(23, 17))
 	_scatter(grid, objs, 702, 22, [Rect2i(9, 1, 6, 5), Rect2i(20, 14, 6, 6)])
 	_ensure_paths(grid, objs, Vector2i(22, 16), [Vector2i(12, 3), Vector2i(23, 17)])
+	_rumor(grid, objs, "den")
 	return {"name": "Логово диких псов", "floor": grid, "objs": objs, "waste": true, "poi": "den",
 		"spawns": {"enter": Vector2i(22, 16)}, "light": 30.0}
 
@@ -675,5 +723,117 @@ func _poi_ruins() -> Dictionary:
 	objs.append(_exit(25, 17))
 	_scatter(grid, objs, 802, 24, houses + [Rect2i(21, 14, 7, 6)])
 	_ensure_paths(grid, objs, Vector2i(24, 16), [Vector2i(4, 4), Vector2i(11, 3), Vector2i(25, 17)])
+	_rumor(grid, objs, "ruins")
 	return {"name": "Разрушенный посёлок", "floor": grid, "objs": objs, "waste": true, "poi": "ruins",
 		"spawns": {"enter": Vector2i(24, 16)}, "light": 30.0}
+
+
+# ---------------- Рейд: заброшенные ярусы ----------------
+
+## Номер «волны» рейда: раз в три дня внизу снова кто-то заводится и снова что-то лежит.
+func _raid_cycle() -> int:
+	return int(G.p.get("day", 1)) / 3
+
+
+func _raid_mob(enemy: String, tag: String, x: int, y: int, aggro: int) -> Dictionary:
+	return _mob(enemy, "raid%d_%s" % [_raid_cycle(), tag], x, y, aggro)
+
+
+func _raid1() -> Dictionary:
+	var objs: Array = []
+	objs.append(_prop("stairs_up", 1, 1, "Лестница наверх, к кварталам", "go:caldera4:raid"))
+	objs.append(_prop("crate", 5, 1, "Сгнивший ящик"))
+	objs.append(_prop("cache", 8, 1, "Шкафчик жильца", "raid_c1"))
+	objs.append(_prop("shelf", 10, 1, "Пустые полки"))
+	objs.append(_prop("bones", 12, 3, "Кости", "", false))
+	objs.append(_prop("cache", 16, 1, "Тумбочка у койки", "raid_c2"))
+	objs.append(_prop("bed", 18, 1, "Ржавая койка"))
+	objs.append(_prop("bed", 20, 1, "Ржавая койка"))
+	objs.append(_prop("cache", 1, 7, "Аптечный шкаф", "raid_c3"))
+	objs.append(_prop("table", 3, 7, "Опрокинутый стол"))
+	objs.append(_prop("barrel", 8, 7, "Остывшая жаровня"))
+	objs.append(_prop("lamp", 11, 7, "Мигающая лампа"))
+	objs.append(_prop("cache", 16, 7, "Сейф без дверцы", "raid_c4"))
+	objs.append(_prop("shelf", 18, 7, "Стеллаж с инструментом"))
+	objs.append(_prop("stairs_down", 1, 12, "Лестница вниз, на ярус 6", "go:raid2:top"))
+	objs.append(_raid_mob("slepysh", "a", 12, 2, 4))
+	objs.append(_raid_mob("slepysh", "b", 11, 9, 4))
+	objs.append(_raid_mob("slepysh", "c", 19, 9, 4))
+	var grid := _grid(RAID1)
+	return {"name": "Ярус 5 · Заброшенный", "floor": grid, "objs": objs, "waste": false, "depth": 0, "raid": true,
+		"spawns": {"top": Vector2i(2, 3), "bottom": Vector2i(4, 12)}, "light": 4.5}
+
+
+func _raid2() -> Dictionary:
+	var objs: Array = []
+	objs.append(_prop("stairs_up", 1, 1, "Лестница наверх, на ярус 5", "go:raid1:bottom"))
+	objs.append(_prop("cache", 9, 1, "Ящик с красным крестом", "raid_c5"))
+	objs.append(_prop("cache", 17, 1, "Оружейный шкаф", "raid_c6"))
+	objs.append(_prop("pipe", 11, 1, "Лопнувшая труба"))
+	objs.append(_prop("cache", 1, 7, "Сундук под водой", "raid_c7"))
+	objs.append(_prop("cache", 9, 7, "Мастерская оружейника", "raid_c8"))
+	objs.append(_prop("bones", 13, 9, "Кости", "", false))
+	objs.append(_raid_mob("slepysh", "d", 5, 4, 4))
+	objs.append(_raid_mob("slepysh", "e", 14, 2, 4))
+	objs.append(_raid_mob("slepysh", "f", 12, 9, 5))
+	objs.append(_raid_mob("slepysh", "g", 4, 9, 4))
+	var grid := _grid(RAID2)
+	return {"name": "Ярус 6 · Затопленный", "floor": grid, "objs": objs, "waste": false, "depth": 0, "raid": true,
+		"spawns": {"top": Vector2i(2, 3)}, "light": 4.0}
+
+
+## Тайник из слуха Гарри: у тропы, рядом с точкой входа.
+func _rumor(grid: Array, objs: Array, poi: String) -> void:
+	if G.p.flags.get("rumor_cache", "") != poi:
+		return
+	var taken := {}
+	for o in objs:
+		for t in _cells(o):
+			taken[t] = true
+	var h := grid.size()
+	var w: int = grid[0].size()
+	for r in range(3, 8):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var pos := Vector2i(w - 6 + dx, h - 6 + dy)
+				if pos.x < 1 or pos.y < 1 or pos.x >= w - 1 or pos.y >= h - 1:
+					continue
+				if taken.has(pos) or not (grid[pos.y][pos.x] in ["s", "a", ",", "k", "m"]):
+					continue
+				objs.append(_prop("cache", pos.x, pos.y, "Тайник из слуха", "rumor_cache"))
+				return
+
+
+func _poi_forest() -> Dictionary:
+	var w := 30
+	var h := 22
+	var grid := _sand(w, h, 901, 0)
+	for y in h:
+		for x in w:
+			grid[y][x] = "m"
+	# прогалины с пеплом
+	for c in [Vector2i(8, 12), Vector2i(19, 6)]:
+		for y in h:
+			for x in w:
+				if Vector2(x - c.x, y - c.y).length() < 2.5:
+					grid[y][x] = "a"
+	var objs: Array = []
+	# огромные деревья: по два на дальних краях и в глубине
+	for t in [Vector2i(2, 1), Vector2i(9, 1), Vector2i(17, 1), Vector2i(24, 2), Vector2i(1, 8), Vector2i(1, 15), Vector2i(12, 7), Vector2i(20, 11)]:
+		objs.append(_big("bigtree", t.x, t.y, 2, 2, "Огромное дерево", "forest_tree"))
+	objs.append(_prop("roots", 6, 4, "Свежие коренья", "forest_forage_1"))
+	objs.append(_prop("roots", 15, 4, "Светлые листья", "forest_forage_2"))
+	objs.append(_prop("roots", 4, 12, "Свежие коренья", "forest_forage_3"))
+	objs.append(_prop("roots", 23, 7, "Светлые листья", "forest_forage_4"))
+	if G.p.quests.get("spice", "") == "active" and not G.has("Звёздный перец"):
+		objs.append(_prop("herb", 16, 9, "Звёздный перец", "herb_3", false))
+	objs.append(_mob("plant", _daily("forest_plant_a"), 15, 8, 1))
+	objs.append(_mob("plant", _daily("forest_plant_b"), 7, 6, 1))
+	objs.append(_mob("plant", _daily("forest_plant_c"), 22, 9, 1))
+	objs.append(_mob("pes", _daily("forest_pes"), 10, 15, 5))
+	objs.append(_exit(27, 19))
+	_scatter(grid, objs, 902, 18, [Rect2i(24, 16, 6, 6)])
+	_ensure_paths(grid, objs, Vector2i(26, 18), [Vector2i(6, 5), Vector2i(15, 5), Vector2i(4, 13), Vector2i(23, 8), Vector2i(16, 10), Vector2i(27, 19)])
+	_rumor(grid, objs, "forest")
+	return {"name": "Запутанный лес", "floor": grid, "objs": objs, "waste": true, "poi": "forest",
+		"spawns": {"enter": Vector2i(26, 18)}, "light": 30.0}

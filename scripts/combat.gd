@@ -216,7 +216,7 @@ func _menu() -> void:
 	else:
 		_act("Выстрел: нет огнестрела", func(): pass, false)
 	_act("Удар: %s" % p.melee, _pick_target.bind(true))
-	var w_ok: bool = p.weapon != "" and p.mag < D.ITEMS[p.weapon].mag and G.has(D.ITEMS[p.weapon].ammo)
+	var w_ok: bool = p.weapon != "" and p.mag < G.mag_size(p.weapon) and G.has(D.ITEMS[p.weapon].ammo)
 	_act("Перезарядка", _reload, w_ok)
 	_act("Анализ [ВСП]" if not analyzed else "Анализ: проведён", _analyze, not analyzed)
 	_act("Самозащита [ТЕЛ]", _defend)
@@ -227,6 +227,8 @@ func _menu() -> void:
 
 func _attack_bonus(melee: bool, part: Dictionary) -> int:
 	var b := G.mod("ТЕЛ" if melee else "ЛВК") + int(part.mod)
+	if not melee and G.p.weapon != "":
+		b += G.aim_bonus(G.p.weapon)
 	if analyzed:
 		b += 2
 	if "Руки" in G.p.wounds and not Live.has("Стоик"):
@@ -264,6 +266,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 		base += maxi(0, G.mod("ТЕЛ")) * 2
 		if G.has_perk("Тяжеловес"):
 			base *= 1.25
+		base *= G.melee_mult(wname)
 	else:
 		p.mag -= 1
 	var d := G.d20("hit")
@@ -318,7 +321,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 ## Перезарядка из таблицы оружия: 0,5 и меньше — ход не тратится, 2 и больше — враг успевает ударить лишний раз.
 func _reload() -> void:
 	busy = true
-	var rl: float = D.ITEMS[G.p.weapon].get("reload", 1.0)
+	var rl: float = G.reload_time(G.p.weapon)
 	_log(G.reload())
 	if G.has_perk("Ловкач") or rl <= 0.5:
 		var why := "Пальцы делают всё сами («Ловкач»)" if G.has_perk("Ловкач") else "Быстрая перезарядка (%s)" % G.p.weapon

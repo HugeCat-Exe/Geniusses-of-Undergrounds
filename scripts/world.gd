@@ -5,7 +5,7 @@ const Maps := preload("res://scripts/maps.gd")
 const ArtLib := preload("res://scripts/art.gd")
 const WALLS := {"#": "panel", "B": "brick", "R": "ruin"}
 const FLOORS := {".": "metal", ",": "concrete", "_": "tile", "=": "rug", "s": "sand", "a": "ash",
-	"g": "grate", "/": "stairs", "p": "plaza", "k": "asphalt", "w": "water", "h": "planks"}
+	"g": "grate", "/": "stairs", "p": "plaza", "k": "asphalt", "w": "water", "h": "planks", "m": "moss"}
 const SPEED := 5.5
 
 var map: Dictionary
@@ -26,6 +26,30 @@ var mate_pos := Vector2.ZERO
 var mate_trail: Array = []
 var esc_pos := Vector2.ZERO   # спасённый бедолага идёт следом
 var esc_trail: Array = []
+var clock_t := 0.0
+var night_rect: ColorRect
+var night_amt := 0.0
+
+## Ночь в Пустоши: окружение будто вывернуто наизнанку, по краям лёгкие тени.
+const NIGHT_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_texture : hint_screen_texture, filter_nearest;
+uniform float amount = 1.0;
+void fragment() {
+	vec3 c = texture(screen_texture, SCREEN_UV).rgb;
+	float l = dot(c, vec3(0.3, 0.59, 0.11));
+	vec3 bg = vec3(0.02, 0.05, 0.027);
+	float inv = l < 0.08 ? 0.0 : 1.0 - l;
+	vec3 night = mix(bg, vec3(0.24, 0.62, 0.27), inv * 0.72);
+	if (c.r > c.g * 1.4) {
+		night = mix(night, c, 0.6);
+	}
+	vec2 d = (SCREEN_UV - vec2(0.5, 0.47)) * vec2(1.78, 1.0);
+	float v = smoothstep(0.22, 0.95, length(d));
+	night *= 1.0 - v * 0.6;
+	COLOR = vec4(mix(c, night, amount), 1.0);
+}
+"""
 
 var ppos := Vector2i.ZERO
 var pf := Vector2.ZERO
@@ -116,6 +140,23 @@ func _ready() -> void:
 	cam.position_smoothing_enabled = true
 	cam.position_smoothing_speed = 8.0
 	_build_hud()
+	if waste:
+		var nl := CanvasLayer.new()
+		nl.layer = 2
+		add_child(nl)
+		night_rect = ColorRect.new()
+		night_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		night_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var mat := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = NIGHT_SHADER
+		mat.shader = sh
+		night_rect.material = mat
+		nl.add_child(night_rect)
+		night_amt = 1.0 if G.is_night() else 0.0
+		night_rect.visible = night_amt > 0.0
+		if G.is_night():
+			G.say("Ночь. Пустошь выворачивается наизнанку, и врагов в темноте не видно.")
 	G.changed.connect(_update_hud)
 	G.logged.connect(func(_t): _update_log())
 	_update_hud()
@@ -289,6 +330,11 @@ func _interact(o: Dictionary) -> void:
 func _process(delta: float) -> void:
 	var stop := blocked()
 	if not stop:
+		G.tick(delta)
+		clock_t += delta
+		if clock_t > 1.0:
+			clock_t = 0.0
+			_update_hud()
 		_move(delta)
 		mob_t += delta
 		if mob_t >= 0.38:
@@ -303,6 +349,10 @@ func _process(delta: float) -> void:
 	if has_escort() and not esc_trail.is_empty():
 		esc_pos = esc_pos.move_toward(Vector2(esc_trail[0]), delta * SPEED * 0.9)
 	cam.position = iso(pf) + Vector2(0, -10)
+	if night_rect != null:
+		night_amt = move_toward(night_amt, 1.0 if G.is_night() else 0.0, delta * 0.5)
+		night_rect.visible = night_amt > 0.01
+		(night_rect.material as ShaderMaterial).set_shader_parameter("amount", night_amt)
 	_update_hover()
 	queue_redraw()
 
@@ -376,6 +426,8 @@ func _mobs_think() -> void:
 			path.clear()
 			start_encounter(m)
 			return
+		if D.ENEMIES[m.enemy].get("static", false):
+			continue
 		var goal: Vector2i = m.home
 		if d <= m.aggro:
 			goal = ppos
@@ -507,6 +559,9 @@ func _draw() -> void:
 			off = Vector2(-8, 4 - 28)
 		items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), false])
 	for m in mobs:
+		# ночью в Пустоши врагов не видно, пока они не подойдут вплотную
+		if night_amt > 0.5 and m.fpos.distance_to(pf) > 1.6:
+			continue
 		var tex := _mob_tex(m)
 		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height()), 1.0, m.fpos, false])
 	if has_mate():
@@ -559,6 +614,10 @@ func _mob_tex(m: Dictionary) -> Texture2D:
 			return Art.cached("mob_muezzin", func(): return _big_dog())
 		"padal":
 			return Art.person_tex(Maps.NPC_LOOKS.raider.person, frame)
+		"slepysh":
+			return Art.cached("mob_slepysh", func(): return _small_slepysh())
+		"plant":
+			return Art.cached("mob_plant", func(): return _small_plant())
 		_:
 			return Art.cached("mob_iskaz", func(): return _small_warped())
 
@@ -588,6 +647,30 @@ func _big_dog() -> Texture2D:
 	cv.line(4, 15, 0, 9, 2)
 	cv.put(35, 11, 6)
 	cv.put(35, 18, 6)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+func _small_slepysh() -> Texture2D:
+	var cv := ArtLib.Canvas.new(24, 16)
+	cv.ellipse(10, 9, 7, 3.5, 4)
+	cv.ellipse(18, 6, 4, 3.5, 5)
+	cv.line(14, 9, 21, 15, 4)
+	cv.line(6, 9, 2, 15, 4)
+	cv.line(17, 7, 21, 7, 0)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+func _small_plant() -> Texture2D:
+	var cv := ArtLib.Canvas.new(22, 26)
+	cv.line(11, 25, 11, 12, 3, 2)
+	cv.line(11, 22, 3, 18, 2)
+	cv.line(11, 22, 19, 18, 2)
+	cv.ellipse(11, 9, 6, 5, 7)
+	cv.ellipse(11, 10, 3, 2, 0)
+	cv.put(9, 9, 6)
+	cv.put(13, 9, 6)
 	cv.outline(0)
 	return Art.to_tex(cv)
 
@@ -672,6 +755,7 @@ func _update_hud() -> void:
 	s += "[color=%s]ООЗ %s %d/%d[/color]\n" % [Pal.hex(Pal.R3), _bar(p.hp, G.max_hp()), p.hp, G.max_hp()]
 	s += "[color=%s]ООР %s %d/%d[/color]\n" % [Pal.hex(Pal.G5), _bar(p.mind, G.max_mind()), p.mind, G.max_mind()]
 	s += "СЫТ %s %d\n" % [_bar(p.food, 100), p.food]
+	s += "День %d · %s%s\n" % [p.day, G.clock(), "  [color=%s]ночь[/color]" % Pal.hex(Pal.G3) if G.is_night() else ""]
 	var wtxt := "—"
 	if p.weapon != "":
 		wtxt = "%s %d/%d" % [p.weapon, p.mag, G.ammo_left() - p.mag]

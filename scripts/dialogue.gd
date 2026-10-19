@@ -125,6 +125,8 @@ func _show(id: String) -> void:
 		rel_label.text = ""
 		_layout(false)
 	text.text = _board_text() if n.get("board", false) else _subst(n.get("text", ""))
+	if n.has("craft"):
+		text.text += _craft_text(n.craft)
 	text.visible_characters = 0
 	chars = 0.0
 	_clear_choices()
@@ -204,16 +206,44 @@ func _dynamic_choices(n: Dictionary) -> Array:
 		for o in G.board_offers():
 			var who := G.giver_name(o.giver)
 			res.append({"t": "Взять: %s — %s (%d Су)" % [o.title, who, o.su], "fx": [["take_offer", o]], "next": "board"})
+		for sp in G.special_offers():
+			if sp[0] != null:
+				res.append({"t": "★ Особое: %s (%d Су)" % [sp[0].title, sp[0].su], "fx": [["take_offer", sp[0]]], "next": "board"})
+	if n.has("craft"):
+		var list: Array = D.CRAFT[n.craft]
+		for i in list.size():
+			if G.craft_can(list[i]):
+				res.append({"t": "Сделать: %s" % list[i][0], "fx": [["craft", n.craft, i]], "next": current_id})
 	return res
 
 
+func _craft_text(giver: String) -> String:
+	var s := ""
+	for r in D.CRAFT[giver]:
+		var ok: bool = G.craft_can(r)
+		s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5 if ok else Pal.G2), r[0], G.craft_need(r)]
+	return s
+
+
 func _board_text() -> String:
-	var s := "ДОСКА ОБЪЯВЛЕНИЙ · ЯРУС 2\nЗаписки на гвоздях, заказы Института под стеклом. Объявления меняются каждый день.\n"
+	var s := "ЭКРАН ЗАДАНИЙ ИНСТИТУТА · УЗЕЛ КАЛЬДЕРА\nЗелёные строки ползут по треснувшему стеклу. Регулярные заказы обновляются каждый день.\n\n[color=%s][b]РЕГУЛЯРНЫЕ ЗАДАНИЯ[/b][/color]" % Pal.hex(Pal.G4)
 	var offers := G.board_offers()
 	if offers.is_empty():
 		s += "\nСегодня всё разобрали. Загляните завтра."
 	for o in offers:
 		s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5), o.title, o.text]
+	s += "\n\n[color=%s][b]★ ОСОБЫЕ ЗАДАНИЯ[/b][/color]" % Pal.hex(Pal.R3)
+	var sps := G.special_offers()
+	var shown := 0
+	for sp in sps:
+		if sp[0] != null:
+			s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5), sp[0].title, sp[0].text]
+			shown += 1
+		else:
+			s += "\n[color=%s][ДОСТУП ЗАКРЫТ] %s[/color]" % [Pal.hex(Pal.G2), sp[1]]
+			shown += 1
+	if shown == 0:
+		s += "\nНа сегодня особых заданий нет."
 	var mine := 0
 	for j in G.p.jobs:
 		mine += 1
@@ -433,6 +463,16 @@ func _cond(c: String) -> bool:
 		"ry_test_ready":
 			return int(G.p.flags.get("ry_errands", 0)) >= 2 and not G.flag("ry_test_done") \
 				and int(G.p.flags.get("ry_test_day", -1)) != G.p.day
+	if c == "rumor_today":
+		return int(G.p.flags.get("rumor_day", -1)) == G.p.day
+	if c == "spice_ready":
+		return G.spice_ready()
+	if c == "spice_all":
+		return G.p.quests.get("spice", "") == "active" and G.spice_herbs() == 3
+	if c.begins_with("today:"):
+		return int(G.p.flags.get(c.substr(6), -1)) == G.p.day
+	if c.begins_with("raid_taken:"):
+		return G.flag(G.raid_key(c.substr(11)))
 	if c == "ry_home_today":
 		return G.ry_home_today()
 	if c == "ry_home_chat":
@@ -467,7 +507,7 @@ func _subst(s: String) -> String:
 	return s.replace("{callsign}", G.p.callsign).replace("{faction}", D.FACTIONS[G.p.faction].name) \
 		.replace("{heal_cost}", str(_heal_cost())).replace("{dogs}", str(int(G.p.flags.get("dogs", 0)))) \
 		.replace("{injury_result}", injury_result).replace("{doc_heal}", str(_doc_heal())).replace("{doc_cost}", str(_doc_cost())) \
-		.replace("{day}", str(G.p.day)).replace("{hour}", "%02d:00" % G.p.hour)
+		.replace("{day}", str(G.p.day)).replace("{hour}", G.clock()).replace("{loot}", G.last_note)
 
 
 func _fx(list: Array) -> void:
@@ -600,6 +640,23 @@ func _fx(list: Array) -> void:
 				G.heal(h)
 			"companion":
 				G.set_companion(f[1])
+			"mark":
+				if not (f[1] in G.p.known):
+					G.p.known.append(f[1])
+					G.say("На карте отмечено: %s." % D.LOCS[f[1]].name)
+			"raid_flag":
+				G.set_flag(G.raid_key(f[1]))
+			"rumor_loot":
+				G.rumor_loot()
+			"craft":
+				G.craft(f[1], int(f[2]))
+			"rumor":
+				G.buy_rumor()
+			"minigame":
+				var game_id: String = f[1]
+				after.append(func(): G.main().open_minigame(game_id))
+			"raid_loot":
+				G.raid_loot(f[1])
 			"escort_start":
 				G.escort_start()
 				G.world_dirty = true

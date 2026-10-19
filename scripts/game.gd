@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.7"
+const VERSION := "0.8"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -409,6 +409,26 @@ func step(in_wasteland: bool) -> void:
 
 # ---------- Время ----------
 
+## Живое время: час игры идёт минуту настоящего, сутки сменяются за 24 минуты.
+const SEC_PER_HOUR := 60.0
+
+
+func tick(delta: float) -> void:
+	p.minf = float(p.get("minf", 0.0)) + delta * 60.0 / SEC_PER_HOUR
+	if p.minf >= 60.0:
+		p.minf -= 60.0
+		pass_hours(1)
+
+
+func clock() -> String:
+	return "%02d:%02d" % [int(p.hour), int(p.get("minf", 0.0))]
+
+
+## Ночь: с 21:00 до 5:00.
+func is_night() -> bool:
+	return int(p.hour) >= 21 or int(p.hour) < 5
+
+
 func pass_hours(h: int) -> void:
 	p.hour = int(p.hour) + h
 	while p.hour >= 24:
@@ -422,6 +442,7 @@ func pass_hours(h: int) -> void:
 func sleep_till_morning() -> void:
 	p.day += 1
 	p.hour = 8
+	p.minf = 0.0
 	new_day()
 	changed.emit()
 	autosave()
@@ -537,14 +558,31 @@ func board_offers() -> Array:
 				taken = true
 		if not taken and not flag("job_done_" + id):
 			res.append(_make_job(D.JOBS[k], rng, id))
-	# Пока никого не спасали, объявление о бедолаге висит каждый день.
-	if not flag("rescued_once") and escort_job() == null:
-		var has_rescue := false
-		for j in res:
-			if j.kind == "escort":
-				has_rescue = true
-		if not has_rescue:
-			res.append(_make_job(D.RESCUE_JOB, rng, "d%d_rescue" % p.day))
+	return res
+
+
+## Особые задания: открываются постепенно. Возвращает [[предложение или null, причина замка]].
+func special_offers() -> Array:
+	var res: Array = []
+	var done := int(p.flags.get("board_done", 0))
+	for sp in D.SPECIAL_BOARD:
+		var tpl: Dictionary = {"RESCUE_JOB": D.RESCUE_JOB, "RAID_CLEAR_JOB": D.RAID_CLEAR_JOB}[sp.tpl]
+		if sp.has("need_board") and done < int(sp.need_board):
+			res.append([null, "Откроется после %d регулярн%s заданий (сдано %d)." % [sp.need_board, "ого" if int(sp.need_board) == 1 else "ых", done]])
+			continue
+		if sp.has("need_flag") and not flag(sp.need_flag):
+			res.append([null, "Откроется, когда в Кальдере вскроют заваренный люк."])
+			continue
+		var id := "sp_%s_%d" % [sp.id, p.day]
+		var busy := false
+		for j in p.jobs:
+			if j.title == tpl.title:
+				busy = true
+		if busy or flag("job_done_" + id):
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(id)
+		res.append([_make_job(tpl, rng, id), ""])
 	return res
 
 
@@ -646,6 +684,8 @@ func turn_in(id: String) -> void:
 		rel_add(j.giver, int(j.rel))
 	if j.giver == "ryzhaya":
 		p.flags["ry_errands"] = int(p.flags.get("ry_errands", 0)) + 1
+	if j.giver == "board" and not str(j.id).begins_with("sp_"):
+		p.flags["board_done"] = int(p.flags.get("board_done", 0)) + 1
 	set_flag("job_done_" + j.id)
 	if j.has("unlock"):
 		say(j.unlock)
@@ -730,7 +770,12 @@ func use_item(item: String) -> String:
 		"food":
 			remove_item(item)
 			feed(it.amount)
+			if it.has("hp"):
+				heal(it.hp)
+				return "%s: +%d сытости, +%d ООЗ." % [item, it.amount, it.hp]
 			return "%s: +%d сытости." % [item, it.amount]
+		"mod":
+			return install_mod(item)
 		"calm":
 			remove_item(item)
 			calm(it.amount)
@@ -765,17 +810,245 @@ func use_item(item: String) -> String:
 	return "Это нельзя использовать."
 
 
+# ---------- Самолечение ----------
+
+## Зашить раны самому: тратит бинт; исход зависит от шва (k из 6), Медицины и броска к20.
+func self_heal(k: int) -> String:
+	remove_item("Бинт")
+	var skill := skill_bonus("Медицина")
+	var d := randi_range(1, 20)
+	var ok := d + skill >= 12
+	var res := "Самолечение: зашито %d из 6, к20=%d %+d (Медицина) — %s. " % [k, d, skill, "удачно" if ok else "неудачно"]
+	if k <= 1:
+		var dmg := hurt(6, "body")
+		changed.emit()
+		return res + "Игла соскальзывает, рана расходится: −%d ООЗ." % dmg
+	var amount := int(round((12.0 + 5.0 * maxi(0, skill)) * k / 6.0))
+	if k >= 6:
+		amount = maxi(amount, 18 + 6 * maxi(0, skill))
+	if ok:
+		amount = int(amount * 1.5)
+	heal(amount)
+	res += "+%d ООЗ." % amount
+	if k >= 6 and ok and skill >= 2 and not p.wounds.is_empty():
+		var w: String = p.wounds.pop_front()
+		res += " Рана «%s» зашита как следует." % w.to_lower()
+	changed.emit()
+	return res
+
+
+# ---------- Слухи, крафт, специи ----------
+
+## Слух от Гарри: новое место на карте или тайник в уже известном.
+func buy_rumor() -> String:
+	p.flags["rumor_day"] = int(p.day)
+	var unknown: Array = []
+	for id in D.LOCS:
+		if not (id in p.known) and D.LOCS[id].kind == "poi":
+			unknown.append(id)
+	if not unknown.is_empty():
+		var id: String = unknown.pick_random()
+		p.known.append(id)
+		last_note = "— Говорят, %s. Сам не видел, но дорогу тебе нарисую.\n\n[color=#7ff07a]На карте отмечено: %s.[/color]" % [D.LOCS[id].desc.to_lower().trim_suffix("."), D.LOCS[id].name]
+		say("Слух: на карте отмечено новое место — %s." % D.LOCS[id].name)
+		return id
+	var pois: Array = []
+	for id in p.known:
+		if D.LOCS.has(id) and D.LOCS[id].kind == "poi":
+			pois.append(id)
+	var poi: String = pois.pick_random()
+	p.flags["rumor_cache"] = poi
+	last_note = "— Один падальщик, перед тем как его съели, хвастался тайником: место «%s», у самой тропы. Проверь, пока другие не проверили.\n\n[color=#7ff07a]В месте «%s» появился тайник.[/color]" % [D.LOCS[poi].name, D.LOCS[poi].name]
+	say("Слух: тайник в месте «%s»." % D.LOCS[poi].name)
+	return poi
+
+
+func rumor_loot() -> void:
+	var poi: String = p.flags.get("rumor_cache", "")
+	p.flags.erase("rumor_cache")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(p.seed) + "rumor" + poi + str(p.day))
+	var got: Array = []
+	if rng.randf() < 0.35:
+		var m: String = RAID_MODS[rng.randi() % RAID_MODS.size()]
+		add_item(m)
+		got.append(m)
+	var l: Array = RAID_COMMON[rng.randi() % RAID_COMMON.size()]
+	add_item(l[0], l[1])
+	got.append(l[0])
+	var su := rng.randi_range(20, 60)
+	p.su += su
+	got.append("%d Су" % su)
+	last_note = ", ".join(got)
+	say("Найдено: %s." % last_note)
+
+
+func craft_can(r: Array) -> bool:
+	if p.su < int(r[2]):
+		return false
+	for it in r[1]:
+		if p.inv.get(it, 0) < int(r[1][it]):
+			return false
+	return true
+
+
+func craft_need(r: Array) -> String:
+	var parts: Array = []
+	for it in r[1]:
+		parts.append("%s ×%d (есть %d)" % [it, r[1][it], p.inv.get(it, 0)])
+	return "%s, %d Су" % [", ".join(parts), r[2]]
+
+
+func craft(giver: String, idx: int) -> void:
+	var r: Array = D.CRAFT[giver][idx]
+	if not craft_can(r):
+		return
+	for it in r[1]:
+		remove_item(it, int(r[1][it]))
+	p.su -= int(r[2])
+	add_item(r[0])
+	say("Сделано: %s." % r[0])
+
+
+## Запутанные специи открываются, когда Гений знаком с Гретой и сдал три задания с экрана.
+func spice_ready() -> bool:
+	return flag("cook_met") and int(p.flags.get("board_done", 0)) >= 3 and not p.quests.has("spice")
+
+
+func spice_herbs() -> int:
+	var n := 0
+	for h in D.HERBS:
+		if has(h):
+			n += 1
+	return n
+
+
+# ---------- Рейд ----------
+
+var last_note := ""
+
+const RAID_COMMON := [["Старая аптечка", 1], ["Бинт", 2], ["Пистолетные патроны", 1], ["Карабинные патроны", 1],
+	["Револьверные патроны", 1], ["Стимулятор", 1], ["Стандартная дробь", 1], ["Сухпаёк", 1]]
+const RAID_MODS := ["Удлинённый магазин (пистолет)", "Удлинённый магазин (карабин)", "Удлинённый магазин (винтовка)",
+	"Прицел (пистолет)", "Прицел (карабин)", "Прицел (револьвер)", "Ускоритель перезарядки (пистолет)",
+	"Ускоритель перезарядки (карабин)", "Ускоритель перезарядки (винтовка)", "Ускоритель перезарядки (револьвер)", "Тяжёлая рукоять"]
+
+
+func raid_key(id: String) -> String:
+	return "rc_%s_%d" % [id, int(p.day) / 3]
+
+
+## Обыскать тайник в рейде: две находки, на нижнем ярусе чаще попадаются обвесы.
+func raid_loot(id: String) -> void:
+	set_flag(raid_key(id))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(p.seed) + raid_key(id))
+	var deep := int(id.substr(1)) >= 5
+	var got: Array = []
+	if rng.randf() < (0.55 if deep else 0.3):
+		var m: String = RAID_MODS[rng.randi() % RAID_MODS.size()]
+		add_item(m)
+		got.append(m)
+	for i in (2 if deep else 1):
+		var l: Array = RAID_COMMON[rng.randi() % RAID_COMMON.size()]
+		add_item(l[0], l[1])
+		got.append("%s ×%d" % [l[0], l[1]] if l[1] > 1 else l[0])
+	var su := rng.randi_range(5, 30 if deep else 18)
+	p.su += su
+	got.append("%d Су" % su)
+	last_note = ", ".join(got)
+	say("Найдено: %s." % last_note)
+
+
+# ---------- Обвесы на оружие ----------
+
+## Класс оружия для обвесов: пистолет, револьвер, карабин, винтовка, дробовик, ближний бой.
+func weapon_class(w: String) -> String:
+	var it: Dictionary = D.ITEMS.get(w, {})
+	if it.get("melee", false) or it.get("kind", "") == "Ближний бой":
+		return "Ближний бой"
+	var kind: String = it.get("kind", "")
+	if kind == "Пистолет":
+		return "Револьвер" if it.get("ammo", "") == "Револьверные патроны" else "Пистолет"
+	if kind == "Винтовка":
+		return "Винтовка" if float(it.get("reload", 1.0)) >= 3.0 else "Карабин"
+	return kind
+
+
+func wmods(w: String) -> Array:
+	return p.get("wmods", {}).get(w, [])
+
+
+func has_wmod(w: String, kind: String) -> bool:
+	for m in wmods(w):
+		if D.ITEMS[m].mod == kind:
+			return true
+	return false
+
+
+## Поставить обвес на оружие в руках (огнестрел или ближний бой — по классу обвеса).
+func install_mod(m: String) -> String:
+	var it: Dictionary = D.ITEMS[m]
+	var w: String = p.melee if it.fits == "Ближний бой" else p.weapon
+	if w == "" or weapon_class(w) != it.fits:
+		return "%s подходит только для класса «%s». Возьмите такое оружие в руку." % [m, it.fits.to_lower()]
+	var slots := int(D.ITEMS[w].get("mods", 2))
+	if wmods(w).size() >= slots:
+		return "На %s больше нет места для обвеса (слотов: %d)." % [w, slots]
+	if has_wmod(w, it.mod):
+		return "На %s такой обвес уже стоит." % w
+	if not p.has("wmods"):
+		p.wmods = {}
+	var arr: Array = p.wmods.get(w, [])
+	arr.append(m)
+	p.wmods[w] = arr
+	remove_item(m)
+	changed.emit()
+	return "Обвес установлен: %s → %s." % [m, w]
+
+
+func remove_mod(w: String, m: String) -> void:
+	var arr: Array = wmods(w)
+	arr.erase(m)
+	p.wmods[w] = arr
+	add_item(m)
+	if D.ITEMS[m].mod == "mag":
+		p.mag = mini(p.mag, mag_size(w))
+
+
+func mag_size(w: String) -> int:
+	var n := int(D.ITEMS[w].get("mag", 0))
+	if has_wmod(w, "mag"):
+		n = int(ceil(n * 1.5))
+	return n
+
+
+func reload_time(w: String) -> float:
+	var r := float(D.ITEMS[w].get("reload", 1.0))
+	if has_wmod(w, "reload"):
+		r = 0.5 if r <= 1.0 else r - 1.0
+	return r
+
+
+func aim_bonus(w: String) -> int:
+	return 2 if has_wmod(w, "aim") else 0
+
+
+func melee_mult(w: String) -> float:
+	return 1.25 if has_wmod(w, "heavy") else 1.0
+
+
 ## Перезарядка: тратит пачку патронов, если магазин пуст наполовину и больше.
 func reload() -> String:
 	if p.weapon == "":
 		return "Нет огнестрела."
 	var w: Dictionary = D.ITEMS[p.weapon]
-	if p.mag >= w.mag:
+	if p.mag >= mag_size(p.weapon):
 		return "Магазин полон."
 	if not has(w.ammo):
 		return "Нет боеприпасов: %s." % w.ammo
 	remove_item(w.ammo)
-	p.mag = w.mag
+	p.mag = mag_size(p.weapon)
 	changed.emit()
 	return "Перезарядка: %s (%d)." % [p.weapon, p.mag]
 
@@ -842,7 +1115,9 @@ func slot_info(i: int) -> String:
 	var pp: Dictionary = data.p
 	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "caldera1": "Кальдера, ярус 1",
 		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "caldera4": "Кальдера, ярус 4",
-		"caldera_ryhome": "Домик Рыжей", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
+		"caldera_ryhome": "Домик Рыжей", "raid1": "Заброшенный ярус 5", "raid2": "Затопленный ярус 6",
+		"poi_station": "Заправка", "poi_river": "Река Лета", "poi_tower": "Вышка", "poi_den": "Логово псов",
+		"poi_ruins": "Разрушенный посёлок", "poi_forest": "Запутанный лес", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
 	return "%s · %s · %s" % [pp.get("callsign", "?"), where, data.get("time", "")]
 
 

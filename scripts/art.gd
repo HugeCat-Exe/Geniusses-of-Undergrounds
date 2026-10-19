@@ -194,6 +194,15 @@ func _floor(kind: String, variant: int) -> ImageTexture:
 						c = 2
 					elif wv < -1.4:
 						c = 0
+				"moss":
+					c = 2
+					var mv := sin(x * 0.55 + variant * 1.7) * cos(y * 0.8 + variant)
+					if mv > 0.45:
+						c = 3
+					elif mv < -0.6:
+						c = 1
+					if rng.randf() < 0.04:
+						c = 4
 				"planks":
 					c = 3 if (v / 4) % 2 == 0 else 2
 					if v % 4 == 0:
@@ -581,6 +590,34 @@ func _prop(kind: String) -> ImageTexture:
 			cv = _big_burrow()
 		"ryhouse":
 			cv = _big_ryhouse()
+		"bigtree":
+			cv = _big_tree()
+		"jobscreen":
+			cv = Canvas.new(34, 44)
+			cv.line(8, 30, 8, 43, 2, 2)
+			cv.line(26, 30, 26, 43, 2, 2)
+			cv.rect(1, 1, 32, 30, 1)
+			cv.rect(3, 3, 28, 24, 0)
+			for i in 5:
+				cv.line(5, 6 + i * 4, 5 + 6 + (i * 7) % 16, 6 + i * 4, 4 if i != 2 else 8)
+			cv.rect(24, 5, 4, 3, 9)
+			cv.line(3, 27, 30, 27, 3)
+			cv.put(16, 29, 5)
+		"herb":
+			cv = Canvas.new(18, 16)
+			for i in 5:
+				cv.line(9, 15, 3 + i * 3, 4 + (i % 2) * 3, 4 if i % 2 == 0 else 3)
+			cv.put(3, 4, 6)
+			cv.put(15, 4, 6)
+			cv.put(9, 3, 9)
+		"roots":
+			cv = Canvas.new(24, 14)
+			cv.ellipse(12, 9, 10, 4, 2)
+			cv.line(4, 9, 1, 3, 3, 2)
+			cv.line(12, 8, 13, 1, 3, 2)
+			cv.line(20, 9, 23, 4, 3, 2)
+			cv.put(13, 1, 5)
+			cv.put(1, 3, 5)
 		"door":
 			cv = Canvas.new(20, 40)
 			cv.rect(1, 1, 18, 38, 1)
@@ -753,6 +790,31 @@ func _big_tower() -> Canvas:
 	var bx := _ip(o, 2.75, 2.3, 0)
 	cv.rect(int(bx.x) - 8, int(bx.y) - 16, 14, 16, 3)
 	cv.rect(int(bx.x) - 5, int(bx.y) - 12, 5, 7, 1, false)
+	return cv
+
+
+## Огромное дерево Запутанного леса: 2×2 клетки, ствол как труба, корни наружу, крона уходит вверх.
+func _big_tree() -> Canvas:
+	var f := _foot(2, 2, 120)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var c := _ip(o, 1.0, 1.0, 0)
+	# корни
+	for k in 6:
+		var a := k * 1.05
+		var e := c + Vector2(cos(a) * 26, sin(a) * 12)
+		cv.line(c.x, c.y - 4, e.x, e.y, 2, 3)
+	# ствол
+	cv.rect(int(c.x) - 9, int(c.y) - 96, 18, 94, 2)
+	cv.rect(int(c.x) - 9, int(c.y) - 96, 6, 94, 1)
+	for k in 7:
+		cv.line(c.x - 6 + (k % 3) * 5, c.y - 10 - k * 12, c.x - 4 + (k % 3) * 5, c.y - 18 - k * 12, 3)
+	# крона
+	cv.ellipse(c.x, c.y - 104, 30, 16, 3)
+	cv.ellipse(c.x - 12, c.y - 98, 16, 9, 2)
+	cv.ellipse(c.x + 10, c.y - 112, 18, 9, 4)
+	for k in 5:
+		cv.put(int(c.x) - 20 + k * 10, int(c.y) - 104 + (k % 2) * 6, 6)
 	return cv
 
 
@@ -1141,6 +1203,39 @@ func enemy_art(kind: String) -> Dictionary:
 				cv.put(27 + i * 2, 24, 6)
 			parts = {"Лицо": Rect2(22, 7, 20, 22), "Туловище": Rect2(16, 28, 32, 26),
 				"Щупальца": Rect2(0, 18, 64, 46), "Глаза": Rect2(23, 8, 18, 10)}
+		"slepysh":
+			# бледный, на длинных руках, безглазый
+			cv.ellipse(30, 40, 14, 9, 4)
+			cv.ellipse(46, 30, 8, 7, 5)
+			cv.line(36, 40, 50, 50, 4, 2)
+			cv.line(50, 50, 58, 60, 4, 2)
+			cv.line(24, 40, 14, 52, 4, 2)
+			cv.line(14, 52, 8, 62, 4, 2)
+			cv.line(20, 46, 22, 60, 3, 2)
+			cv.line(34, 47, 36, 60, 3, 2)
+			for i in 4:
+				cv.put(57 + (i % 2), 60 + i / 2, 6)
+				cv.put(7 + (i % 2), 61 + i / 2, 6)
+			cv.line(41, 33, 52, 33, 0)
+			for i in 5:
+				cv.put(42 + i * 2, 34, 6)
+			for i in 4:
+				cv.line(20 + i * 5, 34, 21 + i * 5, 37, 3)
+			parts = {"Голова": Rect2(37, 22, 18, 16), "Туловище": Rect2(16, 31, 30, 18), "Руки": Rect2(4, 40, 58, 24)}
+		"plant":
+			cv.line(32, 63, 32, 34, 3, 3)
+			for i in 6:
+				var a := -2.6 + i * 0.5
+				cv.line(32, 58, 32 + cos(a) * 28, 58 + sin(a) * 10, 2, 2)
+			cv.ellipse(32, 24, 14, 12, 7)
+			cv.ellipse(32, 26, 9, 6, 0)
+			for i in 6:
+				cv.put(25 + i * 3, 22, 6)
+				cv.put(25 + i * 3, 30, 6)
+			for i in 5:
+				var a2 := -2.8 + i * 0.6
+				cv.ellipse(32 + cos(a2) * 15, 24 + sin(a2) * 13, 4, 3, 8)
+			parts = {"Бутон": Rect2(18, 12, 28, 26), "Стебель": Rect2(27, 36, 10, 28), "Лозы": Rect2(2, 46, 60, 18)}
 	cv.outline(0)
 	var res := {"tex": to_tex(cv), "parts": parts}
 	cache["enemy_" + kind] = res

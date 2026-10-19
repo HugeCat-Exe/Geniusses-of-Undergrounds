@@ -241,7 +241,7 @@ func run(main: Node) -> void:
 	await _wait(0.8)
 	await _shot("19_worldmap")
 	# прогулки по открытым местам
-	var views := {"station": Vector2i(7, 8), "river": Vector2i(17, 16), "tower": Vector2i(13, 11), "den": Vector2i(13, 6), "ruins": Vector2i(6, 7)}
+	var views := {"station": Vector2i(7, 8), "river": Vector2i(17, 16), "tower": Vector2i(13, 11), "den": Vector2i(13, 6), "ruins": Vector2i(6, 7), "forest": Vector2i(14, 13)}
 	for id in views:
 		if not (id in G.p.known):
 			G.p.known.append(id)
@@ -351,6 +351,138 @@ func run(main: Node) -> void:
 	M.show_world("caldera1", "surface")
 	await _wait(0.6)
 	print("SMOKE escort done ", G.escort_job() == null, " su ", su0, " -> ", G.p.su, " rescued ", G.flag("rescued_once"))
+	# ---- 0.8 ----
+	G.p.su += 500
+	# обвесы
+	G.add_item("Тяжёлая рукоять")
+	print("SMOKE mod melee ", G.use_item("Тяжёлая рукоять"), " mult ", G.melee_mult(G.p.melee))
+	G.add_item("Прицел (карабин)")
+	print("SMOKE mod wrong ", G.use_item("Прицел (карабин)"))
+	print("SMOKE weapon class ", G.p.weapon, " ", G.weapon_class(G.p.weapon), " mag ", G.mag_size(G.p.weapon), " reload ", G.reload_time(G.p.weapon))
+	for nm in D.ITEMS:
+		if D.ITEMS[nm].get("type", "") == "mod" and D.ITEMS[nm].fits == G.weapon_class(G.p.weapon) and D.ITEMS[nm].mod == "mag":
+			G.add_item(nm)
+			print("SMOKE mod mag ", G.use_item(nm), " mag ", G.mag_size(G.p.weapon))
+	# рейд
+	M.show_world("caldera4", "lift")
+	await _wait(0.4)
+	M.open_dialogue("raid_hatch")
+	await _wait(0.4)
+	await _shot("27_hatch_sealed")
+	_close_overlays()
+	M.open_dialogue("miron_hatch")
+	await _wait(0.4)
+	_choose_first()
+	await _wait(0.6)
+	_close_overlays()
+	print("SMOKE raid open ", G.flag("raid_open"))
+	M.show_world("raid1", "top")
+	await _wait(0.8)
+	for m in M.world.mobs:
+		m.stun = 999.0
+	await _shot("28_raid1")
+	M.open_dialogue("raid_c1")
+	await _wait(0.6)
+	await _shot("28b_raid_loot")
+	_close_overlays()
+	M.open_dialogue("raid_c1")
+	await _wait(0.4)
+	print("SMOKE raid c1 empty ", _dialogue().current_id if _dialogue() else "?")
+	_close_overlays()
+	M.show_world("raid2", "top")
+	await _wait(0.8)
+	for m in M.world.mobs:
+		m.stun = 999.0
+	await _shot("29_raid2")
+	M.start_combat("slepysh", M._battle_end.bind("", ""))
+	await _wait(1.0)
+	await _shot("29b_slepysh")
+	var cbs = _overlay_of_type("Combat")
+	if cbs:
+		cbs._end("win")
+	await _wait(0.5)
+	_close_overlays()
+	# экран заданий
+	G.p.flags["board_done"] = 0
+	M.show_world("caldera2", "down1")
+	await _wait(0.4)
+	M.open_dialogue("board")
+	await _wait(0.6)
+	await _shot("30_jobscreen_locked")
+	_close_overlays()
+	G.p.flags["board_done"] = 3
+	M.open_dialogue("board")
+	await _wait(0.6)
+	await _shot("30b_jobscreen")
+	print("SMOKE specials ", G.special_offers().size())
+	_close_overlays()
+	# крафт
+	G.add_item("Шкура пса", 4)
+	G.add_item("Мусор", 2)
+	M.open_dialogue("craft_gunsmith")
+	await _wait(0.6)
+	await _shot("31_craft")
+	_close_overlays()
+	var before_r: int = G.p.inv.get("Тяжёлая рукоять", 0)
+	G.craft("gunsmith", 0)
+	print("SMOKE craft ", before_r, " -> ", G.p.inv.get("Тяжёлая рукоять", 0))
+	# слухи
+	print("SMOKE rumor ", G.buy_rumor(), " cache ", G.p.flags.get("rumor_cache", ""))
+	G.p.flags["rumor_cache"] = "station"
+	var mp3 = preload("res://scripts/maps.gd").new()
+	var rc := 0
+	for o in mp3.get_map("poi_station").objs:
+		if o.get("action", "") == "rumor_cache":
+			rc += 1
+	print("SMOKE rumor cache on map ", rc)
+	# специи
+	G.set_flag("cook_met")
+	print("SMOKE spice ready ", G.spice_ready())
+	G.quest("spice", "active")
+	var herbs := 0
+	for m in ["waste", "poi_den", "poi_forest"]:
+		for o in mp3.get_map(m).objs:
+			if str(o.get("action", "")).begins_with("herb_"):
+				herbs += 1
+	print("SMOKE herbs on maps ", herbs)
+	for hb in D.HERBS:
+		G.add_item(hb)
+	M.show_world("caldera3", "down2")
+	await _wait(0.4)
+	M.open_dialogue("spice_done")
+	await _wait(0.5)
+	_close_overlays()
+	print("SMOKE spice done ", G.flag("spice_done"), " ", G.p.quests.get("spice"))
+	# мини-игры
+	M.open_minigame("recipe")
+	await _wait(2.5)
+	await _shot("32_recipe")
+	await _wait(5.5)
+	_close_overlays()
+	print("SMOKE recipe su ", G.p.su)
+	M.open_minigame("cups")
+	await _wait(2.4)
+	await _shot("33_cups")
+	await _wait(12.0)
+	_close_overlays()
+	G.add_item("Бинт", 2)
+	G.p.hp = 30
+	M.open_minigame("needle")
+	await _wait(1.0)
+	await _shot("34_needle")
+	await _wait(3.0)
+	_close_overlays()
+	print("SMOKE needle hp ", G.p.hp)
+	# ночь
+	G.p.hour = 23
+	M.show_world("poi_forest", "enter")
+	await _wait(1.0)
+	await _shot("35_night_forest")
+	G.p.hour = 12
+	M.show_world("poi_forest", "enter")
+	await _wait(1.0)
+	await _shot("35b_day_forest")
+	G.p.hour = 14
 	# голод: не убивает
 	var mh: int = G.max_hp()
 	G.p.food = 1
@@ -461,7 +593,7 @@ func _check_story() -> void:
 				print("SMOKE BAD LINK ", id, " -> ", t)
 				bad += 1
 	var mp = preload("res://scripts/maps.gd").new()
-	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins"]:
+	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2"]:
 		for o in mp.get_map(m).objs:
 			if o.get("action", "") != "" and not o.action.begins_with("go:") and not nodes.has(o.action):
 				print("SMOKE BAD ACTION ", o.action)

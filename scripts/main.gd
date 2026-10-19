@@ -240,6 +240,42 @@ func _set_cursor() -> void:
 	Input.set_custom_mouse_cursor(tex, Input.CURSOR_IBEAM, Vector2.ZERO)
 
 
+## Мирные мини-игры и самолечение: результат уходит в G или в сцену диалога.
+func open_minigame(id: String) -> void:
+	var mg: Control
+	match id:
+		"recipe":
+			mg = preload("res://scripts/mg_recipe.gd").new()
+			mg.done.connect(func(score: int):
+				if score >= 5:
+					G.p.su += 25
+					G.feed(30)
+					G.rel_add("cook", 3)
+					open_dialogue.call_deferred("cook_help_win")
+				elif score >= 3:
+					G.p.su += 10
+					G.rel_add("cook", 1)
+					open_dialogue.call_deferred("cook_help_part")
+				else:
+					open_dialogue.call_deferred("cook_help_fail"))
+		"cups":
+			mg = preload("res://scripts/mg_cups.gd").new()
+			mg.done.connect(func(wins: int):
+				if wins >= 2:
+					G.calm(8)
+					G.add_item("Мусор")
+					open_dialogue.call_deferred("pip_win")
+				else:
+					G.calm(4)
+					open_dialogue.call_deferred("pip_lose"))
+		"needle":
+			mg = preload("res://scripts/mg_needle.gd").new()
+			mg.done.connect(func(k: int): G.say(G.self_heal(k)))
+	if mg != null:
+		mg.theme = Pal.theme
+		overlay.add_child(mg)
+
+
 func has_overlay() -> bool:
 	for c in overlay.get_children():
 		if not c.is_queued_for_deletion():

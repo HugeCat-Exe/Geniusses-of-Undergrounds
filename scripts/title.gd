@@ -20,6 +20,12 @@ var gen_box: Control
 var phrase_label: Label
 var phrase := ""
 var typed := 0
+## Реплики идут «колодой»: перемешаны, без повторов, пока не покажутся все.
+var deck: Array = []
+var last := -1
+var phrase_t := 0.0
+var erasing := false
+const PHRASE_EVERY := 40.0
 
 ## Реплики Женевьевы на главном экране: каждый запуск — новая, как сплэш в Майнкрафте.
 const PHRASES := [
@@ -120,7 +126,7 @@ func _ready() -> void:
 	phrase_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	gen_box.add_child(phrase_label)
-	phrase = "«%s»" % PHRASES[randi() % PHRASES.size()]
+	_next_phrase()
 
 
 func _load(i: int) -> void:
@@ -148,11 +154,31 @@ func _process(delta: float) -> void:
 	if want != shown:
 		shown = want
 		boot_label.text = "\n".join(BOOT.slice(0, shown)) + ("_" if shown < BOOT.size() else "")
-	# реплика печатается по букве после загрузки терминала
-	var start := BOOT.size() * 0.25
-	if t > start:
-		var n := mini(phrase.length(), int((t - start) / 0.035))
-		var blink := "_" if int(t * 3.0) % 2 == 0 else " "
-		if n != typed or n == phrase.length():
-			typed = n
-			phrase_label.text = phrase.substr(0, n) + (blink if n == phrase.length() else "_")
+	# реплика печатается по букве после загрузки терминала, через 40 секунд стирается и сменяется
+	if t < BOOT.size() * 0.25:
+		return
+	phrase_t += delta
+	var blink := "_" if int(t * 3.0) % 2 == 0 else " "
+	if erasing:
+		typed = maxi(0, typed - 2)
+		phrase_label.text = phrase.substr(0, typed) + "_"
+		if typed == 0:
+			erasing = false
+			phrase_t = 0.0
+			_next_phrase()
+		return
+	var n := mini(phrase.length(), int(phrase_t / 0.035))
+	typed = n
+	phrase_label.text = phrase.substr(0, n) + (blink if n == phrase.length() else "_")
+	if phrase_t > PHRASE_EVERY:
+		erasing = true
+
+
+func _next_phrase() -> void:
+	if deck.is_empty():
+		deck = range(PHRASES.size())
+		deck.shuffle()
+		if deck[0] == last and deck.size() > 1:
+			deck.push_back(deck.pop_front())
+	last = deck.pop_front()
+	phrase = "«%s»" % PHRASES[last]

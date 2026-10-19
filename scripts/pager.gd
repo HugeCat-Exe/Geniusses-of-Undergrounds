@@ -11,6 +11,9 @@ const QUESTS := {
 		"active": "Убить трёх пустынных псов в Пустоши у Кальдеры. Убито: {dogs}/3.",
 		"done": "Три пса убиты. Вернуться к доске заданий Института за оплатой.",
 		"closed": "Выполнено. Институт перевёл 90 Су."},
+	"spice": {"title": "Запутанные специи",
+		"active": "Собрать для Матушки Греты три травы: пепельный тимьян у шахты Кальдеры, собачью мяту в логове диких псов и звёздный перец в Запутанном лесу.",
+		"closed": "Выполнено. Теперь у Греты есть наваристая похлёбка."},
 }
 
 var tab := 0
@@ -159,7 +162,7 @@ func _inventory() -> void:
 	var w := "—"
 	if p.weapon != "":
 		var wi: Dictionary = D.ITEMS[p.weapon]
-		w = "%s (урон %d, магазин %d/%d, %s)" % [p.weapon, wi.dmg, p.mag, wi.mag, wi.ammo]
+		w = "%s (урон %d, магазин %d/%d, %s)" % [p.weapon, wi.dmg, p.mag, G.mag_size(p.weapon), wi.ammo]
 	var gear: Dictionary = p.get("gear", {})
 	var slots := ""
 	for sl in [["head", "Шлем"], ["legs", "Штаны"], ["feet", "Обувь"], ["amulet", "Амулет"]]:
@@ -191,10 +194,29 @@ func _inventory() -> void:
 			"heal", "food", "calm": act = "Использовать"
 			"armor", "amulet": act = "Надеть" if not equipped else ""
 			"weapon": act = "Взять" if not equipped else ""
+			"mod": act = "Установить"
 		if act != "":
 			var b := Pal.button(act, _use.bind(it), 8)
 			b.custom_minimum_size = Vector2(80, 0)
 			row.add_child(b)
+		if it == "Бинт":
+			var sb := Pal.button("Зашить раны", _stitch, 8)
+			sb.tooltip_text = "Попробовать залатать себя самому: мини-игра с иглой, исход зависит от Медицины и броска."
+			row.add_child(sb)
+	# обвесы на оружии в руках
+	for wn in [p.weapon, p.melee]:
+		if wn == "" or not D.ITEMS.has(wn):
+			continue
+		var nslots := int(D.ITEMS[wn].get("mods", 2))
+		var row2 := HBoxContainer.new()
+		content.add_child(row2)
+		var ml := Pal.label("Обвесы на %s (%s, слотов %d): %s" % [wn, G.weapon_class(wn).to_lower(), nslots, ", ".join(G.wmods(wn)) if not G.wmods(wn).is_empty() else "нет"], Pal.G3, 8)
+		ml.custom_minimum_size = Vector2(420, 0)
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row2.add_child(ml)
+		for m in G.wmods(wn):
+			var rb := Pal.button("Снять: %s" % m.get_slice(" (", 0), _unmod.bind(wn, m), 8)
+			row2.add_child(rb)
 	if p.weapon != "":
 		content.add_child(Pal.button("Перезарядить %s" % p.weapon, _reload, 9))
 
@@ -240,6 +262,18 @@ func _split() -> void:
 
 func _use(it: String) -> void:
 	G.say(G.use_item(it))
+	_set_tab(1)
+
+
+func _stitch() -> void:
+	var m: Node = G.main()
+	queue_free()
+	m.open_minigame.call_deferred("needle")
+
+
+func _unmod(w: String, m: String) -> void:
+	G.remove_mod(w, m)
+	G.say("Обвес снят: %s." % m)
 	_set_tab(1)
 
 
