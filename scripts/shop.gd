@@ -7,6 +7,9 @@ var sell_box: VBoxContainer
 var money: Label
 var title_text := "ЛАВКА"
 var about: RichTextLabel
+var cover_box: Control
+## Библиотекарь: товар штучный, купленное на сегодня из лавки пропадает.
+var limited := false
 
 
 func _ready() -> void:
@@ -29,10 +32,19 @@ func _ready() -> void:
 	var hb := Pal.label("КУПИТЬ", Pal.G3, 9, true)
 	hb.position = Vector2(44, 44)
 	add_child(hb)
-	var hs := Pal.label("ПРОДАТЬ (половина цены, трофеи — полная)", Pal.G3, 9, true)
-	hs.position = Vector2(330, 44)
-	add_child(hs)
+	limited = G.shop_who == "librarian"
+	if not limited:
+		var hs := Pal.label("ПРОДАТЬ (половина цены, трофеи — полная)", Pal.G3, 9, true)
+		hs.position = Vector2(330, 44)
+		add_child(hs)
+	# у книжника справа обложка, как витрина: видно, что покупаешь
+	cover_box = Control.new()
+	cover_box.position = Vector2(400, 56)
+	cover_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(cover_box)
 	for side in 2:
+		if side == 1 and limited:
+			break
 		var sc := ScrollContainer.new()
 		sc.position = Vector2(44 if side == 0 else 330, 60)
 		sc.size = Vector2(270, 186)
@@ -60,9 +72,8 @@ func _ready() -> void:
 
 func _sell_price(it: String) -> int:
 	var info: Dictionary = D.ITEMS[it]
-	if info.type == "trophy":
-		return G.sell_price(info.price)
-	return G.sell_price(int(info.price / 2))
+	var base: float = info.price if info.type == "trophy" else info.price / 2.0
+	return G.sell_price(roundi(base * G.buy_k(G.shop_who, it)))
 
 
 func _fill() -> void:
@@ -73,8 +84,12 @@ func _fill() -> void:
 	var rk := G.rel_price_k(G.shop_who)
 	if rk != 1.0:
 		money.text += "  ·  отношение: %+d%%" % roundi((rk - 1.0) * 100)
-	for c in buy_box.get_children() + sell_box.get_children():
+	for c in buy_box.get_children() + (sell_box.get_children() if sell_box else []):
 		c.queue_free()
+	if limited:
+		stock = G.lib_stock()
+		if stock.is_empty():
+			buy_box.add_child(Pal.label("Сегодня всё раскупили.\nЗавтра будут новые книги.", Pal.G3, 9))
 	for it in stock:
 		var price: int = G.price(D.ITEMS[it].price, it)
 		var deal: bool = it == G.p.get("deal_today", "")
@@ -83,22 +98,32 @@ func _fill() -> void:
 		b.mouse_entered.connect(_show_about.bind(it))
 		b.disabled = G.p.su < price
 		buy_box.add_child(b)
+	if limited:
+		if not stock.is_empty():
+			_show_about(stock[0])
+		return
 	var keys: Array = G.p.inv.keys()
 	keys.sort()
 	for it in keys:
 		var info: Dictionary = D.ITEMS[it]
 		if info.type in ["quest", "tool"]:
 			continue
-		var b := Pal.button("%s ×%d — %d Су" % [it, G.p.inv[it], _sell_price(it)], _sell.bind(it), 9)
+		var takes: bool = G.buy_k(G.shop_who, it) > 0.0
+		var line := "%s ×%d — %d Су" % [it, G.p.inv[it], _sell_price(it)] if takes else "%s ×%d — %s" % [it, G.p.inv[it], D.REFUSE_TEXT.get(G.shop_who, "не берёт")]
+		var b := Pal.button(line, _sell.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.mouse_entered.connect(_show_about.bind(it))
 		var equipped: bool = G.equipped(it)
-		b.disabled = equipped and G.p.inv[it] <= 1
+		b.disabled = (equipped and G.p.inv[it] <= 1) or not takes
 		sell_box.add_child(b)
 
 
 func _show_about(it: String) -> void:
 	about.text = "[b]%s[/b]\n%s" % [it, D.item_desc(it)]
+	for c in cover_box.get_children():
+		c.queue_free()
+	if limited and D.BOOKS.has(it):
+		cover_box.add_child(preload("res://scripts/bookview.gd").cover(D.BOOKS[it].cover, Vector2.ZERO, Vector2(141, 188)))
 
 
 func _exit_tree() -> void:
@@ -111,6 +136,8 @@ func _buy(it: String) -> void:
 		return
 	G.p.su -= price
 	G.add_item(it)
+	if limited:
+		G.set_flag("lib_%d_%s" % [G.p.day, it])
 	_fill()
 
 

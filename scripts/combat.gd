@@ -28,6 +28,7 @@ var lunge := 0.0      # рывок врага на Гения (0..1)
 var knock := 0.0      # отдача от попадания по врагу (0..1)
 var dead_k := 0.0     # поверженный враг оседает и тускнеет
 var hurt_rect: ColorRect
+var intent: Dictionary = {}   # что враг готовит на следующий ход
 var enemy_skip := false   # Дана сбила врага с ног: он пропускает ход
 
 
@@ -187,6 +188,8 @@ func _start() -> void:
 		await _enemy_turn()
 	else:
 		_log("Ваше Внимание выше (%d против %d). Вы действуете первым." % [_player_speed(), E.speed])
+	if intent.is_empty():
+		_plan()
 	busy = false
 	_menu()
 
@@ -220,6 +223,8 @@ func _update_status() -> void:
 		s += "\n[color=%s]Дана рядом: прикрывает щитом[/color]" % Pal.hex(Pal.G5)
 	if p.wounds.size() > 0:
 		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
+	if not intent.is_empty() and not finished:
+		s += "\n[color=%s]Враг готовит: %s[/color]" % [Pal.hex(Pal.R3), intent.name]
 	status.text = s
 	view.queue_redraw()
 
@@ -608,7 +613,44 @@ func _available_attacks() -> Array:
 	return res
 
 
+const TELLS := {
+	"Пасть": "широко разевает пасть, с клыков тянется слюна",
+	"Вой": "задирает голову к потолку, горло ходит ходуном",
+	"Рывок": "припадает к земле и подбирает лапы",
+	"Укус": "скалится и примеривается к горлу",
+	"Выстрел": "вскидывает Горлорез и щурится",
+	"Удар трубой": "перехватывает трубу двумя руками",
+	"Когти": "растопыривает когти и шипит",
+	"Визг": "набирает воздух, грудь раздувается",
+	"Хватка": "медленно разводит длинные руки",
+	"Шёпот": "прислушивается, наклонив голову, и шевелит губами",
+	"Хлёст лозой": "отводит лозу назад, как кнут",
+	"Пыльца": "раздувает бутон, из него сыплется жёлтая пыль",
+	"Хлёст": "сворачивает щупальца кольцами",
+	"Взгляд": "замирает и перестаёт моргать",
+}
+
+
+## Враг выбирает следующую атаку заранее и выдаёт её позой.
+func _plan() -> void:
+	var atks := _available_attacks()
+	if finished or atks.is_empty():
+		intent = {}
+		return
+	intent = atks.pick_random()
+	var tell: String = TELLS.get(intent.name, "готовится к удару")
+	var hint := "закройтесь или бейте первым" if intent.kind == "body" else "это ударит по рассудку"
+	_log("[color=%s]▸ %s %s. Готовит «%s» (%s).[/color]" % [Pal.hex(Pal.G3), E.name, tell, intent.name, hint])
+	_update_status()
+
+
 func _enemy_turn() -> void:
+	await _enemy_act()
+	if not finished:
+		_plan()
+
+
+func _enemy_act() -> void:
 	if finished:
 		return
 	var atks := _available_attacks()
@@ -620,6 +662,13 @@ func _enemy_turn() -> void:
 		_log("%s поднимается с земли и пропускает ход." % E.name)
 		return
 	var a: Dictionary = atks.pick_random()
+	if not intent.is_empty():
+		var still := atks.filter(func(x): return x.name == intent.name)
+		if still.is_empty():
+			_log("[color=%s]Вы сорвали «%s»: %s бьёт как может.[/color]" % [Pal.hex(Pal.G5), intent.name, E.name])
+		else:
+			a = still[0]
+	intent = {}
 	if a.get("prayer", false):
 		await _prayer(a)
 		return

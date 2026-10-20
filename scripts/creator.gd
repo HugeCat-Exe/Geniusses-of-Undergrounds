@@ -130,7 +130,7 @@ func _build() -> void:
 				_option("%s (%d вн. / %d хар.)" % [a, ag.ext, ag.psy], c.age == a, _pick.bind("age", a),
 					"Внешних черт: %d\nЧерт характера: %d\n\n%s" % [ag.ext, ag.psy, _mods_text(ag.mods)])
 		5:
-			for b in D.BIRTH:
+			for b in D.births_of(c.faction):
 				_option(b, c.birth == b, _pick.bind("birth", b), "Подземка %s\n\n%s" % [b, _mods_text(D.BIRTH[b])])
 		6:
 			for t in D.PHYS:
@@ -150,10 +150,10 @@ func _build() -> void:
 			var verdict := Pal.rich(_verdict(), 8)
 			verdict.custom_minimum_size = Vector2(210, 0)
 			list.add_child(verdict)
-			list.add_child(Pal.label("Подпись (введите «О»):", Pal.G4))
+			list.add_child(Pal.label("Подпись (введите «принимаю»):", Pal.G4))
 			approve = LineEdit.new()
-			approve.max_length = 3
-			approve.placeholder_text = "О"
+			approve.max_length = 12
+			approve.placeholder_text = "принимаю"
 			approve.text_changed.connect(func(_t): _refresh())
 			list.add_child(approve)
 	scroll.scroll_vertical = 0
@@ -189,6 +189,8 @@ func _option(text: String, selected: bool, cb: Callable, info: String) -> void:
 
 func _pick(key: String, value) -> void:
 	c[key] = value
+	if key == "faction" and not (c.birth in D.births_of(value)):
+		c.birth = D.births_of(value)[0]
 	if key == "age":
 		c.phys = c.phys.slice(0, D.AGES[value].ext)
 		c.psy = c.psy.slice(0, D.AGES[value].psy)
@@ -228,8 +230,8 @@ func _valid() -> String:
 			if c.main.size() != G.main_count(c):
 				return "Выбрано %d из %d" % [c.main.size(), G.main_count(c)]
 		9:
-			if approve == null or not (approve.text.strip_edges().to_upper() in ["О", "O"]):
-				return "Ожидается подпись «О»"
+			if approve == null or approve.text.strip_edges().to_lower() != "принимаю":
+				return "Ожидается подпись «принимаю»"
 	return ""
 
 

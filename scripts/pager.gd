@@ -47,8 +47,13 @@ func _ready() -> void:
 	var tabs := HBoxContainer.new()
 	tabs.position = Vector2(54, 36)
 	add_child(tabs)
-	for i in TABS.size():
-		var b := Pal.button(TABS[i], _set_tab.bind(i), 9)
+	var names: Array = TABS.duplicate()
+	if indoor():
+		names.append("ПЛАН")
+	if tab >= names.size():
+		tab = 0
+	for i in names.size():
+		var b := Pal.button(names[i], _set_tab.bind(i), 9)
 		b.toggle_mode = true
 		tabs.add_child(b)
 		tab_buttons.append(b)
@@ -104,6 +109,7 @@ func _set_tab(i: int) -> void:
 		3: _social()
 		4: _journal()
 		5: _system()
+		6: _plan()
 
 
 func _sheet() -> void:
@@ -333,6 +339,76 @@ func _quests() -> void:
 		var col := Pal.G2 if st == "closed" else Pal.G5
 		content.add_child(Pal.rich("[color=%s][b]%s[/b]\n%s[/color]" % [Pal.hex(col), info.title, txt], 9))
 		content.add_child(HSeparator.new())
+
+
+## План этажа есть только в помещении: ярусы Кальдеры, дома и заброшенные ярусы.
+static func indoor() -> bool:
+	var m: String = str(G.p.get("map", ""))
+	return m.begins_with("caldera") or m.begins_with("raid")
+
+
+const PLAN_MARKS := {"stairs_up": ["▲", "лестница вверх"], "stairs_down": ["▼", "лестница вниз"], "lift": ["L", "лифт"],
+	"door": ["Д", "дверь"], "hatch": ["Л", "люк"], "jobscreen": ["З", "экран заданий"], "autodoc": ["+", "автодок"],
+	"terminal": ["T", "терминал"], "cache": ["?", "тайник"], "bed": ["К", "койка"]}
+
+var plan_map: Dictionary = {}
+var plan_seen := ""
+
+
+func _plan() -> void:
+	plan_map = preload("res://scripts/maps.gd").new().get_map(G.p.map)
+	var raid: bool = plan_map.get("raid", false)
+	plan_seen = str(G.p.get("seen", {}).get(G.p.map, "")) if raid else ""
+	content.add_child(Pal.rich("[color=%s][b]%s[/b]%s[/color]" % [Pal.hex(Pal.G5), plan_map.name,
+		"  ·  открыто то, что вы успели разглядеть" if raid else ""], 9))
+	var box := Control.new()
+	box.custom_minimum_size = Vector2(510, 168)
+	box.draw.connect(_draw_plan.bind(box))
+	content.add_child(box)
+	var leg := []
+	for k in PLAN_MARKS:
+		leg.append("%s %s" % PLAN_MARKS[k])
+	content.add_child(Pal.rich("[color=%s]● вы   ■ житель   %s[/color]" % [Pal.hex(Pal.G3), "   ".join(leg)], 8))
+
+
+func _draw_plan(box: Control) -> void:
+	var grid: Array = plan_map.floor
+	var h := grid.size()
+	var w: int = grid[0].size()
+	var cs := floori(minf(500.0 / w, 164.0 / h))
+	var org := Vector2(floorf((510 - cs * w) / 2.0), 2)
+	var known := func(x: int, y: int) -> bool:
+		return plan_seen == "" or (plan_seen.length() == w * h and plan_seen[y * w + x] == "1")
+	var walls := ["#", "B", "R"]
+	for y in h:
+		for x in w:
+			var ch: String = grid[y][x]
+			if ch == " " or not known.call(x, y):
+				continue
+			var r := Rect2(org + Vector2(x, y) * cs, Vector2(cs, cs))
+			if ch in walls:
+				box.draw_rect(r, Pal.G3)
+			elif ch == "v":
+				box.draw_rect(r, Pal.BG)
+				box.draw_rect(r, Pal.G1, false, 1.0)
+			elif ch == "w":
+				box.draw_rect(r, Color(Pal.G2, 0.6))
+			else:
+				box.draw_rect(r.grow(-0.5), Pal.G1)
+	var font := ThemeDB.fallback_font
+	for o in plan_map.objs:
+		var x: int = o.x
+		var y: int = o.y
+		if not known.call(x, y):
+			continue
+		var c := org + (Vector2(x, y) + Vector2(0.5, 0.5)) * cs
+		if o.type == "npc":
+			box.draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), Pal.G5)
+		elif PLAN_MARKS.has(o.get("tex", "")):
+			box.draw_string(font, c + Vector2(-cs * 0.35, cs * 0.35), PLAN_MARKS[o.tex][0], HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(8, cs - 2), Pal.R3 if o.tex == "cache" else Pal.G5)
+	var pp: Array = G.p.pos
+	var pc := org + (Vector2(pp[0], pp[1]) + Vector2(0.5, 0.5)) * cs
+	box.draw_circle(pc, maxf(2.5, cs * 0.3), Pal.R3)
 
 
 func _journal() -> void:

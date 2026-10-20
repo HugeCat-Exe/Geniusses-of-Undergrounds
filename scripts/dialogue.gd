@@ -26,6 +26,7 @@ var cure_result := ""
 var first_id := ""
 var voice: Dictionary = {}
 var voice_checked := false
+var remark_done := false
 
 
 func _ready() -> void:
@@ -140,6 +141,8 @@ func _show(id: String) -> void:
 		var gr := G.rel_greeting(current_who, Story.WHO[current_who].name, Story.WHO[current_who].get("fem", false))
 		if gr != "":
 			text.text = "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.G3), gr] + text.text
+	if current_who != "" and current_who != "raider" and id == first_id and not voice_checked:
+		text.text = _opening(current_who) + text.text
 	if current_who != "" and current_who != "raider" and id == first_id:
 		if not voice_checked:
 			voice_checked = true
@@ -147,6 +150,11 @@ func _show(id: String) -> void:
 		if not voice.is_empty():
 			text.text += "\n\n[color=%s][%s][/color] [i]%s[/i]" % [Pal.hex(Pal.R3), voice.trait, voice.line]
 			live.append({"t": "[%s] Последовать подсказке" % voice.trait, "live": ["voice", voice.trait]})
+		elif not remark_done:
+			remark_done = true
+			var rm := Live.pick_remark(current_who)
+			if not rm.is_empty():
+				text.text += "\n\n[color=%s][%s][/color] [i][color=%s]%s[/color][/i]" % [Pal.hex(Pal.R3), rm.trait, Pal.hex(Pal.G3), rm.line]
 	if current_who != "" and current_who != "raider" and (id == first_id or n.get("hub", false)):
 		var acts := Live.acts_for(current_who)
 		for tr in acts.slice(0, 2):
@@ -166,12 +174,77 @@ func _show(id: String) -> void:
 			continue
 		var label := "%d. %s" % [i, _subst(ch.t)]
 		if ch.has("check"):
+			# «[Медицина] Это не яд, это аллергия · 65%»: навык впереди, шанс в конце
 			var dc := _dc(ch.check[1], ch.check[0])
-			label += "  [%s · %d%%]" % [ch.check[0], G.chance(G.skill_bonus(ch.check[0]), dc)]
+			var body := _subst(ch.t)
+			if body.begins_with("[%s]" % ch.check[0]):
+				body = body.substr(ch.check[0].length() + 2).strip_edges()
+			label = "%d. [%s] %s · %d%%" % [i, ch.check[0], body, G.chance(G.skill_bonus(ch.check[0]), dc)]
 		_add_choice(label, _choose.bind(ch))
 		i += 1
 	if i == 1:
 		_add_choice("1. Далее", _show.bind(n.get("next", "end")))
+
+
+## Ночью у жителей другое настроение.
+const NIGHT_MOOD := {
+	"guard": "Страж зевает в кулак и светит фонарём вам в лицо дольше, чем нужно.",
+	"beggar": "Тимоха греет руки над жаровней и говорит тише обычного, будто боится разбудить ярус.",
+	"smoker": "Лёва уже не курит у лестницы, а пьёт в «Клыке». Глаза мутные, язык развязался.",
+	"ian": "Ян сидит у стойки, крутит пустой стакан и явно не торопится домой.",
+	"trader": "Бартоломей считает выручку при свете огарка и недоволен, что его отвлекают.",
+	"gunsmith": "Сава чистит ствол при лампе. Ночью он говорит меньше и злее.",
+	"surgeon": "Кост не спит: под глазами тени, на халате свежие пятна. Ночью к нему приходят с самым страшным.",
+	"cook": "Грета домывает котёл. Ночью она мягче: остатки похлёбки всё равно пропадут.",
+	"bartender": "Ночью в «Клыке» людно и душно. Гарри отвечает через плечо, разливая сразу на троих.",
+	"ryzhaya": "Ночью Рыжая другая: тише, медленнее, и смотрит на вас дольше обычного.",
+	"old": "Ефим не спит. Говорит, что ночью Подземка слышна лучше.",
+	"mistel": "Ода выглядывает из-за двери в накинутом пальто. Видно, что вы её разбудили.",
+	"patrol": "Дана в ночном обходе: дубинка в руке, фонарь на плече, взгляд по углам.",
+	"miron": "Мирон сидит у жаровни с кружкой. Ночью он вспоминает молодость охотнее.",
+	"pip": "Пип ночью не прячется: шныряет у жаровни и шепчет, кто куда пошёл.",
+	"librarian": "Феликс читает при огарке и откладывает книгу неохотно.",
+	"taxi": "Арсен дремлет за рулём и просыпается, только когда вы стучите по крыше.",
+}
+
+## Как жители относятся к Гению из-за его фракции (D.FACTIONS[...].rel).
+func _faction_line(who: String) -> String:
+	var w: Dictionary = Story.WHO[who]
+	if not w.has("faction") or w.get("bond", false):
+		return ""
+	var key := "fg_" + who
+	if int(G.p.flags.get(key, 0)) == int(G.p.day):
+		return ""
+	G.p.flags[key] = int(G.p.day)
+	var r := G.relation(w.faction)
+	var mine: String = D.FACTIONS[G.p.faction].short
+	var theirs: String = D.FACTIONS[w.faction].short
+	var nm: String = str(w.name).get_slice(",", 0)
+	var fem: bool = w.get("fem", false)
+	if r <= -3:
+		return "%s замечает нашивку «%s» и каменеет лицом. %s и ваши не ладят давно. Цены и разговор будут жёстче." % [nm, mine, theirs]
+	if r <= -1:
+		return "%s скользит взглядом по нашивке «%s» и держится настороженно: у %s к вашим счёты." % [nm, mine, theirs]
+	if r >= 4:
+		return "%s видит нашивку «%s» и заметно теплеет: %s с вашими давно заодно." % [nm, mine, theirs]
+	if r >= 2:
+		return "%s кивает на вашу нашивку «%s»: %s таких уважают." % [nm, mine, theirs]
+	return ""
+
+
+## Начало разговора: отношение фракции, ночное настроение, трещины в рассудке.
+func _opening(who: String) -> String:
+	var res := ""
+	var fl := _faction_line(who)
+	if fl != "":
+		var r := G.relation(Story.WHO[who].faction)
+		res += "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.R3 if r < 0 else Pal.G4), fl]
+	if G.is_night() and NIGHT_MOOD.has(who):
+		res += "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.G3), NIGHT_MOOD[who]]
+	var ml := Live.mind_line(who)
+	if ml != "" and randf() < 0.6:
+		res += "[color=%s][Рассудок %d][/color] [i]%s[/i]\n\n" % [Pal.hex(Pal.R2), int(G.p.mind), ml]
+	return res
 
 
 ## Отношение собеседника к Гению: название ступени и полоска до следующей.
@@ -637,13 +710,23 @@ func _fx(list: Array) -> void:
 				G.changed.emit()
 				if not r.ok:
 					G.say("Пейджер тихо пискнул. Баланс почему-то стал меньше на 25 Су.")
+			"taxi":
+				# Арсен везёт в любое уже знакомое место: открываем карту мира в режиме поездки
+				G.set_flag("taxi_ride")
+				G.p["map_at"] = "caldera"
+				after.append(func(): G.main().show_map())
 			"shop":
-				var stock: Array = Story.SHOPS[f[1]].duplicate()
+				var stock: Array = Story.SHOPS.get(f[1], []).duplicate()
 				for u in D.SHOP_UNLOCKS.get(f[1], []):
 					if G.flag("job_done_" + u[0]):
 						stock.append(u[1])
-				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА"}.get(f[1], "ЛАВКА")
-				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith"}.get(f[1], "")
+				# в Кальдере не продают оружие мощнее 35: лучшее — крафтом или в других Подземках
+				stock = stock.filter(func(it): return D.ITEMS[it].type != "weapon" or int(D.ITEMS[it].dmg) <= D.CALDERA_MAX_DMG)
+				if f[1] == "library":
+					stock = G.lib_stock()
+				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА",
+					"library": "КНИЖНЫЙ РАЗВАЛ ФЕЛИКСА", "taxi": "БАГАЖНИК ТАКСИ"}.get(f[1], "ЛАВКА")
+				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith", "library": "librarian", "taxi": "taxi"}.get(f[1], "")
 				after.append(func(): G.main().open_shop(stock, st_title, owner))
 			"fight":
 				after.append(func(): G.main().world.fight_current())

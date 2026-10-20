@@ -144,12 +144,69 @@ const NPC_LOOKS := {
 		"portrait": {"sex": "М", "coat": 1, "hair": 2, "beard": true, "traits": ["Морщины", "Ножевые шрамы"]}},
 	"stranger": {"person": {"coat": 1, "hat": true, "skin": 3, "accent": 3},
 		"portrait": {"sex": "М", "coat": 1, "collar": 3, "bald": true, "mask": true, "glasses": true}},
+	"librarian": {"person": {"coat": 4, "hair": 6, "skin": 4, "accent": 5},
+		"portrait": {"sex": "М", "coat": 4, "collar": 5, "hair": 6, "glasses": true, "old": true, "traits": ["Морщины"]}},
+	"taxi": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
+		"portrait": {"sex": "М", "coat": 2, "collar": 9, "hair": 1, "beard": true, "glasses": true, "scar": true}},
 	"raider": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
 		"portrait": {"sex": "М", "coat": 2, "collar": 9, "bald": true, "scar": true, "traits": ["Ножевые шрамы", "Зубы крысолюда"]}},
 }
 
 
+## Ночью (G.is_night) часть жителей спит, часть перебирается в «Клык» или к жаровне.
+## id: [карта, x, y]; пустой массив — спит дома и не показывается.
+const NIGHT_SPOTS := {
+	"kid": [],
+	"zoya": [],
+	"smoker": ["caldera3", 16, 4],
+	"ian": ["caldera3", 17, 4],
+	"beggar": ["caldera3", 12, 5],
+	"patrol": ["caldera1", 8, 4],
+	"pip": ["caldera4", 11, 5],
+	"miron": ["caldera4", 9, 5],
+}
+
+
 func get_map(name: String) -> Dictionary:
+	var m := _build(name)
+	if G.is_night() and not m.waste:
+		_night(name, m)
+	return m
+
+
+func _night(name: String, m: Dictionary) -> void:
+	var keep: Array = []
+	var here: Dictionary = {}
+	for o in m.objs:
+		if o.type == "npc" and NIGHT_SPOTS.has(o.id):
+			here[o.id] = o
+			continue
+		keep.append(o)
+	for id in NIGHT_SPOTS:
+		var sp: Array = NIGHT_SPOTS[id]
+		if sp.is_empty() or sp[0] != name:
+			continue
+		if id == G.p.get("companion", ""):
+			continue
+		var o: Dictionary = here.get(id, {})
+		if o.is_empty():
+			var w: Dictionary = preload("res://scripts/story.gd").WHO[id]
+			o = _npc(id, 0, 0, w.name.get_slice(",", 0), _NIGHT_TALK.get(id, ""), 1)
+		else:
+			o = o.duplicate()
+		o.x = sp[1]
+		o.y = sp[2]
+		o["night"] = true
+		keep.append(o)
+	m.objs = keep
+
+
+## Стартовые узлы диалогов для тех, кто ночью переходит на чужой ярус.
+const _NIGHT_TALK := {"smoker": "stairs_smoker", "ian": "stairs_ian", "beggar": "res_beggar",
+	"patrol": "dana_start", "pip": "pip_start", "miron": "miron_start"}
+
+
+func _build(name: String) -> Dictionary:
 	match name:
 		"waste":
 			return _waste()
@@ -337,6 +394,10 @@ func _caldera4() -> Dictionary:
 	objs.append(_prop("stool", 12, 7, "Табурет", "", false))
 	objs.append(_prop("stool", 14, 8, "Табурет", "", false))
 	objs.append(_npc("pip", 7, 6, "Крысёнок Пип", "pip_start", 1))
+	# книжный развал у левой стены
+	objs.append(_prop("bookshelf", 1, 3, "Полки с книгами Института"))
+	objs.append(_prop("bookshelf", 1, 4, "Полки с книгами Института"))
+	objs.append(_npc("librarian", 3, 3, "Книжник Феликс", "lib_start", 1))
 	_lamps(objs, [Vector2i(5, 5), Vector2i(17, 5), Vector2i(8, 9)])
 	var grid := _grid(FLOOR4)
 	return {"name": "Кальдера · Ярус 4 · Кварталы", "floor": grid, "objs": objs, "waste": false, "depth": 0,
@@ -407,8 +468,10 @@ func _waste() -> Dictionary:
 	for y in [12, 13]:
 		for x in range(0, 8):
 			grid[y][x] = "k"
-	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
+	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(6, 1), Vector2i(7, 1), Vector2i(8, 2), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
 	objs.append(_prop("hatch", 2, 2, "Шахта Кальдеры", "to_caldera"))
+	objs.append(_big("taxi", 6, 1, 2, 1, "Такси Арсена"))
+	objs.append(_npc("taxi", 8, 2, "Таксист Арсен", "taxi_start", 1))
 	if G.p.quests.get("spice", "") == "active" and not G.has("Пепельный тимьян"):
 		objs.append(_prop("herb_ash", 5, 4, "Пепельный тимьян", "herb_1", false))
 	objs.append(_prop("roadend", 1, 12, "Обрывок дороги · точка эвакуации", "evac"))

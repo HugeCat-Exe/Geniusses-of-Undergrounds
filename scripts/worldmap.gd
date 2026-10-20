@@ -195,7 +195,16 @@ func select(id: String) -> void:
 	info_box.add_child(d)
 	if has_marker(id):
 		info_box.add_child(Pal.label("! Здесь есть дело по задаче", Pal.R3, 10))
-	if id == here():
+	var ride := G.flag("taxi_ride")
+	if ride and id != here():
+		var c2 := taxi_cost(id)
+		var rb := Pal.button("Арсен довезёт: %d Су, %d ч" % [c2, maxi(1, hours_to(id) / 2)], taxi.bind(id))
+		rb.disabled = G.p.su < c2 or not (id in G.p.known)
+		if not (id in G.p.known):
+			rb.text = "Арсен туда не ездит: место ещё не найдено"
+		info_box.add_child(rb)
+		info_box.add_child(Pal.button("Передумал, выйти из машины", _leave_taxi))
+	elif id == here():
 		info_box.add_child(Pal.button("Войти", enter.bind(id)))
 	else:
 		var h := hours_to(id)
@@ -320,13 +329,25 @@ func taxi(id: String) -> void:
 	G.phobia_open(1)
 	player_pos = LOCS[id].pos
 	G.p.map_at = id
-	G.say("Такси довезло за %d Су. Водитель всю дорогу молчал." % cost)
+	if G.flag("taxi_ride"):
+		G.p.flags.erase("taxi_ride")
+		G.rel_add("taxi", 2)
+		G.say("Арсен довёз за %d Су и всю дорогу рассказывал про свою первую машину." % cost)
+	else:
+		G.say("Такси довезло за %d Су. Водитель всю дорогу молчал." % cost)
 	G.changed.emit()
 	enter(id)
 
 
+func _leave_taxi() -> void:
+	G.p.flags.erase("taxi_ride")
+	info.visible = false
+	G.main().show_world("waste", "gate")
+
+
 func enter(id: String) -> void:
 	info.visible = false
+	G.p.flags.erase("taxi_ride")
 	match id:
 		"caldera":
 			G.main().show_world("waste", "road")

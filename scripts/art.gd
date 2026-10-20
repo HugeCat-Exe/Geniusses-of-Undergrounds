@@ -584,6 +584,20 @@ func _prop(kind: String) -> ImageTexture:
 			cv.put(22, 11, 9)
 		"bus":
 			cv = _big_bus()
+		"taxi":
+			cv = _big_taxi()
+		"bookshelf":
+			cv = Canvas.new(28, 40)
+			cv.poly(PackedVector2Array([Vector2(1, 8), Vector2(14, 2), Vector2(27, 8), Vector2(14, 14)]), 2)
+			cv.poly(PackedVector2Array([Vector2(1, 8), Vector2(14, 14), Vector2(14, 39), Vector2(1, 33)]), 1)
+			cv.poly(PackedVector2Array([Vector2(14, 14), Vector2(27, 8), Vector2(27, 33), Vector2(14, 39)]), 2)
+			# корешки книг на трёх полках: зелёные, красные, светлые
+			for shelf in 3:
+				for i in 5:
+					var bx := 3 + i * 2
+					var by := 12 + shelf * 8 + i
+					cv.line(bx, by, bx, by + 5, [4, 8, 5, 3, 9][(i + shelf) % 5])
+				cv.line(2, 18 + shelf * 8, 13, 24 + shelf * 8, 0)
 		"tower":
 			cv = _big_tower()
 		"bigburrow":
@@ -721,6 +735,43 @@ func _foot(w: int, h: int, top: int) -> Dictionary:
 
 func _ip(o: Vector2, gx: float, gy: float, z: float) -> Vector2:
 	return o + Vector2((gx - gy) * 16.0, (gx + gy) * 8.0 - z)
+
+
+## Такси у шахты: ржавый седан 2×1, шашечки по борту, фонарь на крыше.
+func _big_taxi() -> Canvas:
+	var f := _foot(2, 1, 22)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var x0 := 0.1
+	var x1 := 1.9
+	var y0 := 0.15
+	var y1 := 0.85
+	cv.poly(PackedVector2Array([_ip(o, x0, y0, 0), _ip(o, x1 + 0.2, y0, 0), _ip(o, x1 + 0.2, y1 + 0.2, 0), _ip(o, x0, y1 + 0.2, 0)]), 1, false)
+	var z := 9.0
+	cv.poly(PackedVector2Array([_ip(o, x0, y1, z), _ip(o, x1, y1, z), _ip(o, x1, y1, 2), _ip(o, x0, y1, 2)]), 3)
+	cv.poly(PackedVector2Array([_ip(o, x1, y1, z), _ip(o, x1, y0, z), _ip(o, x1, y0, 2), _ip(o, x1, y1, 2)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, x0, y0, z), _ip(o, x1, y0, z), _ip(o, x1, y1, z), _ip(o, x0, y1, z)]), 4)
+	# кабина со стёклами
+	var c0 := 0.55
+	var c1 := 1.4
+	var zc := 16.0
+	cv.poly(PackedVector2Array([_ip(o, c0, y1 - 0.08, zc), _ip(o, c1, y1 - 0.08, zc), _ip(o, c1 + 0.15, y1 - 0.08, z), _ip(o, c0 - 0.1, y1 - 0.08, z)]), 1, false)
+	cv.poly(PackedVector2Array([_ip(o, c1, y1 - 0.08, zc), _ip(o, c1, y0 + 0.08, zc), _ip(o, c1 + 0.15, y0 + 0.08, z), _ip(o, c1 + 0.15, y1 - 0.08, z)]), 0, false)
+	cv.poly(PackedVector2Array([_ip(o, c0, y0 + 0.08, zc), _ip(o, c1, y0 + 0.08, zc), _ip(o, c1, y1 - 0.08, zc), _ip(o, c0, y1 - 0.08, zc)]), 3)
+	# шашечки по борту
+	for i in 9:
+		var gx := x0 + 0.1 + i * 0.19
+		var a := _ip(o, gx, y1, 6 if i % 2 == 0 else 4)
+		cv.rect(int(a.x), int(a.y), 2, 2, 9 if i % 2 == 0 else 0, false)
+	# фонарь «ТАКСИ» на крыше
+	var t := _ip(o, (c0 + c1) / 2.0, 0.5, zc + 4)
+	cv.rect(int(t.x) - 3, int(t.y), 7, 3, 8, false)
+	cv.put(int(t.x), int(t.y) + 1, 9)
+	# колёса
+	for wx in [x0 + 0.35, x1 - 0.35]:
+		var wpos := _ip(o, wx, y1, 2)
+		cv.ellipse(wpos.x, wpos.y, 3, 3, 0, false)
+	return cv
 
 
 ## Опрокинутый автобус: 5×2 клетки, колёса кверху, ряд окон у земли, ржавая полоса.

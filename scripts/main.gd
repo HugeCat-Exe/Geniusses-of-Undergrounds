@@ -336,6 +336,12 @@ func open_shop(stock: Array, title: String = "ЛАВКА", owner: String = "") -
 	overlay.add_child(s)
 
 
+func open_book(item: String) -> void:
+	var bv := preload("res://scripts/bookview.gd").new()
+	bv.item = item
+	overlay.add_child(bv)
+
+
 ## Бой на отдельном экране. on_end(result: String) — "win", "fled", "down", "dead".
 func start_combat(enemy_id: String, on_end: Callable) -> void:
 	var cb := Combat.new()

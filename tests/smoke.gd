@@ -44,7 +44,7 @@ func run(main: Node) -> void:
 	print("SMOKE stats ", D.ATTRS.map(func(k): return "%s=%d(%+d)" % [k, G.stat(k, cr.c), G.mod(k, cr.c)]), " hp ", G.max_hp(cr.c), " mind ", G.max_mind(cr.c), " perks ", G.perks(cr.c), " mains ", G.main_count(cr.c))
 	cr.step = 9
 	cr._build()
-	cr.approve.text = "О"
+	cr.approve.text = "Принимаю"
 	cr._refresh()
 	await _wait(0.3)
 	await _shot("05_creator_verdict")
@@ -503,6 +503,7 @@ func run(main: Node) -> void:
 	print(G.use_item("Каска шахтёра"), " ", G.use_item("Камень души"), " armor ", G.armor_total())
 	await _smoke_09()
 	await _smoke_091()
+	await _smoke_010()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -753,6 +754,124 @@ func _smoke_091() -> void:
 	M.show_world("waste", "")
 	await _wait(0.6)
 	await _shot("56_herb")
+
+
+func _smoke_010() -> void:
+	_close_overlays()
+	G.p.hour = 12
+	# книжник и обложки
+	M.show_world("caldera4", "down3")
+	await _wait(0.8)
+	await _shot("60_floor4_books")
+	M.open_dialogue("lib_start")
+	await _wait(0.8)
+	await _shot("61_librarian")
+	_dialogue()._choose({"t": "x", "fx": [["shop", "library"]], "next": "end"})
+	await _wait(0.6)
+	var sh = M.overlay.get_child(M.overlay.get_child_count() - 1)
+	print("SMOKE 010 lib stock ", G.lib_stock())
+	if sh.has_method("_show_cover"):
+		sh._show_cover(G.lib_stock()[0])
+	await _wait(0.3)
+	await _shot("62_library_shop")
+	_close_overlays()
+	var int0 := G.stat("ИНТ")
+	G.add_item("«Интеллект»")
+	G.use_item("«Интеллект»")
+	await _wait(0.6)
+	print("SMOKE 010 book INT ", int0, " -> ", G.stat("ИНТ"), " buffs ", G.active_buffs(), " left ", G.has("«Интеллект»"))
+	await _shot("63_book_read")
+	_close_overlays()
+	# старьёвщик не берёт патроны
+	G.add_item("Пистолетные патроны")
+	G.add_item("Шкура пса")
+	M.open_dialogue("trader_start")
+	await _wait(0.5)
+	_dialogue()._choose({"t": "x", "fx": [["shop", "trader"]], "next": "end"})
+	await _wait(0.6)
+	print("SMOKE 010 buy_k trader ammo ", G.buy_k("trader", "Пистолетные патроны"), " hide ", G.buy_k("trader", "Шкура пса"), " gunsmith hide ", G.buy_k("gunsmith", "Шкура пса"))
+	await _shot("64_trader_sell")
+	_close_overlays()
+	# реплики: фракция, рассудок, черты
+	G.p.mind = 30
+	G.p.flags.erase("fg_cook")
+	M.open_dialogue("cook_start")
+	await _wait(1.2)
+	var dl = _dialogue()
+	if dl:
+		dl.text.visible_characters = -1
+	await _shot("65_dialogue_mind")
+	_close_overlays()
+	G.p.mind = G.max_mind()
+	# намерение врага
+	M.show_world("waste", "road")
+	await _wait(0.6)
+	M.start_combat("pes", func(_r): pass)
+	await _wait(1.6)
+	var cb = _overlay_of_type("Combat")
+	if cb:
+		print("SMOKE 010 intent ", cb.intent.get("name", "-"))
+		if cb.intent.is_empty():
+			cb._plan()
+	await _shot("66_combat_intent")
+	_close_overlays()
+	await _wait(0.4)
+	# тела и кровь
+	M.world._add_body({"fpos": M.world.pf + Vector2(2, 0), "enemy": "pes", "id": "pes_test"})
+	M.world._add_body({"fpos": M.world.pf + Vector2(1, 2), "enemy": "slepets", "id": "sl_test"})
+	await _wait(0.4)
+	await _shot("67_bodies")
+	# такси у входа
+	M.open_dialogue("taxi_start")
+	await _wait(0.8)
+	await _shot("68_taxi")
+	_dialogue()._choose({"t": "x", "fx": [["taxi"]], "next": "end"})
+	await _wait(0.8)
+	await _shot("69_taxi_map")
+	_close_overlays()
+	G.p.flags.erase("taxi_ride")
+	# погода: ищем день с бурей и с дождём
+	var found := {}
+	for d in range(2, 60):
+		for h in [8, 14]:
+			G.p.day = d
+			G.p.hour = h
+			var w := G.weather()
+			if w != "clear" and not found.has(w):
+				found[w] = [d, h]
+	print("SMOKE 010 weather days ", found)
+	for w in found:
+		G.p.day = found[w][0]
+		G.p.hour = found[w][1]
+		M.show_world("waste", "road")
+		await _wait(3.0)
+		print("SMOKE 010 weather ", w, " world ", M.world.wx, " sight ", M.world.sight())
+		await _shot("70_weather_" + w)
+	G.p.hour = 12
+	G.new_day()
+	print("SMOKE 010 bodies after new day ", G.p.bodies.size())
+	# ночь в Кальдере
+	G.p.hour = 23
+	M.show_world("caldera3", "down2")
+	await _wait(0.8)
+	print("SMOKE 010 night smoker on caldera3 ", M.world.cut_find("smoker") != null)
+	await _shot("71_night_bar")
+	G.p.hour = 12
+	# трекер, подписи, план этажа
+	M.show_world("raid1", "top")
+	await _wait(0.8)
+	M.world._update_hud()
+	print("SMOKE 010 tracker ", G.tracker_lines())
+	M.open_pager(6)
+	await _wait(0.6)
+	await _shot("72_plan_raid")
+	_close_overlays()
+	M.show_world("caldera2", "")
+	await _wait(0.6)
+	M.open_pager(6)
+	await _wait(0.6)
+	await _shot("73_plan_caldera")
+	_close_overlays()
 
 
 func _close_overlays() -> void:

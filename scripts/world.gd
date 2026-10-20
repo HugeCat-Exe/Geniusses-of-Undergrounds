@@ -56,6 +56,54 @@ void fragment() {
 }
 """
 
+const Live := preload("res://scripts/live.gd")
+const MIND_WORLD := [
+	"Тени по углам стали чуть гуще. Вы стараетесь на них не смотреть.",
+	"Пол под ногами иногда пружинит. Вы делаете вид, что не замечаете.",
+	"Шаги за спиной повторяют ваши. Когда вы останавливаетесь, они тоже.",
+	"Мир дрожит по краям, как картинка на старом экране. Нужен отдых. Или успокоительное.",
+	"Вы забываете, куда шли, а потом и зачем. Рассудок вот-вот лопнет.",
+]
+
+const WEATHER_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_texture : hint_screen_texture, filter_nearest;
+uniform float dust = 0.0;
+uniform float rain = 0.0;
+uniform float reach = 0.3;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void fragment() {
+	vec3 c = texture(screen_texture, SCREEN_UV).rgb;
+	vec2 d = (SCREEN_UV - vec2(0.5, 0.47)) * vec2(1.78, 1.0);
+	float r = length(d);
+	float nn = n(SCREEN_UV * vec2(7.0, 4.0) + vec2(TIME * 0.8, TIME * 0.12)) * 0.6 + n(SCREEN_UV * vec2(24.0, 14.0) + vec2(TIME * 2.4, 0.0)) * 0.4;
+	vec3 dc = vec3(0.40, 0.38, 0.20) * (0.7 + nn * 0.5);
+	float k = clamp(smoothstep(reach * 0.4, reach + 0.25, r) * 0.92 + nn * 0.2, 0.0, 0.96);
+	c = mix(c, dc, k * dust);
+	vec2 uv = SCREEN_UV + vec2(SCREEN_UV.y * 0.08, 0.0);
+	float col = floor(uv.x * 170.0);
+	float sp = 0.9 + h(vec2(col, 1.0)) * 0.8;
+	float y = fract(uv.y * 2.5 - TIME * sp * 1.4 + h(vec2(col, 7.0)));
+	float streak = step(fract(uv.x * 170.0), 0.4) * step(y, 0.045) * step(0.6, h(vec2(col, 3.0)));
+	c = mix(c * (1.0 - 0.15 * rain), vec3(0.62, 0.9, 0.38), streak * rain * 0.6);
+	COLOR = vec4(c, 1.0);
+}
+"""
+
+var tracker: RichTextLabel
+var wx_rect: ColorRect = null
+var wx := "clear"          # погода на этой карте сейчас
+var wx_amt := Vector2.ZERO # x — пыль, y — дождь (плавно)
+var wx_ok := false         # прошёл проверку «Погоды» на эту бурю/дождь
+var acid_t := 0.0
+var night_setup := false   # была ли ночь, когда карту собирали
+
 var ppos := Vector2i.ZERO
 var pf := Vector2.ZERO
 var path: Array = []
@@ -88,6 +136,7 @@ var place: Label
 
 func setup(map_name: String, spawn: String) -> void:
 	map = Maps.new().get_map(map_name)
+	night_setup = G.is_night()
 	grid = map.floor
 	H = grid.size()
 	W = grid[0].size()
@@ -128,6 +177,9 @@ func setup(map_name: String, spawn: String) -> void:
 			continue
 		var ob: Dictionary = o.duplicate()
 		ob.pos = Vector2i(o.x, o.y)
+		# ночная точка могла попасть в стену или в предмет: двигаем к ближайшей свободной клетке
+		if ob.get("night", false):
+			ob.pos = _free_near(ob.pos)
 		ob.kind = str(o.get("tex", ""))
 		ob.ph = float(absi(hash(str(o.get("id", o.title)) + str(o.x))) % 1000) / 159.0
 		if ob.type == "npc":
@@ -153,6 +205,7 @@ func setup(map_name: String, spawn: String) -> void:
 	pf = Vector2(ppos)
 	G.p.pos = [ppos.x, ppos.y]
 	_place_job_spots()
+	_reveal()
 	mate_pos = pf + Vector2(-1, 0)
 	esc_pos = pf + Vector2(0, -1)
 
@@ -320,6 +373,16 @@ func _ready() -> void:
 		night_rect.visible = night_amt > 0.0
 		if G.is_night():
 			G.say("Ночь. Пустошь выворачивается наизнанку, и врагов в темноте не видно.")
+		wx_rect = ColorRect.new()
+		wx_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		wx_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var wm := ShaderMaterial.new()
+		var wsh := Shader.new()
+		wsh.code = WEATHER_SHADER
+		wm.shader = wsh
+		wx_rect.material = wm
+		nl.add_child(wx_rect)
+		_weather_change(true)
 	G.changed.connect(_update_hud)
 	G.logged.connect(func(_t): _update_log())
 	_update_hud()
@@ -557,6 +620,14 @@ func _process(delta: float) -> void:
 	cam.position = iso(pf) + Vector2(0, -10) + cam_look
 	if cam_override != null:
 		cam.position = iso(cam_override) + Vector2(0, -10)
+	if wx_rect != null:
+		_weather_tick(delta)
+	# в Подземке с наступлением ночи (и утра) жители расходятся по своим местам
+	if not waste and night_setup != G.is_night() and not blocked() and path.is_empty() and not G.main().has_overlay():
+		night_setup = G.is_night()
+		G.say("Ярус затихает: свет приглушают, кто-то идёт спать, кто-то в «Клык»." if night_setup else "Утро. Ярус просыпается, жители возвращаются к делам.")
+		G.world_dirty = true
+		G.refresh_world()
 	if night_rect != null:
 		night_amt = move_toward(night_amt, 1.0 if G.is_night() else 0.0, delta * 0.5)
 		night_rect.visible = night_amt > 0.01
@@ -621,8 +692,27 @@ func _key_dir() -> Vector2i:
 	return Vector2i(clampi(d.x, -1, 1), clampi(d.y, -1, 1))
 
 
+## План этажа: в рейдах клетки открываются, только когда Гений их увидел.
+func _reveal() -> void:
+	if not map.get("raid", false):
+		return
+	if not G.p.has("seen"):
+		G.p.seen = {}
+	var cur: String = G.p.seen.get(G.p.map, "")
+	if cur.length() != W * H:
+		cur = "0".repeat(W * H)
+	var arr := cur.to_ascii_buffer()
+	for dy in range(-3, 4):
+		for dx in range(-3, 4):
+			var c := ppos + Vector2i(dx, dy)
+			if in_bounds(c) and Vector2(dx, dy).length() <= 3.2:
+				arr[c.y * W + c.x] = 49
+	G.p.seen[G.p.map] = arr.get_string_from_ascii()
+
+
 func _on_step() -> void:
 	G.step(waste)
+	_reveal()
 	for m in mobs:
 		if m.stun <= 0.0 and _cheb(m.pos, ppos) <= 1:
 			path.clear()
@@ -709,6 +799,7 @@ func _on_combat_end(result: String) -> void:
 			if m != null:
 				G.p.killed.append(m.id)
 				mobs.erase(m)
+				_add_body(m)
 				_after_win(m)
 		"fled":
 			if m != null:
@@ -925,6 +1016,8 @@ func _draw() -> void:
 		var p: Vector2i = f.pos
 		draw_texture(f.tex, iso(Vector2(p)) - Vector2(16, 8), _shade(Vector2(p)))
 	_draw_glows()
+	_draw_bodies()
+	_draw_loot_marks()
 	# подсветка клетки под курсором
 	var mt := to_grid(get_global_mouse_position())
 	if in_bounds(mt) and not blocked():
@@ -975,7 +1068,7 @@ func _draw() -> void:
 			items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), oflip])
 	for m in mobs:
 		# ночью в Пустоши и в тёмном подвале врагов не видно, пока они не подойдут вплотную
-		if (night_amt > 0.5 or dark) and m.fpos.distance_to(pf) > 1.6 and (not dark or _lit(m.fpos) < 0.45):
+		if m.fpos.distance_to(pf) > sight() and (not dark or _lit(m.fpos) < 0.45):
 			continue
 		var tex := _mob_tex(m)
 		var dd: float = clampf(m.fpos.distance_to(Vector2(m.pos)), 0.0, 1.0)
@@ -1025,6 +1118,160 @@ func _draw() -> void:
 			draw_rect(Rect2(top + Vector2(0, 7), Vector2(2, 2)), Pal.R3)
 	_draw_emotes()
 	_draw_motes()
+
+
+const READ_DIST := 3
+
+
+## Тайники, грузы, травы, коренья — то, что лежит и что можно забрать.
+func _lootable(o: Dictionary) -> bool:
+	var a: String = str(o.get("action", ""))
+	return o.get("kind", "") in ["cache", "roots", "herb_ash", "herb_mint", "herb_pepper"] or a.begins_with("jobspot:") \
+		or a.begins_with("raid_c") or a.begins_with("herb_") or a.begins_with("forest_forage") or a.ends_with("_cache") or a.begins_with("cache_")
+
+
+## Уже обысканное не подсвечиваем.
+func _looted(a: String) -> bool:
+	match a:
+		"cache_med": return G.flag("med_taken")
+		"cache_ruin": return G.flag("ruin_open")
+		"river_cache": return G.flag("river_cache")
+		"ruins_cache": return G.flag("ruins_looted")
+	if a.begins_with("raid_c"):
+		return G.flag(G.raid_key(a.substr(5)))
+	if a.begins_with("forest_forage"):
+		return G.flag(G.raid_key(a.substr(7)))
+	if a.begins_with("herb_"):
+		return G.has(["", "Пепельный тимьян", "Собачья мята", "Звёздный перец"][int(a.substr(5))])
+	return false
+
+
+## Подсветка того, что лежит рядом: мягко пульсирующий ромб под предметом.
+func _draw_loot_marks() -> void:
+	var pulse := 0.35 + 0.25 * sin(wt * 3.0)
+	for o in objs:
+		if o.type != "prop" or not _lootable(o) or _odist(o, ppos) > READ_DIST:
+			continue
+		if _looted(str(o.action)):
+			continue
+		var c := iso(Vector2(o.pos))
+		draw_polyline(PackedVector2Array([c + Vector2(0, -8), c + Vector2(16, 0), c + Vector2(0, 8), c + Vector2(-16, 0), c + Vector2(0, -8)]), Color(Pal.R3, pulse), 1.0)
+
+
+func _cap(t: String) -> String:
+	return t.substr(0, 1).to_upper() + t.substr(1)
+
+
+func _free_near(t: Vector2i) -> Vector2i:
+	for r in 4:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var c := t + Vector2i(dx, dy)
+				if in_bounds(c) and not astar.is_point_solid(c) and not obj_at.has(c):
+					return c
+	return t
+
+
+## Смена погоды: проверка «Погоды» решает, насколько Гению от неё плохо.
+func _weather_change(first: bool) -> void:
+	wx = G.weather()
+	wx_ok = false
+	if first:
+		wx_amt = Vector2(1.0 if wx == "dust" else 0.0, 1.0 if wx == "acid" else 0.0)
+	if wx == "clear":
+		if not first:
+			G.say("Небо проясняется. Пустошь снова видно до горизонта.")
+	else:
+		# один бросок на всю бурю: перезаход на карту его не меняет
+		var key := "%d_%d" % [int(G.p.day), int(G.p.hour) / 6]
+		var prev: String = str(G.p.flags.get("wx_roll", ""))
+		if prev.begins_with(key + ":"):
+			wx_ok = prev.ends_with(":1")
+			if first:
+				G.say("%s всё ещё не стихает." % _cap(G.WEATHER_NAME[wx]))
+			_update_hud()
+			return
+		var r := G.roll("Погода", 12, "")
+		wx_ok = r.ok
+		G.p.flags["wx_roll"] = key + (":1" if r.ok else ":0")
+		if wx == "dust":
+			G.say(("Пыльная буря. Вы натягиваете ворот на лицо и щуритесь: видно чуть дальше вытянутой руки. " if r.ok else "Пыльная буря. Песок забивает глаза, дальше пары шагов ничего не видно. ") + G.roll_text(r))
+		else:
+			G.say(("Кислотный дождь. Вы знаете, как укрываться: капли почти не достают. " if r.ok else "Кислотный дождь. Капли жгут кожу, пока вы под открытым небом. ") + G.roll_text(r))
+	_update_hud()
+
+
+## Как далеко видно врагов и предметы (в клетках). Ночь и пыль сужают обзор.
+func sight() -> float:
+	var s := 99.0
+	if wx == "dust":
+		s = 4.0 if wx_ok else 2.5
+	if night_amt > 0.5 or dark:
+		s = minf(s, 1.6)
+	return s
+
+
+func _weather_tick(delta: float) -> void:
+	if G.weather() != wx:
+		_weather_change(false)
+	wx_amt.x = move_toward(wx_amt.x, 1.0 if wx == "dust" else 0.0, delta * 0.4)
+	wx_amt.y = move_toward(wx_amt.y, 1.0 if wx == "acid" else 0.0, delta * 0.4)
+	wx_rect.visible = wx_amt.x > 0.01 or wx_amt.y > 0.01
+	var mat := wx_rect.material as ShaderMaterial
+	mat.set_shader_parameter("dust", wx_amt.x)
+	mat.set_shader_parameter("rain", wx_amt.y)
+	mat.set_shader_parameter("reach", 0.32 if wx_ok else 0.2)
+	if wx != "acid" or blocked():
+		return
+	acid_t += delta
+	# раз в игровые полчаса кислота разъедает кожу; «Погода» помогает, совсем не убивает
+	if acid_t >= 30.0:
+		acid_t = 0.0
+		var hit := 1 if wx_ok else randi_range(2, 3)
+		if G.p.get("gear", {}).get("head", "") != "":
+			hit = maxi(0, hit - 1)
+		hit = mini(hit, int(G.p.hp) - 1)
+		if hit > 0:
+			G.p.hp -= hit
+			G.changed.emit()
+			G.say("Кислота разъедает кожу: -%d ООЗ. Лучше переждать в укрытии." % hit)
+
+
+## Убитые лежат на месте боя до конца дня, вокруг — кровь (G.p.bodies, чистится в new_day).
+func _add_body(m: Dictionary) -> void:
+	if not G.p.has("bodies"):
+		G.p.bodies = []
+	G.p.bodies.append({"map": G.p.map, "x": m.fpos.x, "y": m.fpos.y, "enemy": m.enemy, "s": absi(hash(m.id)) % 1000})
+	queue_redraw()
+
+
+func _draw_bodies() -> void:
+	for b in G.p.get("bodies", []):
+		if b.map != G.p.map:
+			continue
+		var bp := Vector2(b.x, b.y)
+		if bp.distance_to(pf) > sight() + 1.0 and (not dark or _lit(bp) < 0.45):
+			continue
+		var c := iso(bp) + Vector2(0, 2)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(b.s)
+		var blood := Color(0.36, 0.04, 0.03, 0.85)
+		# лужа: несколько сплющенных пятен и брызги
+		for i in 5:
+			var o := Vector2(rng.randf_range(-9, 9), rng.randf_range(-4, 4))
+			var r := rng.randf_range(3.0, 7.0)
+			draw_set_transform(c + o, 0.0, Vector2(1.0, 0.5))
+			draw_circle(Vector2.ZERO, r, blood)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		for i in 6:
+			var o2 := Vector2(rng.randf_range(-16, 16), rng.randf_range(-7, 7))
+			draw_rect(Rect2(c + o2, Vector2(1, 1)), blood)
+		# тело на боку, темнее живого
+		var tex := _mob_tex({"enemy": b.enemy})
+		var sc := 0.85 if b.enemy == "muezzin" else 1.0
+		draw_set_transform(c + Vector2(0, -2), PI * 0.5 * (1 if int(b.s) % 2 == 0 else -1), Vector2(sc, sc))
+		draw_texture(tex, Vector2(-tex.get_width() / 2.0, -tex.get_height() / 2.0), Color(0.45, 0.4, 0.38, 1.0))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _solid_floor(t: Vector2i) -> bool:
@@ -1183,6 +1430,15 @@ func _build_hud() -> void:
 		eb.size = Vector2(150, 18)
 		hud.add_child(eb)
 
+	tracker = Pal.rich("", 8)
+	tracker.fit_content = true
+	tracker.position = Vector2(394, 66 if waste else 44)
+	tracker.size = Vector2(240, 0)
+	tracker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tracker.add_theme_color_override("font_outline_color", Pal.BG)
+	tracker.add_theme_constant_override("outline_size", 3)
+	hud.add_child(tracker)
+
 	log_text = Pal.rich("", 8)
 	log_text.fit_content = false
 	log_text.position = Vector2(6, 316)
@@ -1218,6 +1474,8 @@ func _update_hud() -> void:
 	s += "[color=%s]ООР %s %d/%d[/color]\n" % [Pal.hex(Pal.G5), _bar(p.mind, G.max_mind()), p.mind, G.max_mind()]
 	s += "СЫТ %s %d\n" % [_bar(p.food, 100), p.food]
 	s += "День %d · %s%s\n" % [p.day, G.clock(), "  [color=%s]ночь[/color]" % Pal.hex(Pal.G3) if G.is_night() else ""]
+	if waste and wx != "clear":
+		s += "[color=%s]%s[/color]\n" % [Pal.hex(Pal.R3 if wx == "acid" else Pal.G3), _cap(G.WEATHER_NAME[wx])]
 	var wtxt := "—"
 	if p.weapon != "":
 		wtxt = "%s %d/%d · %d" % [p.weapon, p.mag, G.mag_size(p.weapon), G.ammo_left() - p.mag]
@@ -1225,6 +1483,18 @@ func _update_hud() -> void:
 	if p.wounds.size() > 0:
 		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
 	hud_text.text = s
+	var tl: Array = G.tracker_lines()
+	var tt := ""
+	for i in mini(4, tl.size()):
+		tt += "[right][color=%s]▪ %s[/color][/right]\n" % [Pal.hex(Pal.G4), tl[i]]
+	if tl.size() > 4:
+		tt += "[right][color=%s]и ещё %d — в пейджере[/color][/right]" % [Pal.hex(Pal.G3), tl.size() - 4]
+	tracker.text = tt
+	# пороги рассудка: при каждом новом падении — тревожная строка
+	var st := Live.mind_step()
+	if st > int(p.flags.get("mind_step", 0)):
+		G.say("[Рассудок %d] %s" % [int(p.mind), MIND_WORLD[st - 1]])
+	p.flags["mind_step"] = st
 
 
 func _update_log() -> void:
@@ -1241,9 +1511,14 @@ func _update_hover() -> void:
 	var t := to_grid(get_global_mouse_position())
 	var tg = _target_at(t)
 	var txt := ""
-	if tg != null:
-		txt = tg.title
-	elif obj_at.has(t):
-		txt = obj_at[t].title
+	# подписи только у предметов: жители и звери узнаются в лицо
+	var o = obj_at.get(t, null)
+	if tg != null and tg.get("type", "") == "prop":
+		o = tg
+	if o != null and o.type == "prop":
+		txt = o.title
+		# то, что можно подобрать, издалека не разобрать: надо подойти на пару шагов
+		if _lootable(o) and _odist(o, ppos) > READ_DIST:
+			txt = "Что-то лежит"
 	hover.text = txt
 	hover.position = get_viewport().get_mouse_position() + Vector2(10, -4)

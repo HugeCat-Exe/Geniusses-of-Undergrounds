@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.9.2"
+const VERSION := "0.10"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -23,11 +23,11 @@ func new_character() -> Dictionary:
 		"got_phys": [], "got_psy": [], "motive": "",
 		"hp": 1, "mind": 1, "food": 80, "su": 300, "will": 0,
 		"inv": {}, "weapon": "", "melee": "Нож", "armor": "Футболка", "mag": 0, "loose": {},
-		"wounds": [], "mags": {}, "flags": {}, "quests": {}, "killed": [],
+		"wounds": [], "bodies": [], "mags": {}, "flags": {}, "quests": {}, "killed": [],
 		"map": "caldera", "pos": [0, 0], "steps": 0, "day": 1, "hour": 8,
 		"map_at": "caldera", "known": ["caldera"], "pity": {}, "seed": randi(),
 		"rel": {}, "jobs": [], "companion": "",
-		"gear": {"head": "", "legs": "", "feet": "", "amulet": ""},
+		"gear": {"head": "", "legs": "", "feet": "", "amulet": ""}, "buffs": {},
 	}
 
 
@@ -96,7 +96,79 @@ func soft(x: float) -> float:
 func stat(k: String, c: Dictionary = p) -> int:
 	var i := D.KEYS.find(k)
 	var base := clampi(roundi(10.0 + soft(mods_total(c, false)[i])), 4, 26)
-	return clampi(base + roundi(soft(mods_acquired(c)[i])), 0, 30)
+	var extra := 0
+	# амулет на шее и прочитанные книги действуют только на самого Гения, не на анкету
+	if c.has("gear") and amulet(c) != "":
+		extra += int(D.ITEMS[amulet(c)].get("smods", {}).get(k, 0))
+	if is_same(c, p):
+		extra += buff("stat", k)
+	return clampi(base + roundi(soft(mods_acquired(c)[i])) + extra, 0, 30)
+
+
+## Абсолютный час игры: для сроков действия книг.
+func abs_hour() -> int:
+	return int(p.day) * 24 + int(p.hour)
+
+
+## Прибавка от прочитанных книг: kind "stat" или "skill".
+func buff(kind: String, key: String) -> int:
+	var n := 0
+	for b in p.get("buffs", {}).values():
+		if b.kind == kind and b.key == key and int(b.until) > abs_hour():
+			n += int(b.n)
+	return n
+
+
+## Прочитать книгу: +2 на сутки, повторное чтение того же вида продлевает срок, а не складывается.
+func read_book(item: String) -> String:
+	var bk: Dictionary = D.BOOKS[item]
+	var kind := "stat" if bk.has("stat") else "skill"
+	var key: String = bk.get("stat", bk.get("skill", ""))
+	if not p.has("buffs"):
+		p.buffs = {}
+	p.buffs[kind + ":" + key] = {"kind": kind, "key": key, "n": 2, "until": abs_hour() + 24, "book": item}
+	remove_item(item)
+	p.mind = mini(p.mind, max_mind())
+	changed.emit()
+	return "Прочитано: %s. %s +2 на сутки." % [item, key]
+
+
+## Что сейчас действует от книг: [название книги, что даёт, сколько часов осталось].
+func active_buffs() -> Array:
+	var res: Array = []
+	for b in p.get("buffs", {}).values():
+		var left := int(b.until) - abs_hour()
+		if left > 0:
+			res.append([b.get("book", ""), "%s +%d" % [b.key, int(b.n)], left])
+	return res
+
+
+## Текст книги: у учебников — из data.gd, у справочников собирается из того, что есть в игре.
+func book_text(item: String) -> String:
+	var bk: Dictionary = D.BOOKS[item]
+	match bk.get("lore", ""):
+		"herbs":
+			var t := "Что растёт у Кальдеры и зачем это рвать.\n"
+			for h in D.HERBS:
+				t += "\n• [b]%s[/b] — %s" % [h, D.ITEMS[h].desc]
+			t += "\n\nНе ешьте то, что светится. Не нюхайте то, что пахнет мёдом и кровью: это хищный цветок, и он уже нюхает вас."
+			return t
+		"beasts":
+			var t2 := "Кого можно встретить за воротами и как с ним быть.\n"
+			var seen := {}
+			for id in D.ENEMIES:
+				var en: Dictionary = D.ENEMIES[id]
+				if seen.has(en.name):
+					continue
+				seen[en.name] = true
+				t2 += "\n• [b]%s[/b] — %s" % [en.name, str(en.get("intro", "")).split(".")[0] + "."]
+			return t2
+		"sefiry":
+			var t3 := "Одиннадцать Сефир держат Подземки, пока Пустошь путается сама в себе. Каждая создаёт души по-своему.\n"
+			for sf in D.SEFIRY:
+				t3 += "\n• [b]%s[/b]: %s." % [sf[0], sf[1]]
+			return t3
+	return bk.get("text", "")
 
 
 func mod(k: String, c: Dictionary = p) -> int:
@@ -184,6 +256,8 @@ func skill_bonus(skill: String, c: Dictionary = p) -> int:
 		b += 2
 	if skill == "Сефиры" and amulet(c) == "Камень души":
 		b += 2
+	if is_same(c, p):
+		b += buff("skill", skill)
 	return b
 
 
@@ -261,12 +335,17 @@ var shop_who := ""
 func rel_price_k(who: String) -> float:
 	if who == "":
 		return 1.0
+	var k := 1.0
 	match rel_tier(who).idx:
-		-2: return 1.25
-		-1: return 1.1
-		2: return 0.93
-		3: return 0.88
-	return 1.0
+		-2: k = 1.25
+		-1: k = 1.1
+		2: k = 0.93
+		3: k = 0.88
+	# фракция продавца: к чужим на 3% дороже за каждое очко неприязни, к своим дешевле
+	var w: Dictionary = preload("res://scripts/story.gd").WHO.get(who, {})
+	if w.has("faction"):
+		k *= 1.0 - 0.03 * clampi(relation(w.faction), -4, 4)
+	return k
 
 
 ## «Для своих»: знакомым хозяин каждый день уступает одну вещь на четверть дешевле.
@@ -299,6 +378,32 @@ func phobia_open(n: int) -> void:
 		p.mind = maxi(1, p.mind - n)
 		say("[Агорафобия] Слишком много неба над головой: −%d ООР." % n)
 		changed.emit()
+
+
+## Книги библиотекаря на сегодня: три случайные из девяти, каждую можно купить один раз за день.
+func lib_stock() -> Array:
+	var all: Array = D.BOOKS.keys()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(p.seed) + "lib" + str(p.day))
+	var pick: Array = []
+	while pick.size() < 3:
+		var b: String = all[rng.randi() % all.size()]
+		if not (b in pick):
+			pick.append(b)
+	return pick.filter(func(b): return not flag("lib_%d_%s" % [p.day, b]))
+
+
+## Множитель выкупа у хозяина лавки: 0 — не возьмёт вовсе.
+func buy_k(who: String, item: String) -> float:
+	var r: Dictionary = D.BUY_RATES.get(who, {})
+	var t: String = D.ITEMS[item].type
+	if r.has("only") and not (t in r.only):
+		return 0.0
+	if t in r.get("refuse", []):
+		return 0.0
+	if r.get("items", {}).has(item):
+		return float(r.items[item])
+	return float(r.get("types", {}).get(t, 1.0))
 
 
 func sell_price(base: int) -> int:
@@ -533,6 +638,22 @@ func clock() -> String:
 	return "%02d:%02d" % [int(p.hour), int(p.get("minf", 0.0))]
 
 
+## Погода в Пустоши меняется каждые 6 часов и одинакова для всех мест под открытым небом.
+const WEATHER_NAME := {"clear": "ясно", "dust": "пыльная буря", "acid": "кислотный дождь"}
+
+
+func weather() -> String:
+	var block := int(p.hour) / 6
+	var r := absi(hash(str(p.seed) + "wx" + str(p.day) + "_" + str(block))) % 100
+	if int(p.day) <= 1:
+		return "clear"
+	if r < 16:
+		return "dust"
+	if r < 28:
+		return "acid"
+	return "clear"
+
+
 ## Ночь: с 20:00 до 5:00.
 func is_night() -> bool:
 	return int(p.hour) >= 20 or int(p.hour) < 5
@@ -564,6 +685,12 @@ func new_day() -> void:
 		if not (str(id).begins_with("pes_") or str(id).begins_with("padal_")):
 			keep.append(id)
 	p.killed = keep
+	# тела и кровь убирают к утру
+	p.bodies = []
+	# старые отметки книжного развала больше не нужны
+	for k in p.flags.keys():
+		if str(k).begins_with("lib_") and not str(k).begins_with("lib_%d_" % int(p.day)):
+			p.flags.erase(k)
 
 
 # ---------- Отношения ----------
@@ -702,6 +829,34 @@ func _make_job(tpl: Dictionary, rng: RandomNumberGenerator, id: String) -> Dicti
 		j["text"] = tpl.text % need
 		j["su"] = int(tpl.su * need / float(tpl.need[0]))
 	return j
+
+
+## Короткие строки для трекера задач в углу экрана (без стрелок: только что и где).
+func tracker_lines() -> Array:
+	var res: Array = []
+	for j in p.jobs:
+		var t: String = str(j.title)
+		if j.state == "done":
+			t += " — сдать %s" % giver_name(j.giver, true)
+		elif j.kind == "kill":
+			t += " · %d/%d" % [int(j.have), int(j.need)]
+		elif j.kind == "escort":
+			t += " — довести до Кальдеры" if j.state == "escort" else " — %s" % D.LOCS[j.poi].name
+		elif j.has("poi") and D.LOCS.has(j.poi):
+			t += " — %s" % D.LOCS[j.poi].name
+		res.append(t)
+	var qn := {"med": "Груз для хирурга", "dogs": "Заказ №117", "spice": "Запутанные специи"}
+	for q in p.quests:
+		var st: String = p.quests[q]
+		if st == "closed" or not qn.has(q):
+			continue
+		var t2: String = qn[q]
+		match q:
+			"dogs": t2 += " — сдать на доске" if st == "done" else " · псы %d/3" % int(p.flags.get("dogs", 0))
+			"spice": t2 += " · травы %d/3" % spice_herbs()
+			"med": t2 += " — ящик у каравана"
+		res.append(t2)
+	return res
 
 
 ## Объявления на доске на сегодня (одни и те же весь день).
@@ -977,6 +1132,11 @@ func use_item(item: String) -> String:
 				p.gear[slot] = item
 			changed.emit()
 			return "Надето: %s." % item
+		"book":
+			var msg := read_book(item)
+			if main():
+				main().open_book(item)
+			return msg
 		"amulet":
 			p.gear.amulet = item
 			p.mind = mini(p.mind, max_mind())
@@ -1138,6 +1298,10 @@ func raid_loot(id: String) -> void:
 		var m: String = RAID_MODS[rng.randi() % RAID_MODS.size()]
 		add_item(m)
 		got.append(m)
+	# на глубоких ярусах изредка попадается осколок Запутанности
+	if deep and rng.randf() < 0.12 and not has("Осколок Запутанности"):
+		add_item("Осколок Запутанности")
+		got.append("Осколок Запутанности")
 	for i in (2 if deep else 1):
 		var l: Array = RAID_COMMON[rng.randi() % RAID_COMMON.size()]
 		add_item(l[0], l[1])
@@ -1336,6 +1500,10 @@ func load_slot(i: int) -> bool:
 ## Старые сохранения: до 0.9 счётчик сданных заданий учитывал только задания от самой доски,
 ## а их почти нет. Пересчитываем по флагам job_done_d… (все обычные подработки).
 func _migrate() -> void:
+	if not p.has("buffs"):
+		p.buffs = {}
+	if not p.has("bodies"):
+		p.bodies = []
 	if int(p.flags.get("save_ver", 0)) >= 9:
 		return
 	var n := 0
