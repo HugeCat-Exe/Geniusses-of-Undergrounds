@@ -102,7 +102,6 @@ var wx := "clear"          # погода на этой карте сейчас
 var wx_amt := Vector2.ZERO # x — пыль, y — дождь (плавно)
 var wx_ok := false         # прошёл проверку «Погоды» на эту бурю/дождь
 var acid_t := 0.0
-var night_setup := false   # была ли ночь, когда карту собирали
 
 var ppos := Vector2i.ZERO
 var pf := Vector2.ZERO
@@ -136,7 +135,6 @@ var place: Label
 
 func setup(map_name: String, spawn: String) -> void:
 	map = Maps.new().get_map(map_name)
-	night_setup = G.is_night()
 	grid = map.floor
 	H = grid.size()
 	W = grid[0].size()
@@ -177,9 +175,6 @@ func setup(map_name: String, spawn: String) -> void:
 			continue
 		var ob: Dictionary = o.duplicate()
 		ob.pos = Vector2i(o.x, o.y)
-		# ночная точка могла попасть в стену или в предмет: двигаем к ближайшей свободной клетке
-		if ob.get("night", false):
-			ob.pos = _free_near(ob.pos)
 		ob.kind = str(o.get("tex", ""))
 		ob.ph = float(absi(hash(str(o.get("id", o.title)) + str(o.x))) % 1000) / 159.0
 		if ob.type == "npc":
@@ -205,7 +200,8 @@ func setup(map_name: String, spawn: String) -> void:
 	pf = Vector2(ppos)
 	G.p.pos = [ppos.x, ppos.y]
 	_place_job_spots()
-	_reveal()
+	if not waste:
+		_sched_tick(0.0)
 	mate_pos = pf + Vector2(-1, 0)
 	esc_pos = pf + Vector2(0, -1)
 
@@ -622,12 +618,9 @@ func _process(delta: float) -> void:
 		cam.position = iso(cam_override) + Vector2(0, -10)
 	if wx_rect != null:
 		_weather_tick(delta)
-	# в Подземке с наступлением ночи (и утра) жители расходятся по своим местам
-	if not waste and night_setup != G.is_night() and not blocked() and path.is_empty() and not G.main().has_overlay():
-		night_setup = G.is_night()
-		G.say("Ярус затихает: свет приглушают, кто-то идёт спать, кто-то в «Клык»." if night_setup else "Утро. Ярус просыпается, жители возвращаются к делам.")
-		G.world_dirty = true
-		G.refresh_world()
+	# жители сами идут к ночным местам и обратно (sched.gd)
+	if not waste and not cut_active:
+		_sched_tick(0.0 if stop else delta)
 	if night_rect != null:
 		night_amt = move_toward(night_amt, 1.0 if G.is_night() else 0.0, delta * 0.5)
 		night_rect.visible = night_amt > 0.01
@@ -692,27 +685,8 @@ func _key_dir() -> Vector2i:
 	return Vector2i(clampi(d.x, -1, 1), clampi(d.y, -1, 1))
 
 
-## План этажа: в рейдах клетки открываются, только когда Гений их увидел.
-func _reveal() -> void:
-	if not map.get("raid", false):
-		return
-	if not G.p.has("seen"):
-		G.p.seen = {}
-	var cur: String = G.p.seen.get(G.p.map, "")
-	if cur.length() != W * H:
-		cur = "0".repeat(W * H)
-	var arr := cur.to_ascii_buffer()
-	for dy in range(-3, 4):
-		for dx in range(-3, 4):
-			var c := ppos + Vector2i(dx, dy)
-			if in_bounds(c) and Vector2(dx, dy).length() <= 3.2:
-				arr[c.y * W + c.x] = 49
-	G.p.seen[G.p.map] = arr.get_string_from_ascii()
-
-
 func _on_step() -> void:
 	G.step(waste)
-	_reveal()
 	for m in mobs:
 		if m.stun <= 0.0 and _cheb(m.pos, ppos) <= 1:
 			path.clear()
@@ -1127,7 +1101,7 @@ const READ_DIST := 3
 func _lootable(o: Dictionary) -> bool:
 	var a: String = str(o.get("action", ""))
 	return o.get("kind", "") in ["cache", "roots", "herb_ash", "herb_mint", "herb_pepper"] or a.begins_with("jobspot:") \
-		or a.begins_with("raid_c") or a.begins_with("herb_") or a.begins_with("forest_forage") or a.ends_with("_cache") or a.begins_with("cache_")
+		or a.begins_with("raid_c") or a in ["mini_bus_trunk", "mini_bus_case", "mini_camp_stash", "mini_camp_tent"] or a.begins_with("herb_") or a.begins_with("forest_forage") or a.ends_with("_cache") or a.begins_with("cache_")
 
 
 ## Уже обысканное не подсвечиваем.
@@ -1137,6 +1111,8 @@ func _looted(a: String) -> bool:
 		"cache_ruin": return G.flag("ruin_open")
 		"river_cache": return G.flag("river_cache")
 		"ruins_cache": return G.flag("ruins_looted")
+	if a.begins_with("mini_"):
+		return G.mini_done(a)
 	if a.begins_with("raid_c"):
 		return G.flag(G.raid_key(a.substr(5)))
 	if a.begins_with("forest_forage"):
@@ -1158,6 +1134,106 @@ func _draw_loot_marks() -> void:
 		draw_polyline(PackedVector2Array([c + Vector2(0, -8), c + Vector2(16, 0), c + Vector2(0, 8), c + Vector2(-16, 0), c + Vector2(0, -8)]), Color(Pal.R3, pulse), 1.0)
 
 
+# ---------------- распорядок жителей ----------------
+
+const Sched := preload("res://scripts/sched.gd")
+const SCHED_TALK := {"kid": "res_kid", "smoker": "stairs_smoker", "ian": "stairs_ian", "beggar": "res_beggar",
+	"patrol": "dana_start", "zoya": "zoya_start", "pip": "pip_start", "miron": "miron_start"}
+var sched_paths: Dictionary = {}
+
+
+func _sched_tick(delta: float) -> void:
+	for id in Sched.ROUTINE:
+		var o = cut_find(id)
+		if id == G.p.get("companion", ""):
+			if o != null:
+				_sched_remove(o)
+			continue
+		var st := Sched.state(id)
+		if st.map != G.p.map:
+			if o != null:
+				_sched_remove(o)
+			continue
+		if o == null:
+			var c0: Vector2i = st.leg.a if st.walk else st.cell
+			o = _sched_add(id, c0)
+		if st.walk:
+			_sched_walk(o, st, delta)
+		elif o.has("cpos") or o.pos != st.cell:
+			_sched_put(o, st.cell)
+
+
+func _sched_add(id: String, t: Vector2i) -> Dictionary:
+	var w: Dictionary = preload("res://scripts/story.gd").WHO[id]
+	var ob := {"type": "npc", "id": id, "pos": t, "x": t.x, "y": t.y, "title": str(w.name).get_slice(",", 0),
+		"action": SCHED_TALK.get(id, ""), "block": true, "reach": 1, "look": Maps.NPC_LOOKS[id].person, "kind": "",
+		"ph": float(absi(hash(id)) % 1000) / 159.0}
+	ob.tex = Art.person_tex(ob.look)
+	objs.append(ob)
+	_sched_put(ob, t)
+	return ob
+
+
+func _sched_remove(o: Dictionary) -> void:
+	objs.erase(o)
+	if obj_at.get(o.pos) == o:
+		obj_at.erase(o.pos)
+	if o.get("block", false):
+		astar.set_point_solid(o.pos, false)
+
+
+## Встать на клетку: снова твёрдый, снова поворачивается к Гению.
+func _sched_put(o: Dictionary, t: Vector2i) -> void:
+	if obj_at.get(o.pos) == o:
+		obj_at.erase(o.pos)
+	astar.set_point_solid(o.pos, false)
+	o.pos = t
+	o.erase("cpos")
+	o.erase("face")
+	o["walk"] = 0.0
+	o.block = true
+	if not obj_at.has(t):
+		obj_at[t] = o
+	astar.set_point_solid(t, true)
+
+
+## Идти по отрезку распорядка: путь считаем один раз, место — по доле прошедшего времени.
+func _sched_walk(o: Dictionary, st: Dictionary, delta: float) -> void:
+	var lg: Dictionary = st.leg
+	var key := "%s|%s|%s" % [o.id, str(lg.a), str(lg.b)]
+	if not sched_paths.has(key):
+		var sa := astar.is_point_solid(lg.a)
+		var sb := astar.is_point_solid(lg.b)
+		astar.set_point_solid(lg.a, false)
+		astar.set_point_solid(lg.b, false)
+		var cells: Array = astar.get_id_path(lg.a, lg.b)
+		astar.set_point_solid(lg.a, sa)
+		astar.set_point_solid(lg.b, sb)
+		if cells.size() < 2:
+			cells = [lg.a, lg.b]
+		sched_paths[key] = cells
+	var cells: Array = sched_paths[key]
+	var s: float = clampf(st.f, 0.0, 1.0) * (cells.size() - 1)
+	var i := mini(int(s), cells.size() - 2)
+	var fp: Vector2 = Vector2(cells[i]).lerp(Vector2(cells[i + 1]), s - i)
+	if o.get("block", false):
+		astar.set_point_solid(o.pos, false)
+		o.block = false
+	var prev: Vector2 = o.get("cpos", fp)
+	var d := fp - prev
+	if absf(d.x - d.y) > 0.001:
+		o["face"] = (d.x - d.y) < 0
+	o["cpos"] = fp
+	o["walk"] = float(o.get("walk", 0.0)) + delta
+	var cell := Vector2i(fp.round())
+	if cell != o.pos:
+		if obj_at.get(o.pos) == o:
+			obj_at.erase(o.pos)
+		o.pos = cell
+		if not obj_at.has(cell):
+			obj_at[cell] = o
+
+
 func _cap(t: String) -> String:
 	return t.substr(0, 1).to_upper() + t.substr(1)
 
@@ -1176,6 +1252,7 @@ func _free_near(t: Vector2i) -> Vector2i:
 func _weather_change(first: bool) -> void:
 	wx = G.weather()
 	wx_ok = false
+	Sfx.weather({"dust": "storm", "acid": "rain"}.get(wx, ""))
 	if first:
 		wx_amt = Vector2(1.0 if wx == "dust" else 0.0, 1.0 if wx == "acid" else 0.0)
 	if wx == "clear":
@@ -1424,7 +1501,7 @@ func _build_hud() -> void:
 	pb.size = Vector2(98, 18)
 	hud.add_child(pb)
 
-	if waste:
+	if waste and not map.get("mini", false):
 		var eb := Pal.button("ИЗУЧАТЬ ПУСТОШЬ", _explore, 9)
 		eb.position = Vector2(484, 44)
 		eb.size = Vector2(150, 18)
@@ -1432,7 +1509,7 @@ func _build_hud() -> void:
 
 	tracker = Pal.rich("", 8)
 	tracker.fit_content = true
-	tracker.position = Vector2(394, 66 if waste else 44)
+	tracker.position = Vector2(394, 80 if waste else 56)
 	tracker.size = Vector2(240, 0)
 	tracker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tracker.add_theme_color_override("font_outline_color", Pal.BG)
@@ -1511,11 +1588,12 @@ func _update_hover() -> void:
 	var t := to_grid(get_global_mouse_position())
 	var tg = _target_at(t)
 	var txt := ""
-	# подписи только у предметов: жители и звери узнаются в лицо
 	var o = obj_at.get(t, null)
-	if tg != null and tg.get("type", "") == "prop":
+	if tg != null:
 		o = tg
-	if o != null and o.type == "prop":
+	if o != null and o.type in ["npc", "mob"]:
+		txt = o.title
+	elif o != null and o.type == "prop":
 		txt = o.title
 		# то, что можно подобрать, издалека не разобрать: надо подойти на пару шагов
 		if _lootable(o) and _odist(o, ppos) > READ_DIST:

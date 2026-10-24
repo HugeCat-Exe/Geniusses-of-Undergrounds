@@ -93,6 +93,14 @@ const RAID2 := [
 	"####################",
 ]
 ## Домик Рыжей изнутри.
+const DANA_HOME := [
+	"########",
+	"#______#",
+	"#______#",
+	"#,,,,,,#",
+	"#,,,,,,#",
+	"########",
+]
 const RY_HOME := [
 	"##########",
 	"#===_____#",
@@ -148,62 +156,15 @@ const NPC_LOOKS := {
 		"portrait": {"sex": "М", "coat": 4, "collar": 5, "hair": 6, "glasses": true, "old": true, "traits": ["Морщины"]}},
 	"taxi": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
 		"portrait": {"sex": "М", "coat": 2, "collar": 9, "hair": 1, "beard": true, "glasses": true, "scar": true}},
+	"wanderer": {"person": {"coat": 5, "hat": true, "skin": 4, "accent": 8},
+		"portrait": {"sex": "М", "coat": 5, "collar": 8, "hair": 3, "beard": true, "old": true, "traits": ["Морщины"]}},
 	"raider": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
 		"portrait": {"sex": "М", "coat": 2, "collar": 9, "bald": true, "scar": true, "traits": ["Ножевые шрамы", "Зубы крысолюда"]}},
 }
 
 
-## Ночью (G.is_night) часть жителей спит, часть перебирается в «Клык» или к жаровне.
-## id: [карта, x, y]; пустой массив — спит дома и не показывается.
-const NIGHT_SPOTS := {
-	"kid": [],
-	"zoya": [],
-	"smoker": ["caldera3", 16, 4],
-	"ian": ["caldera3", 17, 4],
-	"beggar": ["caldera3", 12, 5],
-	"patrol": ["caldera1", 8, 4],
-	"pip": ["caldera4", 11, 5],
-	"miron": ["caldera4", 9, 5],
-}
-
-
 func get_map(name: String) -> Dictionary:
-	var m := _build(name)
-	if G.is_night() and not m.waste:
-		_night(name, m)
-	return m
-
-
-func _night(name: String, m: Dictionary) -> void:
-	var keep: Array = []
-	var here: Dictionary = {}
-	for o in m.objs:
-		if o.type == "npc" and NIGHT_SPOTS.has(o.id):
-			here[o.id] = o
-			continue
-		keep.append(o)
-	for id in NIGHT_SPOTS:
-		var sp: Array = NIGHT_SPOTS[id]
-		if sp.is_empty() or sp[0] != name:
-			continue
-		if id == G.p.get("companion", ""):
-			continue
-		var o: Dictionary = here.get(id, {})
-		if o.is_empty():
-			var w: Dictionary = preload("res://scripts/story.gd").WHO[id]
-			o = _npc(id, 0, 0, w.name.get_slice(",", 0), _NIGHT_TALK.get(id, ""), 1)
-		else:
-			o = o.duplicate()
-		o.x = sp[1]
-		o.y = sp[2]
-		o["night"] = true
-		keep.append(o)
-	m.objs = keep
-
-
-## Стартовые узлы диалогов для тех, кто ночью переходит на чужой ярус.
-const _NIGHT_TALK := {"smoker": "stairs_smoker", "ian": "stairs_ian", "beggar": "res_beggar",
-	"patrol": "dana_start", "pip": "pip_start", "miron": "miron_start"}
+	return _build(name)
 
 
 func _build(name: String) -> Dictionary:
@@ -218,6 +179,14 @@ func _build(name: String) -> Dictionary:
 			return _caldera4()
 		"caldera_ryhome":
 			return _ry_home()
+		"caldera_danahome":
+			return _dana_home()
+		"mini_bus":
+			return _mini_bus()
+		"mini_dogs":
+			return _mini_dogs()
+		"mini_camp":
+			return _mini_camp()
 		"poi_ruins":
 			return _poi_ruins()
 		"poi_forest":
@@ -276,8 +245,9 @@ func _caldera1() -> Dictionary:
 	for x in [10, 13]:
 		objs.append(_prop("shack", x, 1, "Лачуга из листового железа"))
 	objs.append(_npc("beggar", 11, 2, "Нищий Тимоха", "res_beggar", 1))
-	objs.append(_prop("laundry", 15, 1, "Бельё на верёвке"))
-	objs.append(_npc("kid", 15, 3, "Девочка Ласка", "res_kid", 1))
+	# будка патрульной Даны: пускает к себе только своих, как Рыжая
+	objs.append(_big("danabooth", 15, 1, 2, 2, "Будка патрульной Даны", "dana_door"))
+	objs.append(_npc("kid", 13, 3, "Девочка Ласка", "res_kid", 1))
 	objs.append(_prop("lift", 17, 1, "Грузовой лифт", "lift"))
 	objs.append(_prop("stairs_down", 1, 5, "Лестница вниз, на ярус 2", "go:caldera2:down1"))
 	objs.append(_npc("smoker", 4, 5, "Курильщик Лёва", "stairs_smoker", 1))
@@ -289,7 +259,7 @@ func _caldera1() -> Dictionary:
 	_lamps(objs, [Vector2i(7, 3), Vector2i(14, 7), Vector2i(5, 8)])
 	var grid := _grid(FLOOR1)
 	return {"name": "Кальдера · Ярус 1 · Вход", "floor": grid, "objs": objs, "waste": false, "depth": 1,
-		"spawns": {"surface": Vector2i(2, 2), "start": Vector2i(2, 2), "lift": Vector2i(17, 2), "up2": Vector2i(4, 6)}, "light": 10.0}
+		"spawns": {"surface": Vector2i(2, 2), "start": Vector2i(2, 2), "lift": Vector2i(17, 2), "up2": Vector2i(4, 6), "danabooth": Vector2i(15, 3)}, "light": 10.0}
 
 
 func _caldera2() -> Dictionary:
@@ -395,13 +365,27 @@ func _caldera4() -> Dictionary:
 	objs.append(_prop("stool", 14, 8, "Табурет", "", false))
 	objs.append(_npc("pip", 7, 6, "Крысёнок Пип", "pip_start", 1))
 	# книжный развал у левой стены
-	objs.append(_prop("bookshelf", 1, 3, "Полки с книгами Института"))
-	objs.append(_prop("bookshelf", 1, 4, "Полки с книгами Института"))
-	objs.append(_npc("librarian", 3, 3, "Книжник Феликс", "lib_start", 1))
+	objs.append(_prop("bookshelf", 1, 6, "Полки с книгами Института"))
+	objs.append(_prop("bookshelf", 1, 7, "Полки с книгами Института"))
+	objs.append(_npc("librarian", 2, 7, "Книжник Феликс", "lib_start", 1))
 	_lamps(objs, [Vector2i(5, 5), Vector2i(17, 5), Vector2i(8, 9)])
 	var grid := _grid(FLOOR4)
 	return {"name": "Кальдера · Ярус 4 · Кварталы", "floor": grid, "objs": objs, "waste": false, "depth": 0,
 		"spawns": {"down3": Vector2i(3, 3), "lift": Vector2i(2, 5), "ryhouse": Vector2i(15, 4), "raid": Vector2i(12, 3)}, "light": 9.0}
+
+
+## Будка Даны: койка, шкафчик с формой, рация. Ночью Дана здесь (распорядок в sched.gd).
+func _dana_home() -> Dictionary:
+	var objs: Array = []
+	objs.append(_prop("door", 1, 4, "Дверь на ярус 1", "go:caldera1:danabooth"))
+	objs.append(_prop("bed", 1, 1, "Узкая койка, заправленная по-армейски"))
+	objs.append(_prop("shelf", 3, 1, "Шкафчик с формой", "dana_locker"))
+	objs.append(_prop("table", 5, 1, "Стол с рацией", "dana_radio"))
+	objs.append(_prop("crate", 6, 3, "Ящик с запасными фонарями"))
+	_lamps(objs, [Vector2i(4, 3)])
+	var grid := _grid(DANA_HOME)
+	return {"name": "Кальдера · Будка Даны", "floor": grid, "objs": objs, "waste": false, "depth": 0,
+		"spawns": {"door": Vector2i(2, 4)}, "light": 6.0}
 
 
 func _ry_home() -> Dictionary:
@@ -468,10 +452,14 @@ func _waste() -> Dictionary:
 	for y in [12, 13]:
 		for x in range(0, 8):
 			grid[y][x] = "k"
-	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(6, 1), Vector2i(7, 1), Vector2i(8, 2), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
+	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(4, 5), Vector2i(6, 1), Vector2i(7, 1), Vector2i(8, 2), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
 	objs.append(_prop("hatch", 2, 2, "Шахта Кальдеры", "to_caldera"))
 	objs.append(_big("taxi", 6, 1, 2, 1, "Такси Арсена"))
 	objs.append(_npc("taxi", 8, 2, "Таксист Арсен", "taxi_start", 1))
+	# странствующий торговец стоит у шахты только в дни прихода (G.wander_here)
+	if G.wander_here():
+		objs.append(_prop("cart", 4, 5, "Тележка странника"))
+		objs.append(_npc("wanderer", 5, 4, "Странник Гаспар", "wander_start", 1))
 	if G.p.quests.get("spice", "") == "active" and not G.has("Пепельный тимьян"):
 		objs.append(_prop("herb_ash", 5, 4, "Пепельный тимьян", "herb_1", false))
 	objs.append(_prop("roadend", 1, 12, "Обрывок дороги · точка эвакуации", "evac"))
@@ -635,6 +623,59 @@ func _scatter(grid: Array, objs: Array, seed: int, count: int, avoid: Array) -> 
 		var kd: Array = kinds[rng.randi_range(0, kinds.size() - 1)]
 		objs.append(_prop(kd[0], pos.x, pos.y, kd[1], "", kd[2]))
 		taken[pos] = true
+
+
+# ---------------- Мини-истории по дороге (только пешком, см. worldmap.gd) ----------------
+
+func _mini_bus() -> Dictionary:
+	var w := 18
+	var h := 13
+	var grid := _sand(w, h, 701 + int(G.p.flags.get("mini_n", 0)), 2)
+	_fill(grid, Rect2i(0, 8, w, 2), "k")
+	var objs: Array = []
+	objs.append(_big("bus", 4, 3, 5, 2, "Перевёрнутый автобус"))
+	objs.append(_prop("cache", 10, 4, "Багажное отделение", "mini_bus_trunk"))
+	objs.append(_prop("bones", 3, 6, "Кости у разбитого окна", "mini_bus_bones"))
+	objs.append(_prop("crate", 12, 2, "Чемодан, выпавший на песок", "mini_bus_case"))
+	objs.append(_prop("wreck", 14, 6, "Оторванное колесо"))
+	objs.append(_exit(16, 11))
+	_scatter(grid, objs, 702, 10, [Rect2i(3, 2, 11, 6), Rect2i(0, 8, w, 2), Rect2i(14, 10, 4, 3)])
+	_ensure_paths(grid, objs, Vector2i(15, 11), [Vector2i(10, 5), Vector2i(3, 7), Vector2i(12, 3)])
+	return {"name": "Перевёрнутый автобус", "floor": grid, "objs": objs, "waste": true, "mini": true,
+		"spawns": {"enter": Vector2i(15, 11)}, "light": 30.0}
+
+
+func _mini_dogs() -> Dictionary:
+	var w := 16
+	var h := 13
+	var grid := _sand(w, h, 711 + int(G.p.flags.get("mini_n", 0)), 4)
+	var objs: Array = []
+	objs.append(_prop("deaddog", 5, 4, "Мёртвый пёс", "mini_dog_1"))
+	objs.append(_prop("deaddog", 8, 3, "Мёртвый пёс", "mini_dog_2"))
+	objs.append(_prop("deaddog", 7, 7, "Растерзанный пёс", "mini_dog_3"))
+	objs.append(_prop("rocks", 10, 5, "Следы борьбы", "mini_dog_signs"))
+	objs.append(_prop("bones", 3, 8, "Обглоданные кости"))
+	objs.append(_exit(14, 11))
+	_scatter(grid, objs, 712, 9, [Rect2i(3, 2, 9, 8), Rect2i(12, 10, 4, 3)])
+	_ensure_paths(grid, objs, Vector2i(13, 11), [Vector2i(5, 5), Vector2i(8, 4), Vector2i(7, 8), Vector2i(10, 6)])
+	return {"name": "Место схватки", "floor": grid, "objs": objs, "waste": true, "mini": true,
+		"spawns": {"enter": Vector2i(13, 11)}, "light": 30.0}
+
+
+func _mini_camp() -> Dictionary:
+	var w := 16
+	var h := 13
+	var grid := _sand(w, h, 721 + int(G.p.flags.get("mini_n", 0)), 2)
+	var objs: Array = []
+	objs.append(_prop("tent", 4, 2, "Брошенная палатка", "mini_camp_tent"))
+	objs.append(_prop("barrel", 7, 5, "Остывшее кострище в бочке"))
+	objs.append(_prop("cache", 2, 6, "Свёрток под камнем", "mini_camp_stash"))
+	objs.append(_prop("stump", 9, 3, "Пень с вырезанными зарубками", "mini_camp_note"))
+	objs.append(_exit(14, 11))
+	_scatter(grid, objs, 722, 10, [Rect2i(1, 1, 10, 7), Rect2i(12, 10, 4, 3)])
+	_ensure_paths(grid, objs, Vector2i(13, 11), [Vector2i(4, 3), Vector2i(2, 7), Vector2i(9, 4)])
+	return {"name": "Брошенная стоянка", "floor": grid, "objs": objs, "waste": true, "mini": true,
+		"spawns": {"enter": Vector2i(13, 11)}, "light": 30.0}
 
 
 func _exit(x: int, y: int) -> Dictionary:

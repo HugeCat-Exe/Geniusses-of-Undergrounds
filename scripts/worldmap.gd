@@ -28,6 +28,13 @@ var paused := false
 var player_pos := Vector2.ZERO
 var blink := 0.0
 var scout_pt := Vector2.ZERO
+var story_wait := false
+
+const MINI := {
+	"mini_bus": "У обочины старой трассы лежит на боку автобус. Стёкла выбиты, дверь распахнута, вокруг следы ботинок, уже заметённые песком.",
+	"mini_dogs": "Впереди, у бетонной плиты, неподвижно лежат несколько псов. Песок вокруг взрыт, будто здесь кто-то долго дрался.",
+	"mini_camp": "В ложбине между барханами виден брошенный лагерь: латаная палатка, круг камней от костра. Дыма нет.",
+}
 
 
 func _ready() -> void:
@@ -93,6 +100,16 @@ func _ready() -> void:
 			G.p.map_at = at
 		player_pos = LOCS[at].pos
 	G.changed.connect(_refresh_hud)
+	# Возвращение с мини-истории: Гений идёт дальше туда, куда шёл.
+	var res: String = str(G.p.flags.get("walk_resume", ""))
+	if res != "":
+		G.p.flags.erase("walk_resume")
+		if res.begins_with("@"):
+			var xy := res.substr(1).split(",")
+			scout_pt = Vector2(float(xy[0]), float(xy[1]))
+			_walk.call_deferred("", true)
+		elif LOCS.has(res):
+			_walk.call_deferred(res, true)
 	G.logged.connect(_on_log)
 	_refresh_hud()
 	_on_log("Клик по точке — куда идти. Пешком тратится время и сытость, такси стоит Су.")
@@ -146,6 +163,9 @@ func _gui_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	blink += delta
+	if story_wait and not G.main().has_overlay():
+		story_wait = false
+		paused = false
 	if walking and not paused and not G.main().has_overlay():
 		walk_t = minf(1.0, walk_t + delta * 140.0 / maxf(walk_len, 1.0))
 		player_pos = walk_from.lerp(walk_to, walk_t)
@@ -251,6 +271,10 @@ func pass_time(h: int) -> void:
 # ---------------- Перемещение ----------------
 
 func walk(id: String) -> void:
+	_walk(id, false)
+
+
+func _walk(id: String, resumed: bool) -> void:
 	info.visible = false
 	walk_from = player_pos
 	walk_to = LOCS[id].pos if id != "" else scout_pt
@@ -273,6 +297,9 @@ func walk(id: String) -> void:
 	# Стычка: чем дольше путь, тем вероятнее.
 	if rng.randf() < minf(0.55, 0.12 + 0.07 * walk_hours):
 		events.append({"at": rng.randf_range(0.3, 0.8), "kind": "fight", "id": ["pes", "padal", "pes"][rng.randi() % 3]})
+	# Мини-история у дороги: только пешком и не сразу после прошлой.
+	if not resumed and walk_hours >= 2 and rng.randf() < 0.35:
+		events.append({"at": rng.randf_range(0.25, 0.75), "kind": "story", "id": MINI.keys()[rng.randi() % MINI.size()]})
 	events.sort_custom(func(a, b): return a.at < b.at)
 	_on_log("Гений идёт пешком: %s." % (LOCS[id].name if id != "" else "разведка"))
 
@@ -285,6 +312,32 @@ func _fire(ev: Dictionary) -> void:
 		paused = true
 		G.say("Из-за барханов показался враг: %s." % D.ENEMIES[ev.id].name)
 		G.main().start_combat(ev.id, _after_fight)
+	elif ev.kind == "story":
+		paused = true
+		story_wait = true
+		G.temp_nodes["mini_ask"] = {"who": "", "text": MINI[ev.id] + "\n\nМожно свернуть и посмотреть поближе или пройти мимо.",
+			"choices": [{"t": "Свернуть и осмотреться", "fx": [["mini_go", ev.id]], "next": "end"},
+				{"t": "Пройти мимо", "fx": [["mini_skip"]], "next": "end"}]}
+		G.main().open_dialogue("mini_ask")
+
+
+## Сойти с дороги на мини-локацию: пройденная часть пути уже потрачена.
+func go_mini(id: String) -> void:
+	var h := maxi(1, int(round(walk_hours * walk_t)))
+	G.p.food = maxi(0, G.p.food - h * FOOD_PER_HOUR)
+	pass_time(h)
+	G.p.map_at = "wild"
+	G.p.map_xy = [player_pos.x, player_pos.y]
+	G.p.flags["walk_resume"] = walk_target if walk_target != "" else "@%d,%d" % [int(scout_pt.x), int(scout_pt.y)]
+	G.p.flags["mini_n"] = int(G.p.flags.get("mini_n", 0)) + 1
+	walking = false
+	story_wait = false
+	G.main().show_world(id, "enter")
+
+
+func resume() -> void:
+	story_wait = false
+	paused = false
 
 
 func _after_fight(result: String) -> void:

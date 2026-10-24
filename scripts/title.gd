@@ -11,6 +11,7 @@ const BOOT := [
 ]
 
 var boot_label: Label
+var ach_panel: ScrollContainer = null
 var menu: VBoxContainer
 var load_box: VBoxContainer
 var full_btn: Button
@@ -92,6 +93,7 @@ func _ready() -> void:
 	if last >= 0:
 		menu.add_child(Pal.button("ПРОДОЛЖИТЬ", _load.bind(last), 11))
 		menu.add_child(Pal.button("ЗАГРУЗИТЬ", _toggle_load, 11))
+	menu.add_child(Pal.button("ДОСТИЖЕНИЯ", _toggle_ach, 11))
 	full_btn = Pal.button("", _toggle_full, 11)
 	menu.add_child(full_btn)
 	_full_text()
@@ -158,7 +160,37 @@ func _full_text() -> void:
 	full_btn.text = "ПОЛНЫЙ ЭКРАН: %s" % ("ВКЛ" if G.main().fullscreen else "ВЫКЛ")
 
 
+## Список достижений справа от меню: полученные светятся, остальные тусклые.
+func _toggle_ach() -> void:
+	if ach_panel != null:
+		ach_panel.queue_free()
+		ach_panel = null
+		gen_box.visible = true
+		return
+	load_box.visible = false
+	gen_box.visible = false
+	var Ach := preload("res://scripts/ach.gd")
+	ach_panel = ScrollContainer.new()
+	ach_panel.position = Vector2(318, 10)
+	ach_panel.size = Vector2(312, 340)
+	ach_panel.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(ach_panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	ach_panel.add_child(vb)
+	var n := 0
+	for a in Ach.LIST:
+		if Ach.has(a.id):
+			n += 1
+	vb.add_child(Pal.label("ДОСТИЖЕНИЯ · получено %d из %d" % [n, Ach.LIST.size()], Pal.G5, 10, true))
+	for a in Ach.LIST:
+		vb.add_child(Ach.plate(a, Ach.has(a.id), 300.0))
+
+
 func _toggle_load() -> void:
+	if ach_panel != null:
+		ach_panel.queue_free()
+		ach_panel = null
 	load_box.visible = not load_box.visible
 	gen_box.visible = not load_box.visible
 

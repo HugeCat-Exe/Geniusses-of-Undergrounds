@@ -16,6 +16,7 @@ Pal="*res://scripts/pal.gd"
 D="*res://scripts/data.gd"
 G="*res://scripts/game.gd"
 Art="*res://scripts/art.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 

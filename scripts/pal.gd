@@ -118,6 +118,7 @@ func button(text: String, cb: Callable, size: int = 10) -> Button:
 	b.text = text
 	b.add_theme_font_size_override("font_size", size)
 	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(func(): Sfx.play("click", 0.8))
 	b.pressed.connect(cb)
 	# отклик: кнопка чуть вспыхивает под курсором и при нажатии
 	b.mouse_entered.connect(func():

@@ -48,8 +48,6 @@ func _ready() -> void:
 	tabs.position = Vector2(54, 36)
 	add_child(tabs)
 	var names: Array = TABS.duplicate()
-	if indoor():
-		names.append("ПЛАН")
 	if tab >= names.size():
 		tab = 0
 	for i in names.size():
@@ -109,7 +107,6 @@ func _set_tab(i: int) -> void:
 		3: _social()
 		4: _journal()
 		5: _system()
-		6: _plan()
 
 
 func _sheet() -> void:
@@ -177,8 +174,12 @@ func _inventory() -> void:
 	content.add_child(Pal.rich("[b]Огнестрел:[/b] %s\n[b]Ближний бой:[/b] %s (урон %d)\n[b]Одежда:[/b] %s · всего защиты %d\n%s\n[b]На счету пейджера:[/b] %d Су" % [
 		w, p.melee, D.ITEMS[p.melee].dmg, p.armor, G.armor_total(), slots, p.su], 9))
 	content.add_child(HSeparator.new())
-	var keys: Array = p.inv.keys()
-	keys.sort()
+	var sb0 := Pal.button("Сортировка: %s" % G.SORT_NAMES[G.sort_mode.inv], func():
+		G.next_sort("inv")
+		_set_tab(tab), 8)
+	sb0.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	content.add_child(sb0)
+	var keys: Array = G.sort_items(p.inv.keys(), "inv")
 	for it in keys:
 		var info: Dictionary = D.ITEMS[it]
 		var row := HBoxContainer.new()
@@ -203,6 +204,7 @@ func _inventory() -> void:
 			"armor", "amulet": act = "Надеть" if not equipped else ""
 			"weapon": act = "Взять" if not equipped else ""
 			"mod": act = "Установить"
+			"book": act = "Читать"
 		# кнопки стопкой справа, чтобы строка никогда не вылезала за экран пейджера
 		var btns := VBoxContainer.new()
 		btns.add_theme_constant_override("separation", 2)
@@ -341,76 +343,6 @@ func _quests() -> void:
 		content.add_child(HSeparator.new())
 
 
-## План этажа есть только в помещении: ярусы Кальдеры, дома и заброшенные ярусы.
-static func indoor() -> bool:
-	var m: String = str(G.p.get("map", ""))
-	return m.begins_with("caldera") or m.begins_with("raid")
-
-
-const PLAN_MARKS := {"stairs_up": ["▲", "лестница вверх"], "stairs_down": ["▼", "лестница вниз"], "lift": ["L", "лифт"],
-	"door": ["Д", "дверь"], "hatch": ["Л", "люк"], "jobscreen": ["З", "экран заданий"], "autodoc": ["+", "автодок"],
-	"terminal": ["T", "терминал"], "cache": ["?", "тайник"], "bed": ["К", "койка"]}
-
-var plan_map: Dictionary = {}
-var plan_seen := ""
-
-
-func _plan() -> void:
-	plan_map = preload("res://scripts/maps.gd").new().get_map(G.p.map)
-	var raid: bool = plan_map.get("raid", false)
-	plan_seen = str(G.p.get("seen", {}).get(G.p.map, "")) if raid else ""
-	content.add_child(Pal.rich("[color=%s][b]%s[/b]%s[/color]" % [Pal.hex(Pal.G5), plan_map.name,
-		"  ·  открыто то, что вы успели разглядеть" if raid else ""], 9))
-	var box := Control.new()
-	box.custom_minimum_size = Vector2(510, 168)
-	box.draw.connect(_draw_plan.bind(box))
-	content.add_child(box)
-	var leg := []
-	for k in PLAN_MARKS:
-		leg.append("%s %s" % PLAN_MARKS[k])
-	content.add_child(Pal.rich("[color=%s]● вы   ■ житель   %s[/color]" % [Pal.hex(Pal.G3), "   ".join(leg)], 8))
-
-
-func _draw_plan(box: Control) -> void:
-	var grid: Array = plan_map.floor
-	var h := grid.size()
-	var w: int = grid[0].size()
-	var cs := floori(minf(500.0 / w, 164.0 / h))
-	var org := Vector2(floorf((510 - cs * w) / 2.0), 2)
-	var known := func(x: int, y: int) -> bool:
-		return plan_seen == "" or (plan_seen.length() == w * h and plan_seen[y * w + x] == "1")
-	var walls := ["#", "B", "R"]
-	for y in h:
-		for x in w:
-			var ch: String = grid[y][x]
-			if ch == " " or not known.call(x, y):
-				continue
-			var r := Rect2(org + Vector2(x, y) * cs, Vector2(cs, cs))
-			if ch in walls:
-				box.draw_rect(r, Pal.G3)
-			elif ch == "v":
-				box.draw_rect(r, Pal.BG)
-				box.draw_rect(r, Pal.G1, false, 1.0)
-			elif ch == "w":
-				box.draw_rect(r, Color(Pal.G2, 0.6))
-			else:
-				box.draw_rect(r.grow(-0.5), Pal.G1)
-	var font := ThemeDB.fallback_font
-	for o in plan_map.objs:
-		var x: int = o.x
-		var y: int = o.y
-		if not known.call(x, y):
-			continue
-		var c := org + (Vector2(x, y) + Vector2(0.5, 0.5)) * cs
-		if o.type == "npc":
-			box.draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), Pal.G5)
-		elif PLAN_MARKS.has(o.get("tex", "")):
-			box.draw_string(font, c + Vector2(-cs * 0.35, cs * 0.35), PLAN_MARKS[o.tex][0], HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(8, cs - 2), Pal.R3 if o.tex == "cache" else Pal.G5)
-	var pp: Array = G.p.pos
-	var pc := org + (Vector2(pp[0], pp[1]) + Vector2(0.5, 0.5)) * cs
-	box.draw_circle(pc, maxf(2.5, cs * 0.3), Pal.R3)
-
-
 func _journal() -> void:
 	var lines: Array = G.log_lines.duplicate()
 	lines.reverse()
@@ -435,9 +367,19 @@ func _system() -> void:
 	content.add_child(Pal.button("Полный экран: %s  [F11]" % ("ВКЛ" if G.main().fullscreen else "ВЫКЛ"), _toggle_full, 9))
 	var crt := Pal.button("Эффект старого монитора: %s" % ("ВКЛ" if G.main().crt_on else "ВЫКЛ"), _toggle_crt, 9)
 	content.add_child(crt)
+	content.add_child(Pal.label("ЗВУК", Pal.G5, 10, true))
+	content.add_child(Pal.button("Громкость: %s" % ("ВЫКЛ" if Sfx.vol <= 0.0 else "%d%%" % roundi(Sfx.vol * 100)), _cycle_vol, 9))
 	content.add_child(HSeparator.new())
 	content.add_child(Pal.button("Выйти в главное меню (без сохранения)", func(): G.main().show_title(), 9))
 	content.add_child(Pal.button("Выйти из игры", func(): get_tree().quit(), 9))
+
+
+## Громкость по кругу: 20 → 40 → … → 100 → выкл.
+func _cycle_vol() -> void:
+	var v := roundi(Sfx.vol * 5.0) + 1
+	Sfx.set_vol(0.0 if v > 5 else v / 5.0)
+	G.main()._save_settings()
+	_set_tab(tab)
 
 
 func _slot_button(text: String, cb: Callable) -> Button:

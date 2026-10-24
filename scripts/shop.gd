@@ -10,6 +10,7 @@ var about: RichTextLabel
 var cover_box: Control
 ## Библиотекарь: товар штучный, купленное на сегодня из лавки пропадает.
 var limited := false
+var sort_btn: Button
 
 
 func _ready() -> void:
@@ -37,6 +38,14 @@ func _ready() -> void:
 		var hs := Pal.label("ПРОДАТЬ (половина цены, трофеи — полная)", Pal.G3, 9, true)
 		hs.position = Vector2(330, 44)
 		add_child(hs)
+	var sort_b := Pal.button("Сортировка: %s" % G.SORT_NAMES[G.sort_mode.shop], func():
+		G.next_sort("shop")
+		sort_btn.text = "Сортировка: %s" % G.SORT_NAMES[G.sort_mode.shop]
+		_fill(), 8)
+	sort_b.position = Vector2(44, 318)
+	sort_b.custom_minimum_size = Vector2(150, 0)
+	add_child(sort_b)
+	sort_btn = sort_b
 	# у книжника справа обложка, как витрина: видно, что покупаешь
 	cover_box = Control.new()
 	cover_box.position = Vector2(400, 56)
@@ -90,10 +99,20 @@ func _fill() -> void:
 		stock = G.lib_stock()
 		if stock.is_empty():
 			buy_box.add_child(Pal.label("Сегодня всё раскупили.\nЗавтра будут новые книги.", Pal.G3, 9))
-	for it in stock:
-		var price: int = G.price(D.ITEMS[it].price, it)
+	var wander := G.shop_who == "wanderer"
+	if wander:
+		stock = G.wander_left()
+		if stock.is_empty():
+			buy_box.add_child(Pal.label("Мешки пусты: всё раскупили.", Pal.G3, 9))
+	for it in G.sort_items(stock, "shop"):
+		var price: int = _buy_price(it)
 		var deal: bool = it == G.p.get("deal_today", "")
-		var b := Pal.button("%s — %d Су%s" % [it, price, "  ★ для своих −25%" if deal else ""], _buy.bind(it), 9)
+		var line := "%s — %d Су%s" % [it, price, "  ★ для своих −25%" if deal else ""]
+		if wander:
+			var base: int = G.price(D.ITEMS[it].price, it)
+			var cmp := "дешевле рынка" if price < base * 0.95 else ("дороже рынка" if price > base * 1.05 else "как на рынке")
+			line = "%s ×%d — %d Су · %s" % [it, G.wander_qty(it), price, cmp]
+		var b := Pal.button(line, _buy.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.mouse_entered.connect(_show_about.bind(it))
 		b.disabled = G.p.su < price
@@ -102,8 +121,7 @@ func _fill() -> void:
 		if not stock.is_empty():
 			_show_about(stock[0])
 		return
-	var keys: Array = G.p.inv.keys()
-	keys.sort()
+	var keys: Array = G.sort_items(G.p.inv.keys(), "shop")
 	for it in keys:
 		var info: Dictionary = D.ITEMS[it]
 		if info.type in ["quest", "tool"]:
@@ -130,14 +148,24 @@ func _exit_tree() -> void:
 	G.shop_who = ""
 
 
+func _buy_price(it: String) -> int:
+	if G.shop_who == "wanderer":
+		return G.wander_price(it)
+	return G.price(D.ITEMS[it].price, it)
+
+
 func _buy(it: String) -> void:
-	var price: int = G.price(D.ITEMS[it].price, it)
+	var price: int = _buy_price(it)
 	if G.p.su < price:
+		return
+	if G.shop_who == "wanderer" and G.wander_qty(it) <= 0:
 		return
 	G.p.su -= price
 	G.add_item(it)
 	if limited:
 		G.set_flag("lib_%d_%s" % [G.p.day, it])
+	if G.shop_who == "wanderer":
+		G.wander_take(it)
 	_fill()
 
 

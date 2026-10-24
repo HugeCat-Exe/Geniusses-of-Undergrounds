@@ -1,4 +1,8 @@
 extends Node
+
+const Sched := preload("res://scripts/sched.gd")
+const Live := preload("res://scripts/live.gd")
+const Ach := preload("res://scripts/ach.gd")
 ## Автопрогон для проверки: запускается, только если задан GP_SMOKE.
 
 var out := ""
@@ -504,6 +508,7 @@ func run(main: Node) -> void:
 	await _smoke_09()
 	await _smoke_091()
 	await _smoke_010()
+	await _smoke_011()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -857,21 +862,159 @@ func _smoke_010() -> void:
 	print("SMOKE 010 night smoker on caldera3 ", M.world.cut_find("smoker") != null)
 	await _shot("71_night_bar")
 	G.p.hour = 12
-	# трекер, подписи, план этажа
+	# трекер
 	M.show_world("raid1", "top")
 	await _wait(0.8)
 	M.world._update_hud()
 	print("SMOKE 010 tracker ", G.tracker_lines())
-	M.open_pager(6)
-	await _wait(0.6)
-	await _shot("72_plan_raid")
+	await _shot("72_tracker_raid")
 	_close_overlays()
-	M.show_world("caldera2", "")
-	await _wait(0.6)
-	M.open_pager(6)
-	await _wait(0.6)
-	await _shot("73_plan_caldera")
+
+
+func _smoke_011() -> void:
 	_close_overlays()
+	G.p.hour = 12
+	# все предметы мини-историй и подарков существуют
+	var missing := []
+	for k in G.MINI_LOOT:
+		for l in G.MINI_LOOT[k]:
+			if l[0] != "su" and not D.ITEMS.has(l[0]):
+				missing.append(l[0])
+	for it in D.WANDER_POOL:
+		if not D.ITEMS.has(it):
+			missing.append(it)
+	print("SMOKE 011 missing items ", missing)
+	# будка Даны на первом ярусе, вход по отношению
+	M.show_world("caldera1", "start")
+	await _wait(0.8)
+	await _shot("80_floor1_booth")
+	G.p.rel["patrol"] = 30
+	M.open_dialogue("dana_door")
+	await _wait(0.6)
+	var dl = _dialogue()
+	print("SMOKE 011 dana door open ", dl != null)
+	await _shot("81_dana_door")
+	_close_overlays()
+	M.show_world("caldera_danahome", "door")
+	await _wait(0.8)
+	await _shot("82_dana_home")
+	# распорядок: в 20:20 жители идут, в 23 стоят на ночных местах
+	G.p.hour = 20
+	G.p.minf = 30.0
+	for id in Sched.ROUTINE:
+		print("SMOKE 011 sched 20:30 ", id, " ", Sched.state(id))
+	M.show_world("caldera2", "down1")
+	await _wait(1.5)
+	await _shot("83_evening_walk")
+	G.p.hour = 23
+	G.p.minf = 0.0
+	print("SMOKE 011 night patrol home ", Sched.at_home("patrol", "caldera_danahome"), " kid ", Sched.state("kid"))
+	G.p.hour = 6
+	G.p.minf = 20.0
+	print("SMOKE 011 morning smoker ", Sched.state("smoker"))
+	G.p.hour = 12
+	G.p.minf = 0.0
+	# рассудок по доле
+	G.p.mind = int(G.max_mind() * 0.88)
+	print("SMOKE 011 mind ", G.p.mind, "/", G.max_mind(), " step ", Live.mind_step())
+	G.p.mind = int(G.max_mind() * 0.2)
+	print("SMOKE 011 mind ", G.p.mind, "/", G.max_mind(), " step ", Live.mind_step())
+	G.p.mind = G.max_mind()
+	# странник
+	var wd := -1
+	for d in range(2, 40):
+		if G.wander_here(d):
+			wd = d
+			break
+	G.p.day = wd
+	print("SMOKE 011 wanderer day ", wd, " stock ", G.wander_stock())
+	M.show_world("waste", "road")
+	await _wait(0.8)
+	print("SMOKE 011 wanderer on map ", M.world.cut_find("wanderer") != null)
+	await _shot("84_wanderer")
+	G.p.su += 500
+	M.open_dialogue("wander_start")
+	await _wait(0.5)
+	_dialogue()._choose({"t": "x", "fx": [["shop", "wanderer"]], "next": "end"})
+	await _wait(0.6)
+	var sh = M.overlay.get_child(M.overlay.get_child_count() - 1)
+	await _shot("85_wanderer_shop")
+	var first: String = G.wander_left()[0]
+	var q0 := G.wander_qty(first)
+	if sh.has_method("_buy"):
+		sh._buy(first)
+	print("SMOKE 011 bought ", first, " qty ", q0, " -> ", G.wander_qty(first), " has ", G.has(first))
+	_close_overlays()
+	# подарки
+	G.add_item("Перочинный нож")
+	G.add_item("Серьги-капли")
+	var r0 := int(G.p.rel.get("patrol", 0))
+	print("SMOKE 011 can gift patrol ", G.can_gift("patrol"))
+	G.temp_nodes["gift_result"] = {"who": "patrol", "text": G.give_gift("patrol", "Перочинный нож"), "choices": [{"t": "ok", "next": "end"}]}
+	print("SMOKE 011 gift patrol rel ", r0, " -> ", G.p.rel.patrol, " again ", G.can_gift("patrol"))
+	M.open_dialogue("gift_result")
+	await _wait(0.8)
+	await _shot("86_gift")
+	_close_overlays()
+	var ry0 := int(G.p.rel.get("ryzhaya", 0))
+	print("SMOKE 011 gift ryzhaya ", G.give_gift("ryzhaya", "Серьги-капли").length() > 0, " rel ", ry0, " -> ", G.p.rel.ryzhaya)
+	# сортировка
+	for m in ["type", "price", "name"]:
+		G.sort_mode["inv"] = m
+		print("SMOKE 011 sort ", m, " ", G.sort_items(G.p.inv.keys(), "inv").slice(0, 4))
+	G.sort_mode["inv"] = "type"
+	M.open_pager(1)
+	await _wait(0.6)
+	await _shot("87_inventory_sort")
+	_close_overlays()
+	# достижения
+	M.toast("Глядя собаке в глаза", "не видал ли ты своих?", "обычное", "achieve")
+	await _wait(0.6)
+	await _shot("88_achievement_toast")
+	for i in 10:
+		Ach.add("drink")
+	print("SMOKE 011 ach drunk ", Ach.has("drunk"), " count ", Ach.count("drink"))
+	# мини-истории: карты и путь с возвратом
+	for mid in ["mini_bus", "mini_dogs", "mini_camp"]:
+		G.p.flags["mini_n"] = int(G.p.flags.get("mini_n", 0)) + 1
+		M.show_world(mid, "enter")
+		await _wait(0.8)
+		await _shot("89_" + mid)
+	M.show_map()
+	await _wait(0.6)
+	var wm = M.current
+	wm.walk("river" if "river" in G.p.known else G.p.known[0])
+	wm.walk_t = 0.4
+	wm.player_pos = wm.walk_from.lerp(wm.walk_to, 0.4)
+	wm._fire({"kind": "story", "id": "mini_bus"})
+	await _wait(0.6)
+	await _shot("90_mini_ask")
+	_dialogue()._choose({"t": "x", "fx": [["mini_go", "mini_bus"]], "next": "end"})
+	await _wait(1.0)
+	print("SMOKE 011 mini map ", G.p.map, " resume ", G.p.flags.get("walk_resume", ""))
+	M.open_dialogue("mini_bus_trunk")
+	await _wait(0.4)
+	_dialogue()._choose({"t": "x", "fx": [["mini_flag", "trunk"], ["mini_loot", "bus"]], "next": "end"})
+	await _wait(0.4)
+	print("SMOKE 011 mini loot ", G.last_note, " done ", G.mini_done("trunk"))
+	M.open_dialogue("leave_poi")
+	await _wait(0.4)
+	_dialogue()._choose({"t": "x", "fx": [["goto", "map", ""]], "next": "end"})
+	await _wait(1.0)
+	print("SMOKE 011 back on map walking ", M.current.walking if "walking" in M.current else "?", " target ", M.current.walk_target)
+	await _shot("91_resume_walk")
+	M.current.walking = false
+	M.show_world("caldera1", "start")
+	await _wait(0.6)
+	# главное меню и список достижений
+	M.show_title()
+	await _wait(1.0)
+	M.current._toggle_ach()
+	await _wait(0.6)
+	await _shot("92_title_achievements")
+	M.current._toggle_ach()
+	M.show_world("waste", "road")
+	await _wait(0.6)
 
 
 func _close_overlays() -> void:
@@ -898,7 +1041,7 @@ func _check_story() -> void:
 				print("SMOKE BAD LINK ", id, " -> ", t)
 				bad += 1
 	var mp = preload("res://scripts/maps.gd").new()
-	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2"]:
+	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "caldera_danahome", "mini_bus", "mini_dogs", "mini_camp", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2"]:
 		for o in mp.get_map(m).objs:
 			if o.get("action", "") != "" and not o.action.begins_with("go:") and not nodes.has(o.action):
 				print("SMOKE BAD ACTION ", o.action)

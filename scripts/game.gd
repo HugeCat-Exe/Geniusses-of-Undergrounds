@@ -4,7 +4,7 @@ extends Node
 signal logged(text: String)
 signal changed
 
-const VERSION := "0.10"
+const VERSION := "0.11"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -691,6 +691,123 @@ func new_day() -> void:
 	for k in p.flags.keys():
 		if str(k).begins_with("lib_") and not str(k).begins_with("lib_%d_" % int(p.day)):
 			p.flags.erase(k)
+		if str(k).begins_with("wb_") and not str(k).begins_with("wb_%d_" % int(p.day)):
+			p.flags.erase(k)
+	if wander_here():
+		say("На пейджер приходит сообщение: «У входа в Кальдеру встал странствующий торговец. Только сегодня».")
+		if main() and main().has_method("toast"):
+			main().toast("СТРАНСТВУЮЩИЙ ТОРГОВЕЦ", "встал у входа в Кальдеру, только сегодня", "", "notify")
+
+
+# ---------- Странствующий торговец ----------
+
+## Приходит к шахте Кальдеры примерно раз в четыре дня и стоит до конца дня.
+func wander_here(day: int = -1) -> bool:
+	var d := int(p.day) if day < 0 else day
+	return d >= 2 and absi(hash(str(p.seed) + "wand" + str(d))) % 4 == 0
+
+
+var _wst_day := -1
+var _wst: Dictionary = {}
+
+
+## Товар на этот приход: несколько подарков и всякая всячина, у каждого своя цена и свой запас.
+func wander_stock() -> Dictionary:
+	if _wst_day == int(p.day) and not _wst.is_empty():
+		return _wst
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(p.seed) + "wst" + str(p.day))
+	var gifts: Array = D.GIFTS.keys()
+	var pool: Array = D.WANDER_POOL.duplicate()
+	var res := {}
+	for i in rng.randi_range(3, 5):
+		var g: String = gifts.pop_at(rng.randi() % gifts.size())
+		res[g] = {"qty": rng.randi_range(1, 2), "price": maxi(5, roundi(D.ITEMS[g].price * rng.randf_range(0.6, 1.5)))}
+	for i in rng.randi_range(3, 5):
+		var it: String = pool.pop_at(rng.randi() % pool.size())
+		res[it] = {"qty": rng.randi_range(1, 6), "price": maxi(3, roundi(D.ITEMS[it].price * rng.randf_range(0.5, 1.7)))}
+	_wst_day = int(p.day)
+	_wst = res
+	return res
+
+
+func wander_qty(it: String) -> int:
+	var st: Dictionary = wander_stock().get(it, {})
+	return int(st.get("qty", 0)) - int(p.flags.get("wb_%d_%s" % [int(p.day), it], 0))
+
+
+func wander_price(it: String) -> int:
+	return int(wander_stock().get(it, {}).get("price", D.ITEMS[it].price))
+
+
+func wander_left() -> Array:
+	var res: Array = []
+	for it in wander_stock():
+		if wander_qty(it) > 0:
+			res.append(it)
+	return res
+
+
+func wander_take(it: String) -> void:
+	var k := "wb_%d_%s" % [int(p.day), it]
+	p.flags[k] = int(p.flags.get(k, 0)) + 1
+
+
+# ---------- Подарки ----------
+
+func gifts_owned() -> Array:
+	var res: Array = []
+	for it in p.inv:
+		if D.ITEMS[it].type == "gift" and int(p.inv[it]) > 0:
+			res.append(it)
+	return res
+
+
+func can_gift(who: String) -> bool:
+	return D.GIFT_PREFS.has(who) and not flag("gift_%s_%d" % [who, int(p.day)]) and not gifts_owned().is_empty()
+
+
+func gift_points(who: String, item: String) -> int:
+	var tags: Array = D.GIFTS[item].tags
+	var pr: Dictionary = D.GIFT_PREFS.get(who, {})
+	for t in tags:
+		if t in pr.get("love", []):
+			return 6
+	for t in tags:
+		if t in pr.get("hate", []):
+			return -2
+	for t in tags:
+		if t in pr.get("like", []):
+			return 3
+	return 1
+
+
+const GIFT_LINES := {
+	"patrol": {6: "Дана вертит в пальцах «{item}», проверяет, и впервые за долгое время улыбается по-настоящему.\n\n— Вот это вещь. В обходе пригодится. Спасибо, правда.",
+		-2: "Дана поднимает бровь.\n\n— И куда я это надену? На дубинку? Ладно... спасибо, наверное."},
+	"ryzhaya": {6: "Рыжая ахает, тут же примеряет «{item}» и смотрится в мутное стекло бутылки.\n\n— Ну всё, теперь я самая красивая в «Клыке». Даже не спорь.",
+		-2: "Рыжая крутит «{item}» и хмыкает.\n\n— Практично. Я таких полный карман натаскала. Но раз ты принёс{pa}... оставлю."},
+}
+const GIFT_GENERIC := {
+	6: "{name} долго смотрит на «{item}», потом бережно прячет подарок за пазуху.\n\n— Вот уж угадал{pa}. Спасибо. Честно, спасибо.",
+	3: "{name} принимает «{item}» с улыбкой.\n\n— Спасибо. Приятно, что вспомнил{pa}.",
+	1: "{name} вежливо кивает и убирает «{item}».\n\n— Спасибо.",
+	-2: "{name} неловко держит «{item}».\n\n— Э-э... спасибо. Наверное, кому-нибудь пригодится.",
+}
+
+
+## Подарить: вещь уходит, отношение меняется по вкусу собеседника. Возвращает текст сцены.
+func give_gift(who: String, item: String) -> String:
+	if not remove_item(item):
+		return ""
+	var pts := gift_points(who, item)
+	set_flag("gift_%s_%d" % [who, int(p.day)])
+	rel_add(who, pts)
+	var txt: String = GIFT_LINES.get(who, {}).get(pts, GIFT_GENERIC[pts])
+	var nm: String = str(preload("res://scripts/story.gd").WHO[who].name).get_slice(",", 0)
+	txt = preload("res://scripts/live.gd").gender(txt.replace("{item}", item).replace("{name}", nm), who)
+	var col := "#7ff07a" if pts > 0 else "#e0533f"
+	return txt + "\n\n[color=%s](Отношение %+d)[/color]" % [col, pts]
 
 
 # ---------- Отношения ----------
@@ -829,6 +946,34 @@ func _make_job(tpl: Dictionary, rng: RandomNumberGenerator, id: String) -> Dicti
 		j["text"] = tpl.text % need
 		j["su"] = int(tpl.su * need / float(tpl.need[0]))
 	return j
+
+
+## Сортировка списков вещей (имущество, лавки). Режим помнится до выхода из игры.
+const SORT_NAMES := {"type": "по типу", "name": "по названию", "price": "по цене"}
+const TYPE_ORDER := ["weapon", "ammo", "mod", "armor", "amulet", "gift", "heal", "calm", "food", "book", "trophy", "quest", "tool"]
+var sort_mode := {"inv": "type", "shop": "type"}
+
+
+func sort_items(list: Array, where: String) -> Array:
+	var mode: String = sort_mode.get(where, "type")
+	var res := list.duplicate()
+	res.sort_custom(func(a, b):
+		var ia: Dictionary = D.ITEMS[a]
+		var ib: Dictionary = D.ITEMS[b]
+		if mode == "price" and int(ia.price) != int(ib.price):
+			return int(ia.price) > int(ib.price)
+		if mode == "type":
+			var ta := TYPE_ORDER.find(ia.type)
+			var tb := TYPE_ORDER.find(ib.type)
+			if ta != tb:
+				return ta < tb
+		return str(a).trim_prefix("«") < str(b).trim_prefix("«"))
+	return res
+
+
+func next_sort(where: String) -> void:
+	var keys := SORT_NAMES.keys()
+	sort_mode[where] = keys[(keys.find(sort_mode.get(where, "type")) + 1) % keys.size()]
 
 
 ## Короткие строки для трекера задач в углу экрана (без стрелок: только что и где).
@@ -1106,6 +1251,8 @@ func rounds_left(ammo: String) -> int:
 ## Использовать предмет из имущества. Возвращает текст результата.
 func use_item(item: String) -> String:
 	var it: Dictionary = D.ITEMS[item]
+	if it.get("alcohol", false) and has(item):
+		preload("res://scripts/ach.gd").add("drink")
 	match it.type:
 		"heal":
 			remove_item(item)
@@ -1313,6 +1460,38 @@ func raid_loot(id: String) -> void:
 	say("Найдено: %s." % last_note)
 
 
+# ---------- Мини-истории по дороге ----------
+
+func mini_done(key: String) -> bool:
+	return flag("mini_%d_%s" % [int(p.flags.get("mini_n", 0)), key])
+
+
+const MINI_LOOT := {
+	"bus": [["Сухпаёк", 1], ["Бинт", 2], ["Пистолетные патроны", 1], ["Довоенная открытка", 1], ["Самогон", 1], ["su", 25]],
+	"case": [["Плюшевый заяц", 1], ["Бусы из гильз", 1], ["su", 15], ["Успокоительное", 1]],
+	"camp": [["Сапоги пустошника", 1], ["Сухпаёк", 2], ["Моток паракорда", 1], ["Пачка чая", 1]],
+	"stash": [["Стимулятор", 1], ["Револьверные патроны", 2], ["Перочинный нож", 1], ["su", 40]],
+}
+
+
+## Две находки из набора, у каждой встречи свои (зависит от номера встречи).
+func mini_loot(kind: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(p.seed) + kind + str(p.flags.get("mini_n", 0)))
+	var pool: Array = MINI_LOOT[kind].duplicate()
+	var got: Array = []
+	for i in 2:
+		var l: Array = pool.pop_at(rng.randi() % pool.size())
+		if l[0] == "su":
+			p.su += int(l[1])
+			got.append("%d Су" % l[1])
+		else:
+			add_item(l[0], l[1])
+			got.append("%s ×%d" % [l[0], l[1]] if l[1] > 1 else l[0])
+	last_note = ", ".join(got)
+	changed.emit()
+
+
 # ---------- Обвесы на оружие ----------
 
 ## Класс оружия для обвесов: пистолет, револьвер, карабин, винтовка, дробовик, ближний бой.
@@ -1479,7 +1658,7 @@ func slot_info(i: int) -> String:
 	var pp: Dictionary = data.p
 	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "caldera1": "Кальдера, ярус 1",
 		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "caldera4": "Кальдера, ярус 4",
-		"caldera_ryhome": "Домик Рыжей", "raid1": "Заброшенный ярус 5", "raid2": "Затопленный ярус 6",
+		"caldera_ryhome": "Домик Рыжей", "caldera_danahome": "Будка Даны", "raid1": "Заброшенный ярус 5", "raid2": "Затопленный ярус 6",
 		"poi_station": "Заправка", "poi_river": "Река Лета", "poi_tower": "Вышка", "poi_den": "Логово псов",
 		"poi_ruins": "Разрушенный посёлок", "poi_forest": "Запутанный лес", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
 	return "%s · %s · %s" % [pp.get("callsign", "?"), where, data.get("time", "")]

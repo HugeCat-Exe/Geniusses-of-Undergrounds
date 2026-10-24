@@ -19,6 +19,7 @@ var world: Node2D
 var crt_on := true
 var fade: ColorRect
 var fullscreen := true
+var toast_box: VBoxContainer
 
 const CRT_SHADER := """
 shader_type canvas_item;
@@ -74,6 +75,17 @@ func _ready() -> void:
 	ov_layer.add_child(overlay)
 
 	# затемнение при смене экрана
+	var toast_layer := CanvasLayer.new()
+	toast_layer.layer = 18
+	toast_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(toast_layer)
+	toast_box = VBoxContainer.new()
+	toast_box.position = Vector2(170, 6)
+	toast_box.custom_minimum_size = Vector2(300, 0)
+	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast_box.add_theme_constant_override("separation", 4)
+	toast_layer.add_child(toast_box)
+
 	var fade_layer := CanvasLayer.new()
 	fade_layer.layer = 19
 	add_child(fade_layer)
@@ -118,6 +130,7 @@ func _load_settings() -> void:
 	if cfg.load("user://settings.cfg") == OK:
 		crt_on = cfg.get_value("video", "crt", true)
 		fullscreen = cfg.get_value("video", "fullscreen", true)
+		Sfx.set_vol(cfg.get_value("audio", "vol", 0.7))
 	crt.visible = crt_on
 	if OS.get_environment("GP_SMOKE") == "1":
 		fullscreen = false
@@ -128,6 +141,7 @@ func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("video", "crt", crt_on)
 	cfg.set_value("video", "fullscreen", fullscreen)
+	cfg.set_value("audio", "vol", Sfx.vol)
 	cfg.save("user://settings.cfg")
 
 
@@ -190,6 +204,8 @@ func _clear() -> void:
 
 func show_title() -> void:
 	_clear()
+	Sfx.ambience("")
+	Sfx.weather("")
 	current = Title.new()
 	ui.add_child(current)
 
@@ -204,6 +220,8 @@ func show_creator() -> void:
 func show_map() -> void:
 	_clear()
 	G.p.map = "worldmap"
+	Sfx.ambience("wind")
+	Sfx.weather("")
 	current = WorldMap.new()
 	ui.add_child(current)
 	fade_in()
@@ -222,8 +240,14 @@ func show_world(map: String, spawn: String = "") -> void:
 	G.p.map = map
 	if map.begins_with("caldera"):
 		G.escort_arrive()
+	match map:
+		"poi_den": preload("res://scripts/ach.gd").unlock("den")
+		"poi_forest": preload("res://scripts/ach.gd").unlock("forest")
 	world = World.new()
 	world.setup(map, spawn)
+	Sfx.ambience("wind" if world.waste else "hum")
+	if not world.waste:
+		Sfx.weather("")
 	screen_root.add_child(world)
 	current = world
 	fade_in()
@@ -334,6 +358,21 @@ func open_shop(stock: Array, title: String = "ЛАВКА", owner: String = "") -
 	s.stock = stock
 	s.title_text = title
 	overlay.add_child(s)
+
+
+## Плашка сверху экрана: достижение (rarity — его редкость) или оповещение (rarity == "").
+func toast(t1: String, t2: String, rarity: String = "", sound: String = "notify") -> void:
+	var Ach := preload("res://scripts/ach.gd")
+	var a := {"t1": t1, "t2": t2, "d": "Достижение получено" if rarity != "" else "", "r": rarity}
+	var pl := Ach.plate(a, true, 300.0)
+	pl.modulate.a = 0.0
+	toast_box.add_child(pl)
+	Sfx.play(sound)
+	var tw := pl.create_tween()
+	tw.tween_property(pl, "modulate:a", 1.0, 0.25)
+	tw.tween_interval(4.0)
+	tw.tween_property(pl, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(pl.queue_free)
 
 
 func open_book(item: String) -> void:

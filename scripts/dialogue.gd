@@ -27,6 +27,7 @@ var first_id := ""
 var voice: Dictionary = {}
 var voice_checked := false
 var remark_done := false
+var gift_back := ""
 
 
 func _ready() -> void:
@@ -116,6 +117,9 @@ func _show(id: String) -> void:
 		return
 	current_id = id
 	current_who = n.get("who", "")
+	# писк пейджера: собеседник говорит что-то новое
+	if current_who != "":
+		Sfx.play("notify", 0.7)
 	if current_who != "":
 		var who: Dictionary = Story.WHO[current_who]
 		name_label.text = who.name
@@ -265,6 +269,14 @@ func _rel_text(who: String) -> String:
 ## Выборы, которые зависят от состояния игры: сдача подработок, поиски, объявления.
 func _dynamic_choices(n: Dictionary) -> Array:
 	var res: Array = []
+	if n.get("hub", false) and current_who != "" and G.can_gift(current_who):
+		gift_back = current_id
+		var gl: Array = []
+		for it in G.sort_items(G.gifts_owned(), "inv"):
+			gl.append({"t": "Подарить: %s" % it, "fx": [["gift", current_who, it]], "next": "gift_result"})
+		gl.append({"t": "Передумать", "next": current_id})
+		nodes["gift_pick"] = {"who": current_who, "text": "[color=%s]Что подарить? Подарок можно сделать раз в день. Не всем нравится одно и то же: кому-то по душе полезные мелочи, кому-то украшения.[/color]" % Pal.hex(Pal.G3), "choices": gl}
+		res.append({"t": "Подарить подарок…", "next": "gift_pick"})
 	if n.get("hub", false) and current_who != "":
 		for j in G.p.jobs:
 			if j.giver == current_who and j.state == "done":
@@ -573,6 +585,10 @@ func _cond(c: String) -> bool:
 		return int(G.p.flags.get(c.substr(6), -1)) == G.p.day
 	if c.begins_with("raid_taken:"):
 		return G.flag(G.raid_key(c.substr(11)))
+	if c.begins_with("mini:"):
+		return G.mini_done(c.substr(5))
+	if c == "dana_home_now":
+		return preload("res://scripts/sched.gd").at_home("patrol", "caldera_danahome")
 	if c == "ry_home_today":
 		return G.ry_home_today()
 	if c == "ry_home_chat":
@@ -724,9 +740,11 @@ func _fx(list: Array) -> void:
 				stock = stock.filter(func(it): return D.ITEMS[it].type != "weapon" or int(D.ITEMS[it].dmg) <= D.CALDERA_MAX_DMG)
 				if f[1] == "library":
 					stock = G.lib_stock()
+				if f[1] == "wanderer":
+					stock = G.wander_left()
 				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА",
-					"library": "КНИЖНЫЙ РАЗВАЛ ФЕЛИКСА", "taxi": "БАГАЖНИК ТАКСИ"}.get(f[1], "ЛАВКА")
-				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith", "library": "librarian", "taxi": "taxi"}.get(f[1], "")
+					"library": "КНИЖНЫЙ РАЗВАЛ ФЕЛИКСА", "taxi": "БАГАЖНИК ТАКСИ", "wanderer": "ТЕЛЕЖКА СТРАННИКА"}.get(f[1], "ЛАВКА")
+				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith", "library": "librarian", "taxi": "taxi", "wanderer": "wanderer"}.get(f[1], "")
 				after.append(func(): G.main().open_shop(stock, st_title, owner))
 			"fight":
 				after.append(func(): G.main().world.fight_current())
@@ -799,6 +817,26 @@ func _fx(list: Array) -> void:
 				if not (f[1] in G.p.known):
 					G.p.known.append(f[1])
 					G.say("На карте отмечено: %s." % D.LOCS[f[1]].name)
+			"mini_flag":
+				G.set_flag("mini_%d_%s" % [int(G.p.flags.get("mini_n", 0)), f[1]])
+			"mini_loot":
+				G.mini_loot(f[1])
+			"mini_go":
+				after.append(func():
+					var cur = G.main().current
+					if cur and cur.has_method("go_mini"):
+						cur.go_mini(f[1]))
+			"mini_skip":
+				after.append(func():
+					var cur = G.main().current
+					if cur and cur.has_method("resume"):
+						cur.resume())
+			"ach_add":
+				preload("res://scripts/ach.gd").add(f[1])
+			"gift":
+				nodes["gift_result"] = {"who": f[1], "text": G.give_gift(f[1], f[2]), "choices": [{"t": "Далее", "next": gift_back}]}
+				if rel_label:
+					rel_label.text = _rel_text(f[1])
 			"raid_flag":
 				G.set_flag(G.raid_key(f[1]))
 			"rumor_loot":

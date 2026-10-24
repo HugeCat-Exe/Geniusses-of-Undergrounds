@@ -812,6 +812,9 @@ func _enemy_dead() -> bool:
 
 func _victory() -> void:
 	finished = true
+	match enemy_id:
+		"pes": preload("res://scripts/ach.gd").unlock("dog")
+		"muezzin": preload("res://scripts/ach.gd").unlock("muezzin")
 	create_tween().tween_method(func(v): dead_k = v, 0.0, 1.0, 0.7).set_ease(Tween.EASE_IN)
 	_log("\n[color=%s]%s повержен.[/color]" % [Pal.hex(Pal.G5), E.name])
 	var su := randi_range(E.su[0], E.su[1])

@@ -299,6 +299,31 @@ func _prop(kind: String) -> ImageTexture:
 			cv.poly(PackedVector2Array([Vector2(16, 19), Vector2(31, 11), Vector2(31, 15), Vector2(16, 23)]), 2)
 			cv.ellipse(22, 9, 5, 3, 5)
 			cv.poly(PackedVector2Array([Vector2(4, 11), Vector2(16, 5), Vector2(20, 7), Vector2(9, 14)]), 7)
+		"deaddog":
+			# мёртвый пёс на боку в луже крови
+			cv = Canvas.new(30, 16)
+			cv.ellipse(15, 11, 13, 4, 8, false)
+			cv.ellipse(14, 8, 9, 4, 2)
+			cv.ellipse(24, 8, 4, 3, 3)
+			cv.put(26, 8, 9)
+			for i in 4:
+				cv.line(9 + i * 3, 11, 7 + i * 3, 14, 1)
+			cv.line(5, 8, 1, 6, 1)
+			cv.put(17, 6, 9)
+			cv.put(12, 7, 9)
+		"cart":
+			# тележка странника: колесо, оглобли и тюки под брезентом
+			cv = Canvas.new(30, 26)
+			cv.poly(PackedVector2Array([Vector2(3, 12), Vector2(15, 6), Vector2(27, 12), Vector2(15, 18)]), 3)
+			cv.poly(PackedVector2Array([Vector2(3, 12), Vector2(15, 18), Vector2(15, 22), Vector2(3, 16)]), 2)
+			cv.poly(PackedVector2Array([Vector2(15, 18), Vector2(27, 12), Vector2(27, 16), Vector2(15, 22)]), 1)
+			cv.ellipse(15, 9, 9, 5, 4)
+			cv.ellipse(11, 6, 5, 3, 5)
+			cv.ellipse(19, 7, 4, 3, 8)
+			cv.line(3, 14, 0, 20, 2)
+			cv.line(9, 17, 6, 23, 2)
+			cv.ellipse(22, 19, 4, 4, 1, false)
+			cv.put(22, 19, 5)
 		"crate":
 			cv = Canvas.new(20, 22)
 			cv.poly(PackedVector2Array([Vector2(10, 1), Vector2(19, 5), Vector2(10, 9), Vector2(1, 5)]), 4)
@@ -604,6 +629,8 @@ func _prop(kind: String) -> ImageTexture:
 			cv = _big_burrow()
 		"ryhouse":
 			cv = _big_ryhouse()
+		"danabooth":
+			cv = _big_danabooth()
 		"bigtree":
 			cv = _big_tree()
 		"jobscreen":
@@ -939,6 +966,48 @@ func _big_ryhouse() -> Canvas:
 	cv.rect(int(ch.x) - 2, int(ch.y) - 12, 5, 12, 2)
 	cv.put(int(ch.x), int(ch.y) - 15, 3)
 	cv.put(int(ch.x) + 1, int(ch.y) - 18, 2)
+	return cv
+
+
+## Будка патрульной Даны: 2×2, плоская крыша с фонарём, красная полоса патруля, окошко с решёткой.
+func _big_danabooth() -> Canvas:
+	var f := _foot(2, 2, 40)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var x0 := 0.2
+	var x1 := 1.8
+	var y0 := 0.2
+	var y1 := 1.8
+	var z := 28.0
+	# бок к камере (с дверью) и правый торец
+	cv.poly(PackedVector2Array([_ip(o, x0, y1, z), _ip(o, x1, y1, z), _ip(o, x1, y1, 0), _ip(o, x0, y1, 0)]), 3)
+	cv.poly(PackedVector2Array([_ip(o, x1, y1, z), _ip(o, x1, y0, z), _ip(o, x1, y0, 0), _ip(o, x1, y1, 0)]), 2)
+	# плоская крыша с бортиком
+	cv.poly(PackedVector2Array([_ip(o, x0 - 0.05, y0 - 0.05, z + 2), _ip(o, x1 + 0.05, y0 - 0.05, z + 2), _ip(o, x1 + 0.05, y1 + 0.05, z + 2), _ip(o, x0 - 0.05, y1 + 0.05, z + 2)]), 4)
+	var e0 := _ip(o, x0 - 0.05, y1 + 0.05, z + 2)
+	var e1 := _ip(o, x1 + 0.05, y1 + 0.05, z + 2)
+	cv.line(e0.x, e0.y, e1.x, e1.y, 5)
+	# красная полоса патруля по обоим бокам
+	cv.poly(PackedVector2Array([_ip(o, x0, y1, 18), _ip(o, x1, y1, 18), _ip(o, x1, y1, 14), _ip(o, x0, y1, 14)]), 8)
+	cv.poly(PackedVector2Array([_ip(o, x1, y1, 18), _ip(o, x1, y0, 18), _ip(o, x1, y0, 14), _ip(o, x1, y1, 14)]), 9)
+	# дверь
+	cv.poly(PackedVector2Array([_ip(o, 1.15, y1, 22), _ip(o, 1.6, y1, 22), _ip(o, 1.6, y1, 0), _ip(o, 1.15, y1, 0)]), 1)
+	var kn := _ip(o, 1.52, y1, 10)
+	cv.put(int(kn.x), int(kn.y), 6)
+	# окошко с решёткой и светом
+	cv.poly(PackedVector2Array([_ip(o, 0.4, y1, 24), _ip(o, 0.9, y1, 24), _ip(o, 0.9, y1, 19), _ip(o, 0.4, y1, 19)]), 6)
+	for i in 3:
+		var a := _ip(o, 0.5 + i * 0.15, y1, 24)
+		var b := _ip(o, 0.5 + i * 0.15, y1, 19)
+		cv.line(a.x, a.y, b.x, b.y, 1)
+	# фонарь-мигалка на крыше
+	var l := _ip(o, 1.0, 1.0, z + 2)
+	cv.rect(int(l.x) - 2, int(l.y) - 6, 5, 6, 2)
+	cv.rect(int(l.x) - 1, int(l.y) - 9, 3, 3, 8)
+	# антенна рации
+	var an := _ip(o, 1.6, 0.5, z + 2)
+	cv.line(an.x, an.y, an.x, an.y - 10, 5)
+	cv.put(int(an.x), int(an.y) - 11, 8)
 	return cv
 
 

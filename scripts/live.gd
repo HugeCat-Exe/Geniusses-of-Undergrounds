@@ -183,8 +183,8 @@ static func pick_remark(who: String) -> Dictionary:
 	return {"trait": pk[0], "line": gender((pk[1] as Array).pick_random(), who)}
 
 
-## Пороги рассудка: чем ниже ООР, тем страннее мир. Ступень 0 — всё в порядке.
-const MIND_STEPS := [50, 35, 25, 20, 10]
+## Пороги рассудка — доля от максимума ООР: чем ниже, тем страннее мир. Ступень 0 — всё в порядке.
+const MIND_STEPS := [0.6, 0.45, 0.33, 0.22, 0.12]
 const MIND_LINES := [
 	["Где-то капает вода. Вы ловите себя на том, что считаете капли.",
 		"Лампа гудит на одной ноте. Уже минуту. Или час.",
@@ -206,8 +206,9 @@ const MIND_LINES := [
 
 static func mind_step() -> int:
 	var st := 0
+	var f := float(G.p.mind) / maxf(1.0, G.max_mind())
 	for v in MIND_STEPS:
-		if int(G.p.mind) <= v:
+		if f <= v:
 			st += 1
 	return st
 
