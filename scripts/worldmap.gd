@@ -34,7 +34,13 @@ const MINI := {
 	"mini_bus": "У обочины старой трассы лежит на боку автобус. Стёкла выбиты, дверь распахнута, вокруг следы ботинок, уже заметённые песком.",
 	"mini_dogs": "Впереди, у бетонной плиты, неподвижно лежат несколько псов. Песок вокруг взрыт, будто здесь кто-то долго дрался.",
 	"mini_camp": "В ложбине между барханами виден брошенный лагерь: латаная палатка, круг камней от костра. Дыма нет.",
+	"mini_bones": "Путешествуя, Вы натыкаетесь на кости невиданного существа. Огромный скелет наполовину ушёл в грунт Пустоши, рёбра торчат из песка, как опоры рухнувшего моста.",
 }
+## События пешком по Пустоши (см. «События в пустоши.txt»): [id, вес]. Кости – редкость.
+const EVENTS := [["mini_bus", 3], ["mini_dogs", 3], ["mini_camp", 3], ["caravan", 2], ["riders", 2], ["mini_bones", 1]]
+const DOGS_TEXT := ["Путешествуя, Вы натыкаетесь на блуждающую собаку. Она замирает, нюхает воздух и поворачивает к Вам слепую морду.",
+	"Путешествуя, Вы натыкаетесь на пару собак. Они расходятся в стороны, чтобы зайти с двух сторон.",
+	"Путешествуя, Вы натыкаетесь на стаю из трёх собак. Вожак коротко взвизгивает, и стая пригибается к земле."]
 
 
 func _ready() -> void:
@@ -79,7 +85,7 @@ func _ready() -> void:
 
 	log_label = Pal.label("", Pal.G3, 10)
 	log_label.position = Vector2(8, 336)
-	log_label.size = Vector2(624, 20)
+	log_label.size = Vector2(484, 20)
 	log_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(log_label)
 
@@ -218,10 +224,10 @@ func select(id: String) -> void:
 	var ride := G.flag("taxi_ride")
 	if ride and id != here():
 		var c2 := taxi_cost(id)
-		var rb := Pal.button("Арсен довезёт: %d Су, %d ч" % [c2, maxi(1, hours_to(id) / 2)], taxi.bind(id))
+		var rb := Pal.button("Артир довезёт: %d Су, %d ч" % [c2, maxi(1, hours_to(id) / 2)], taxi.bind(id))
 		rb.disabled = G.p.su < c2 or not (id in G.p.known)
 		if not (id in G.p.known):
-			rb.text = "Арсен туда не ездит: место ещё не найдено"
+			rb.text = "Артир туда не ездит: место ещё не найдено"
 		info_box.add_child(rb)
 		info_box.add_child(Pal.button("Передумал, выйти из машины", _leave_taxi))
 	elif id == here():
@@ -295,11 +301,16 @@ func _walk(id: String, resumed: bool) -> void:
 		if pos.distance_to(walk_from.lerp(walk_to, t)) < 110.0 and rng.randf() < 0.6:
 			events.append({"at": t, "kind": "find", "id": pid})
 	# Стычка: чем дольше путь, тем вероятнее.
+	# Собаки приходят по одной, парой или стаей (60/30/10 %), падальщик – один.
 	if rng.randf() < minf(0.55, 0.12 + 0.07 * walk_hours):
-		events.append({"at": rng.randf_range(0.3, 0.8), "kind": "fight", "id": ["pes", "padal", "pes"][rng.randi() % 3]})
-	# Мини-история у дороги: только пешком и не сразу после прошлой.
+		if rng.randf() < 0.67:
+			var r := rng.randf()
+			events.append({"at": rng.randf_range(0.3, 0.8), "kind": "dogs", "n": 1 if r < 0.6 else (2 if r < 0.9 else 3)})
+		else:
+			events.append({"at": rng.randf_range(0.3, 0.8), "kind": "fight", "id": "padal"})
+	# Событие у дороги: только пешком и не сразу после прошлой.
 	if not resumed and walk_hours >= 2 and rng.randf() < 0.35:
-		events.append({"at": rng.randf_range(0.25, 0.75), "kind": "story", "id": MINI.keys()[rng.randi() % MINI.size()]})
+		events.append({"at": rng.randf_range(0.25, 0.75), "kind": "story", "id": _pick_event(rng)})
 	events.sort_custom(func(a, b): return a.at < b.at)
 	_on_log("Гений идёт пешком: %s." % (LOCS[id].name if id != "" else "разведка"))
 
@@ -312,6 +323,34 @@ func _fire(ev: Dictionary) -> void:
 		paused = true
 		G.say("Из-за барханов показался враг: %s." % D.ENEMIES[ev.id].name)
 		G.main().start_combat(ev.id, _after_fight)
+	elif ev.kind == "dogs":
+		paused = true
+		story_wait = true
+		var n: int = ev.n
+		G.temp_nodes["ev_dogs"] = {"who": "", "text": DOGS_TEXT[n - 1] + "\n\nМожно принять бой или попробовать уйти.",
+			"choices": [{"t": "Вступить в бой", "fx": [["ev_fight", "pes", n]], "next": "end"},
+				{"t": "[Атлетика] Бежать", "check": ["Атлетика", 9 + n * 2], "ok": "ev_dogs_fled", "fail": "ev_dogs_caught"}]}
+		G.temp_nodes["ev_dogs_fled"] = {"who": "", "fx": [["mini_skip"]], "text": "Вы срываетесь с места и бежите, не оглядываясь. Лай остаётся позади, потом стихает совсем.", "choices": [{"t": "Идти дальше", "next": "end"}]}
+		G.temp_nodes["ev_dogs_caught"] = {"who": "", "text": "Песок уходит из-под ног. Собаки быстрее: %s." % ["она уже рядом", "обе уже рядом", "вся стая уже рядом"][n - 1],
+			"choices": [{"t": "Драться", "fx": [["ev_fight", "pes", n]], "next": "end"}]}
+		G.main().open_dialogue("ev_dogs")
+	elif ev.id == "riders":
+		paused = true
+		story_wait = true
+		G.temp_nodes["ev_riders"] = {"who": "", "text": "Путешествуя, Вы слышите, как где-то вдалеке ревут два мотора. Мотоциклы. Это рейдеры, и они едут сюда.",
+			"choices": [{"t": "[Скрытность] Спрятаться", "check": ["Скрытность", 12], "ok": "ev_riders_hid", "fail": "ev_riders_found"},
+				{"t": "Бежать", "next": "ev_riders_run"},
+				{"t": "Вступить в бой", "fx": [["ev_fight", "rider", 2]], "next": "end"}]}
+		G.temp_nodes["ev_riders_hid"] = {"who": "", "fx": [["mini_skip"]], "text": "Вы вжимаетесь в песок за барханом. Моторы ревут совсем рядом, потом звук уходит на восток. Пронесло.", "choices": [{"t": "Идти дальше", "next": "end"}]}
+		G.temp_nodes["ev_riders_found"] = {"who": "", "text": "Из-за бархана выкатывается мотоцикл, фара бьёт Вам в лицо. Рейдер свистит второму: нашёл.", "choices": [{"t": "Драться", "fx": [["ev_fight", "rider", 2]], "next": "end"}]}
+		G.temp_nodes["ev_riders_run"] = {"who": "", "text": "От мотоцикла не убежишь. Через минуту рейдеры уже нарезают круги вокруг Вас, улюлюкая и поднимая пыль.", "choices": [{"t": "Драться", "fx": [["ev_fight", "rider", 2]], "next": "end"}]}
+		G.main().open_dialogue("ev_riders")
+	elif ev.id == "caravan":
+		paused = true
+		story_wait = true
+		G.temp_nodes["ev_caravan"] = {"who": "", "text": "Путешествуя, Вы натыкаетесь на караван странствующих торговцев. Под брезентом обоза позвякивает товар, а на оглобле сидит седой человек в выгоревшем плаще: Странник Гаспар.\n\n– Смотри, кого принесло! Гений! Заходи, покупай, Су не жалей!",
+			"choices": [{"t": "Торговать", "fx": [["ev_trade"]], "next": "end"}, {"t": "Идти дальше", "fx": [["mini_skip"]], "next": "end"}]}
+		G.main().open_dialogue("ev_caravan")
 	elif ev.kind == "story":
 		paused = true
 		story_wait = true
@@ -319,6 +358,34 @@ func _fire(ev: Dictionary) -> void:
 			"choices": [{"t": "Свернуть и осмотреться", "fx": [["mini_go", ev.id]], "next": "end"},
 				{"t": "Пройти мимо", "fx": [["mini_skip"]], "next": "end"}]}
 		G.main().open_dialogue("mini_ask")
+
+
+func _pick_event(rng: RandomNumberGenerator) -> String:
+	var total := 0
+	for e in EVENTS:
+		total += int(e[1])
+	var r := rng.randi() % total
+	for e in EVENTS:
+		r -= int(e[1])
+		if r < 0:
+			return e[0]
+	return "mini_bus"
+
+
+## Бой из события: n врагов по очереди. Проиграл одного – дальше не дерутся.
+func ev_fight(enemy: String, n: int) -> void:
+	paused = true
+	story_wait = false
+	_chain(enemy, n, n)
+
+
+func _chain(enemy: String, left: int, total: int) -> void:
+	G.main().start_combat(enemy, func(res: String):
+		if res == "win" and left > 1:
+			G.say("Следом бросается ещё один: %s (%d из %d)." % [D.ENEMIES[enemy].name, total - left + 2, total])
+			_chain.call_deferred(enemy, left - 1, total)
+		else:
+			_after_fight(res))
 
 
 ## Сойти с дороги на мини-локацию: пройденная часть пути уже потрачена.
@@ -385,7 +452,7 @@ func taxi(id: String) -> void:
 	if G.flag("taxi_ride"):
 		G.p.flags.erase("taxi_ride")
 		G.rel_add("taxi", 2)
-		G.say("Арсен довёз за %d Су и всю дорогу рассказывал про свою первую машину." % cost)
+		G.say("Артир довёз за %d Су и всю дорогу рассказывал про свою первую машину." % cost)
 	else:
 		G.say("Такси довезло за %d Су. Водитель всю дорогу молчал." % cost)
 	G.changed.emit()

@@ -52,6 +52,7 @@ void fragment() {
 
 func _ready() -> void:
 	G.set_meta("main", self)
+	G.level_up.connect(_on_level_up)
 	_set_cursor()
 	screen_root = Node.new()
 	add_child(screen_root)
@@ -224,6 +225,7 @@ func show_map() -> void:
 	Sfx.weather("")
 	current = WorldMap.new()
 	ui.add_child(current)
+	_add_xpbar()
 	fade_in()
 	G.autosave()
 
@@ -243,6 +245,7 @@ func show_world(map: String, spawn: String = "") -> void:
 	match map:
 		"poi_den": preload("res://scripts/ach.gd").unlock("den")
 		"poi_forest": preload("res://scripts/ach.gd").unlock("forest")
+		"mini_bones": preload("res://scripts/ach.gd").unlock("bones")
 	world = World.new()
 	world.setup(map, spawn)
 	Sfx.ambience("wind" if world.waste else "hum")
@@ -250,8 +253,24 @@ func show_world(map: String, spawn: String = "") -> void:
 		Sfx.weather("")
 	screen_root.add_child(world)
 	current = world
+	_add_xpbar()
 	fade_in()
 	G.autosave()
+
+
+func _add_xpbar() -> void:
+	ui.add_child(preload("res://scripts/xpbar.gd").new())
+
+
+func _on_level_up(lv: int) -> void:
+	var t2 := "Можно выбрать новый основной навык!" if int(G.p.get("picks", 0)) > 0 else "До следующего уровня: %d опыта." % G.xp_need()
+	toast("Новый уровень: %d" % lv, t2, "", "achieve")
+
+
+func open_skill_pick() -> void:
+	if has_overlay():
+		return
+	overlay.add_child(preload("res://scripts/skillpick.gd").new())
 
 
 ## Курсор в стиле терминала Института: чёрная обводка, зелёная стрелка.
@@ -300,6 +319,8 @@ func open_minigame(id: String) -> void:
 		"recipe":
 			mg = preload("res://scripts/mg_recipe.gd").new()
 			mg.done.connect(func(score: int):
+				if score >= 3:
+					G.add_xp(G.XP.minigame)
 				if score >= 5:
 					G.p.su += 25
 					G.feed(30)
@@ -315,6 +336,7 @@ func open_minigame(id: String) -> void:
 			mg = preload("res://scripts/mg_cups.gd").new()
 			mg.done.connect(func(wins: int):
 				if wins >= 2:
+					G.add_xp(G.XP.minigame)
 					G.calm(8)
 					G.add_item("Мусор")
 					open_dialogue.call_deferred("pip_win")

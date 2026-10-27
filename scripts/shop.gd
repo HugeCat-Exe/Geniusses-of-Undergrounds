@@ -10,7 +10,9 @@ var about: RichTextLabel
 var cover_box: Control
 ## Библиотекарь: товар штучный, купленное на сегодня из лавки пропадает.
 var limited := false
-var sort_btn: Button
+## Вкладка: пусто – всё. Вкладки строятся по товару лавки (у врача одна – вкладок нет).
+var tab := ""
+var tabs_box: HBoxContainer
 
 
 func _ready() -> void:
@@ -30,22 +32,28 @@ func _ready() -> void:
 	money = Pal.label("", Pal.G5, 11, true)
 	money.position = Vector2(420, 24)
 	add_child(money)
-	var hb := Pal.label("КУПИТЬ", Pal.G3, 9, true)
-	hb.position = Vector2(44, 44)
-	add_child(hb)
 	limited = G.shop_who == "librarian"
+	var tabs: Array = [] if limited else G.item_tabs(_stock_now())
+	var top := 44
+	if not tabs.is_empty():
+		tabs_box = HBoxContainer.new()
+		tabs_box.position = Vector2(44, 40)
+		tabs_box.add_theme_constant_override("separation", 2)
+		add_child(tabs_box)
+		for t in [""] + tabs:
+			var tb := Pal.button("Всё" if t == "" else t, _set_tab.bind(t), 8)
+			tb.toggle_mode = true
+			tb.button_pressed = t == tab
+			tb.set_meta("tab", t)
+			tabs_box.add_child(tb)
+		top = 60
+	var hb := Pal.label("КУПИТЬ", Pal.G3, 9, true)
+	hb.position = Vector2(44, top)
+	add_child(hb)
 	if not limited:
 		var hs := Pal.label("ПРОДАТЬ (половина цены, трофеи – полная)", Pal.G3, 9, true)
-		hs.position = Vector2(330, 44)
+		hs.position = Vector2(330, top)
 		add_child(hs)
-	var sort_b := Pal.button("Сортировка: %s" % G.SORT_NAMES[G.sort_mode.shop], func():
-		G.next_sort("shop")
-		sort_btn.text = "Сортировка: %s" % G.SORT_NAMES[G.sort_mode.shop]
-		_fill(), 8)
-	sort_b.position = Vector2(44, 318)
-	sort_b.custom_minimum_size = Vector2(150, 0)
-	add_child(sort_b)
-	sort_btn = sort_b
 	# у книжника справа обложка, как витрина: видно, что покупаешь
 	cover_box = Control.new()
 	cover_box.position = Vector2(400, 56)
@@ -55,8 +63,8 @@ func _ready() -> void:
 		if side == 1 and limited:
 			break
 		var sc := ScrollContainer.new()
-		sc.position = Vector2(44 if side == 0 else 330, 60)
-		sc.size = Vector2(270, 186)
+		sc.position = Vector2(44 if side == 0 else 330, top + 16)
+		sc.size = Vector2(270, 246 - top - 16)
 		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		add_child(sc)
 		var vb := VBoxContainer.new()
@@ -77,6 +85,21 @@ func _ready() -> void:
 	close_b.size = Vector2(96, 20)
 	add_child(close_b)
 	_fill()
+
+
+func _stock_now() -> Array:
+	return G.wander_left() if G.shop_who == "wanderer" else stock
+
+
+func _set_tab(t: String) -> void:
+	tab = t
+	for b in tabs_box.get_children():
+		b.button_pressed = b.get_meta("tab") == tab
+	_fill()
+
+
+func _in_tab(it: String) -> bool:
+	return tab == "" or G.item_tab(it) == tab
 
 
 func _sell_price(it: String) -> int:
@@ -104,7 +127,9 @@ func _fill() -> void:
 		stock = G.wander_left()
 		if stock.is_empty():
 			buy_box.add_child(Pal.label("Мешки пусты: всё раскупили.", Pal.G3, 9))
-	for it in G.sort_items(stock, "shop"):
+	for it in G.sort_items(stock):
+		if not _in_tab(it):
+			continue
 		var price: int = _buy_price(it)
 		var deal: bool = it == G.p.get("deal_today", "")
 		var line := "%s – %d Су%s" % [it, price, "  ★ для своих −25%" if deal else ""]
@@ -121,10 +146,10 @@ func _fill() -> void:
 		if not stock.is_empty():
 			_show_about(stock[0])
 		return
-	var keys: Array = G.sort_items(G.p.inv.keys(), "shop")
+	var keys: Array = G.sort_items(G.p.inv.keys())
 	for it in keys:
 		var info: Dictionary = D.ITEMS[it]
-		if info.type in ["quest", "tool"]:
+		if info.type in ["quest", "tool"] or not _in_tab(it):
 			continue
 		var takes: bool = G.buy_k(G.shop_who, it) > 0.0
 		var line := "%s ×%d – %d Су" % [it, G.p.inv[it], _sell_price(it)] if takes else "%s ×%d – %s" % [it, G.p.inv[it], D.REFUSE_TEXT.get(G.shop_who, "не берёт")]

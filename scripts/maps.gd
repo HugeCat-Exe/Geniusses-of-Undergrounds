@@ -187,6 +187,8 @@ func _build(name: String) -> Dictionary:
 			return _mini_dogs()
 		"mini_camp":
 			return _mini_camp()
+		"mini_bones":
+			return _mini_bones()
 		"poi_ruins":
 			return _poi_ruins()
 		"poi_forest":
@@ -454,8 +456,8 @@ func _waste() -> Dictionary:
 			grid[y][x] = "k"
 	var keep := [Vector2i(2, 2), Vector2i(3, 3), Vector2i(5, 4), Vector2i(4, 5), Vector2i(6, 1), Vector2i(7, 1), Vector2i(8, 2), Vector2i(34, 27), Vector2i(33, 28), Vector2i(28, 16), Vector2i(1, 12), Vector2i(4, 13), Vector2i(6, 12)]
 	objs.append(_prop("hatch", 2, 2, "Шахта Кальдеры", "to_caldera"))
-	objs.append(_big("taxi", 6, 1, 2, 1, "Такси Арсена"))
-	objs.append(_npc("taxi", 8, 2, "Таксист Арсен", "taxi_start", 1))
+	objs.append(_big("taxi", 6, 1, 2, 1, "Такси Артира"))
+	objs.append(_npc("taxi", 8, 2, "Таксист", "taxi_start", 1))
 	# странствующий торговец стоит у шахты только в дни прихода (G.wander_here)
 	if G.wander_here():
 		objs.append(_prop("cart", 4, 5, "Тележка странника"))
@@ -639,6 +641,13 @@ func _mini_bus() -> Dictionary:
 	objs.append(_prop("crate", 12, 2, "Чемодан, выпавший на песок", "mini_bus_case"))
 	objs.append(_prop("wreck", 14, 6, "Оторванное колесо"))
 	objs.append(_exit(16, 11))
+	# иногда у автобуса крутятся собаки: две или три
+	var mn := int(G.p.flags.get("mini_n", 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(G.p.seed) + "busdogs" + str(mn))
+	if rng.randf() < 0.5:
+		for i in rng.randi_range(2, 3):
+			objs.append(_mob("pes", "mini_pes_%d_%d" % [mn, i], [2, 9, 13][i], [10, 11, 7][i], 5))
 	_scatter(grid, objs, 702, 10, [Rect2i(3, 2, 11, 6), Rect2i(0, 8, w, 2), Rect2i(14, 10, 4, 3)])
 	_ensure_paths(grid, objs, Vector2i(15, 11), [Vector2i(10, 5), Vector2i(3, 7), Vector2i(12, 3)])
 	return {"name": "Перевёрнутый автобус", "floor": grid, "objs": objs, "waste": true, "mini": true,
@@ -676,6 +685,25 @@ func _mini_camp() -> Dictionary:
 	_ensure_paths(grid, objs, Vector2i(13, 11), [Vector2i(4, 3), Vector2i(2, 7), Vector2i(9, 4)])
 	return {"name": "Брошенная стоянка", "floor": grid, "objs": objs, "waste": true, "mini": true,
 		"spawns": {"enter": Vector2i(13, 11)}, "light": 30.0}
+
+
+## Гигантские кости: скелет посередине, обломки вокруг, обрывок дороги – точка эвакуации.
+func _mini_bones() -> Dictionary:
+	var w := 18
+	var h := 14
+	var grid := _sand(w, h, 731 + int(G.p.flags.get("mini_n", 0)), 3)
+	_fill(grid, Rect2i(0, 11, w, 2), "k")
+	var objs: Array = []
+	objs.append(_big("skeleton", 5, 3, 6, 3, "Гигантский скелет", "bones_pray"))
+	objs.append(_prop("bones", 3, 7, "Обломки рёбер", "bones_shard_1"))
+	objs.append(_prop("bones", 12, 4, "Отколовшийся позвонок", "bones_shard_2"))
+	objs.append(_prop("bones", 9, 8, "Осколки черепа", "bones_shard_3"))
+	objs.append(_prop("rocks", 14, 8, "Вывороченные камни"))
+	objs.append(_prop("roadend", 16, 12, "Обрывок дороги · точка эвакуации", "leave_poi"))
+	_scatter(grid, objs, 732, 8, [Rect2i(4, 2, 9, 7), Rect2i(0, 10, w, 4)])
+	_ensure_paths(grid, objs, Vector2i(15, 12), [Vector2i(3, 8), Vector2i(12, 5), Vector2i(9, 9), Vector2i(8, 7)])
+	return {"name": "Гигантские кости", "floor": grid, "objs": objs, "waste": true, "mini": true,
+		"spawns": {"enter": Vector2i(15, 12)}, "light": 30.0}
 
 
 func _exit(x: int, y: int) -> Dictionary:
@@ -724,7 +752,7 @@ func _poi_river() -> Dictionary:
 	var w := 34
 	var h := 24
 	var grid := _sand(w, h, 501, 4)
-	# река Лета: шесть клеток воды через всю карту
+	# Сухотечь: шесть клеток воды через всю карту
 	_fill(grid, Rect2i(0, 9, w, 6), "w")
 	# старый мост
 	_fill(grid, Rect2i(16, 9, 2, 6), "h")
@@ -741,7 +769,7 @@ func _poi_river() -> Dictionary:
 	_scatter(grid, objs, 502, 30, [Rect2i(0, 8, w, 8), Rect2i(15, 15, 4, 4), Rect2i(27, 19, 7, 5)])
 	_ensure_paths(grid, objs, Vector2i(29, 21), [Vector2i(10, 16), Vector2i(16, 15), Vector2i(17, 8), Vector2i(6, 4), Vector2i(30, 22)])
 	_rumor(grid, objs, "river")
-	return {"name": "Река Лета", "floor": grid, "objs": objs, "waste": true, "poi": "river",
+	return {"name": "Сухотечь", "floor": grid, "objs": objs, "waste": true, "poi": "river",
 		"spawns": {"enter": Vector2i(29, 21)}, "light": 30.0}
 
 
@@ -824,7 +852,7 @@ func _poi_ruins() -> Dictionary:
 	objs.append(_prop("bones", 9, 11, "Кости", "", false))
 	var j = G.escort_job()
 	if j != null and j.state == "active":
-		objs.append(_npc("stray", 4, 3, "Бедолага", "stray_start", 1))
+		objs.append(_npc("stray", 4, 3, "Житель Подземки", "stray_start", 1))
 	objs.append(_mob("padal", _daily("ruins_padal"), 16, 8, 4))
 	objs.append(_mob("pes", _daily("ruins_pes"), 12, 13, 5))
 	objs.append(_exit(25, 17))
@@ -945,7 +973,7 @@ func _poi_forest() -> Dictionary:
 	objs.append(_mob("plant", _daily("forest_plant_b"), 7, 6, 1))
 	objs.append(_mob("plant", _daily("forest_plant_c"), 22, 9, 1))
 	objs.append(_mob("pes", _daily("forest_pes"), 10, 15, 5))
-	# Незнакомец сидит на пепельной прогалине и лечит голову от того, что в неё нашептала Запутанность.
+	# Лесник сидит на пепельной прогалине и лечит голову от того, что в неё нашептала Запутанность.
 	objs.append(_npc("stranger", 8, 11, "Незнакомец в капюшоне", "stranger_start", 1))
 	objs.append(_exit(27, 19))
 	_scatter(grid, objs, 902, 18, [Rect2i(24, 16, 6, 6)])

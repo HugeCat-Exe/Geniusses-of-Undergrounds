@@ -1101,7 +1101,7 @@ const READ_DIST := 3
 func _lootable(o: Dictionary) -> bool:
 	var a: String = str(o.get("action", ""))
 	return o.get("kind", "") in ["cache", "roots", "herb_ash", "herb_mint", "herb_pepper"] or a.begins_with("jobspot:") \
-		or a.begins_with("raid_c") or a in ["mini_bus_trunk", "mini_bus_case", "mini_camp_stash", "mini_camp_tent"] or a.begins_with("herb_") or a.begins_with("forest_forage") or a.ends_with("_cache") or a.begins_with("cache_")
+		or a.begins_with("raid_c") or a in ["mini_bus_trunk", "mini_bus_case", "mini_camp_stash", "mini_camp_tent"] or a.begins_with("bones_shard") or a.begins_with("herb_") or a.begins_with("forest_forage") or a.ends_with("_cache") or a.begins_with("cache_")
 
 
 ## Уже обысканное не подсвечиваем.
@@ -1111,7 +1111,7 @@ func _looted(a: String) -> bool:
 		"cache_ruin": return G.flag("ruin_open")
 		"river_cache": return G.flag("river_cache")
 		"ruins_cache": return G.flag("ruins_looted")
-	if a.begins_with("mini_"):
+	if a.begins_with("mini_") or a.begins_with("bones_shard"):
 		return G.mini_done(a)
 	if a.begins_with("raid_c"):
 		return G.flag(G.raid_key(a.substr(5)))
@@ -1519,7 +1519,7 @@ func _build_hud() -> void:
 	log_text = Pal.rich("", 8)
 	log_text.fit_content = false
 	log_text.position = Vector2(6, 316)
-	log_text.size = Vector2(560, 40)
+	log_text.size = Vector2(486, 40)
 	log_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(log_text)
 

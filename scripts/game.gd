@@ -3,8 +3,11 @@ extends Node
 
 signal logged(text: String)
 signal changed
+## Новый уровень Гения (и выбор навыка на каждом десятом).
+signal level_up(level: int)
+signal xp_gained(n: int)
 
-const VERSION := "0.11"
+const VERSION := "0.12"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -28,6 +31,7 @@ func new_character() -> Dictionary:
 		"map_at": "caldera", "known": ["caldera"], "pity": {}, "seed": randi(),
 		"rel": {}, "jobs": [], "companion": "",
 		"gear": {"head": "", "legs": "", "feet": "", "amulet": ""}, "buffs": {},
+		"level": 1, "xp": 0, "extra": [], "picks": 0,
 	}
 
 
@@ -244,10 +248,14 @@ func main_count(c: Dictionary = p) -> int:
 	return 3 if has_perk("Эрудит", c) else 2
 
 
+## Сколько раз навык основной: из анкеты и выбранные на 10, 20… уровнях. Повтор удваивает бонус.
+func main_times(skill: String, c: Dictionary = p) -> int:
+	return (1 if skill in c.main else 0) + c.get("extra", []).count(skill)
+
+
 func skill_bonus(skill: String, c: Dictionary = p) -> int:
 	var b := mod(D.skill_stat(skill), c)
-	if skill in c.main:
-		b += main_bonus(c)
+	b += main_bonus(c) * main_times(skill, c)
 	# «Агорафобия»: в укрытии Подземки чувства обострены.
 	if skill in ["Анализ", "Шестое чувство"] and is_same(c, p) and trait_has("Агорафобия") and str(p.get("map", "")).begins_with("caldera"):
 		b += 2
@@ -437,7 +445,10 @@ const REL_FAVOR := {
 func rel_greeting(who: String, name: String, fem: bool) -> String:
 	var t := rel_tier(who)
 	var txt := ""
-	if REL_GREET.has(t.idx):
+	var own: Dictionary = preload("res://scripts/story.gd").GREET.get(who, {})
+	if own.has(t.idx):
+		txt = str(own[t.idx])
+	elif REL_GREET.has(t.idx):
 		txt = str(REL_GREET[t.idx]).replace("{name}", name.get_slice(",", 0)).replace("{а}", "а" if fem else "")
 	var key := "favor_%s_%d" % [who, p.day]
 	if t.idx >= 2 and REL_FAVOR.has(who) and not flag(key):
@@ -913,6 +924,10 @@ func rel_add(who: String, n: int) -> void:
 	if after.name != before.name:
 		var nm: String = preload("res://scripts/story.gd").WHO.get(who, {}).get("name", who)
 		say("Отношения: %s – теперь «%s»." % [nm, after.name])
+		# новый друг: опыт один раз, когда житель впервые становится «Приятелем»
+		if int(after.idx) >= 2 and not p.flags.has("xp_friend_" + who):
+			p.flags["xp_friend_" + who] = true
+			add_xp(XP.friend)
 	changed.emit()
 
 
@@ -928,6 +943,50 @@ func rel_tier(who: String) -> Dictionary:
 			nxt = D.REL_TIERS[i + 1][0] if i + 1 < D.REL_TIERS.size() else -1
 	res["next"] = nxt
 	return res
+
+
+# ---------- Уровни Гения ----------
+
+## Опыт за дела. Обычные враги – понемногу, мини-боссы – много.
+const XP_KILL := {"muezzin": 60, "slepets": 20, "plant": 15, "rider": 20, "iskaz": 20}
+const XP := {"kill": 10, "cache": 8, "job": 30, "special": 60, "friend": 50, "minigame": 15}
+
+
+## Опыта до следующего уровня: 100, 140, 180… Пятый уровень – около 640 опыта.
+func xp_need(lv: int = -1) -> int:
+	if lv < 0:
+		lv = int(p.get("level", 1))
+	return 100 + 40 * (lv - 1)
+
+
+func add_xp(n: int) -> void:
+	if p.is_empty() or n <= 0:
+		return
+	p.xp = int(p.get("xp", 0)) + n
+	xp_gained.emit(n)
+	var ups := 0
+	while int(p.xp) >= xp_need():
+		p.xp = int(p.xp) - xp_need()
+		p.level = int(p.get("level", 1)) + 1
+		ups += 1
+		if int(p.level) % 10 == 0:
+			p.picks = int(p.get("picks", 0)) + 1
+		say("Новый уровень Гения: %d." % p.level)
+	# несколько уровней разом – одна плашка
+	if ups > 0:
+		level_up.emit(int(p.level))
+	changed.emit()
+
+
+## Выбор навыка на 10, 20… уровне.
+func pick_skill(skill: String) -> void:
+	if int(p.get("picks", 0)) <= 0:
+		return
+	p.picks = int(p.picks) - 1
+	p.extra.append(skill)
+	var t := main_times(skill)
+	say("Навык «%s» теперь основной%s: +%d." % [skill, (" (×%d)" % t) if t > 1 else "", main_bonus() * t])
+	changed.emit()
 
 
 # ---------- Подработки ----------
@@ -948,35 +1007,46 @@ func _make_job(tpl: Dictionary, rng: RandomNumberGenerator, id: String) -> Dicti
 	return j
 
 
-## Сортировка списков вещей (имущество, лавки). Режим помнится до выхода из игры.
-const SORT_NAMES := {"type": "по типу", "name": "по названию", "price": "по цене"}
+## Порядок вещей в списках (имущество, лавки): по типу, потом по названию.
 const TYPE_ORDER := ["weapon", "ammo", "mod", "armor", "amulet", "gift", "heal", "calm", "food", "book", "trophy", "quest", "tool"]
-var sort_mode := {"inv": "type", "shop": "type"}
+## Вкладки лавок и имущества. Оружие – по классам.
+const TAB_ORDER := ["Пистолеты", "Револьверы", "Карабины", "Винтовки", "Дробовики", "Ближний бой", "Патроны", "Обвесы",
+	"Одежда", "Амулеты", "Лекарства", "Еда", "Книги", "Подарки", "Трофеи", "Разное"]
+const CLASS_TAB := {"Пистолет": "Пистолеты", "Револьвер": "Револьверы", "Карабин": "Карабины", "Винтовка": "Винтовки",
+	"Дробовик": "Дробовики", "Ближний бой": "Ближний бой"}
+const TYPE_TAB := {"ammo": "Патроны", "mod": "Обвесы", "armor": "Одежда", "amulet": "Амулеты", "heal": "Лекарства",
+	"calm": "Лекарства", "food": "Еда", "book": "Книги", "gift": "Подарки", "trophy": "Трофеи"}
 
 
-func sort_items(list: Array, where: String) -> Array:
-	var mode: String = sort_mode.get(where, "type")
+func item_tab(it: String) -> String:
+	var info: Dictionary = D.ITEMS.get(it, {})
+	if info.get("type", "") == "weapon":
+		return CLASS_TAB.get(weapon_class(it), "Разное")
+	return TYPE_TAB.get(info.get("type", ""), "Разное")
+
+
+## Вкладки для списка вещей; меньше двух – вкладки не нужны.
+func item_tabs(list: Array) -> Array:
+	var res: Array = []
+	for t in TAB_ORDER:
+		for it in list:
+			if item_tab(it) == t:
+				res.append(t)
+				break
+	return res if res.size() >= 2 else []
+
+
+func sort_items(list: Array) -> Array:
 	var res := list.duplicate()
 	res.sort_custom(func(a, b):
-		var ia: Dictionary = D.ITEMS[a]
-		var ib: Dictionary = D.ITEMS[b]
-		if mode == "price" and int(ia.price) != int(ib.price):
-			return int(ia.price) > int(ib.price)
-		if mode == "type":
-			var ta := TYPE_ORDER.find(ia.type)
-			var tb := TYPE_ORDER.find(ib.type)
-			if ta != tb:
-				return ta < tb
+		var ta := TAB_ORDER.find(item_tab(a))
+		var tb := TAB_ORDER.find(item_tab(b))
+		if ta != tb:
+			return ta < tb
 		return str(a).trim_prefix("«") < str(b).trim_prefix("«"))
 	return res
 
 
-func next_sort(where: String) -> void:
-	var keys := SORT_NAMES.keys()
-	sort_mode[where] = keys[(keys.find(sort_mode.get(where, "type")) + 1) % keys.size()]
-
-
-## Короткие строки для трекера задач в углу экрана (без стрелок: только что и где).
 func tracker_lines() -> Array:
 	var res: Array = []
 	for j in p.jobs:
@@ -1086,13 +1156,13 @@ func escort_job():
 	return null
 
 
-## Бедолага пошёл за Гением.
+## Потерявшийся житель пошёл за Гением.
 func escort_start() -> void:
 	var j = escort_job()
 	if j == null:
 		return
 	j.state = "escort"
-	say("Бедолага идёт за Вами. Доведите его до Кальдеры.")
+	say("Житель Подземки идёт за Вами. Доведите его до Кальдеры.")
 	changed.emit()
 
 
@@ -1119,6 +1189,7 @@ func job_by_id(id: String):
 
 ## Убит враг: засчитать во все подходящие подработки.
 func on_kill(enemy: String) -> void:
+	add_xp(int(XP_KILL.get(enemy, XP.kill)))
 	if enemy == "muezzin":
 		p.flags["muezzin_dead_day"] = int(p.day)
 	if enemy == "pes":
@@ -1172,6 +1243,7 @@ func turn_in(id: String) -> void:
 	if j.has("unlock"):
 		say(j.unlock)
 	p.jobs.erase(j)
+	add_xp(XP.job if str(j.id).begins_with("d") else XP.special)
 	say("Подработка сдана: %s.%s" % [j.title, (" +%d Су." % j.su) if j.su > 0 else ""])
 	changed.emit()
 
@@ -1377,6 +1449,7 @@ func rumor_loot() -> void:
 	got.append("%d Су" % su)
 	last_note = ", ".join(got)
 	say("Найдено: %s." % last_note)
+	add_xp(XP.cache)
 
 
 func craft_can(r: Array) -> bool:
@@ -1458,9 +1531,28 @@ func raid_loot(id: String) -> void:
 	got.append("%d Су" % su)
 	last_note = ", ".join(got)
 	say("Найдено: %s." % last_note)
+	add_xp(XP.cache)
 
 
 # ---------- Мини-истории по дороге ----------
+
+## Молитва у гигантских костей: слышат только Гебура (сила) и Малкух (стойкость).
+func bones_pray(sefira: String) -> String:
+	set_flag("mini_%d_bones_pray" % int(p.flags.get("mini_n", 0)))
+	if not sefira in ["Гебура", "Малкух"]:
+		return "Вы шепчете имя Сефиры %s. Ветер гудит в пустых рёбрах, и больше ничего не происходит. Здесь её не слышно." % sefira
+	var r := roll("Молитва", 11, "pray")
+	if not r.ok:
+		return "Вы зовёте Сефиру %s, и на миг кажется, что кости отвечают низким гулом. Но гул стихает, и ничего не меняется.\n\n[color=#3fae47]%s[/color]" % [sefira, roll_text(r)]
+	var hurt_list: Array = p.got_phys.duplicate()
+	if sefira == "Малкух" and not hurt_list.is_empty() and randf() < 0.4:
+		var tr: String = hurt_list[randi() % hurt_list.size()]
+		p.got_phys.erase(tr)
+		changed.emit()
+		return "Малкух отвечает. Кости тяжело гудят, и старая травма отпускает тело, как разжатый кулак.\n\n[color=#7ff07a](Излечено: %s)[/color]" % tr
+	var n := roundi(max_hp() * (0.4 if sefira == "Гебура" else 0.3))
+	heal(n)
+	return "Сефира %s отвечает. По рёбрам скелета пробегает жар, и он переходит в Ваше тело.\n\n[color=#7ff07a](+%d ООЗ)[/color]" % [sefira, n]
 
 func mini_done(key: String) -> bool:
 	return flag("mini_%d_%s" % [int(p.flags.get("mini_n", 0)), key])
@@ -1489,6 +1581,7 @@ func mini_loot(kind: String) -> void:
 			add_item(l[0], l[1])
 			got.append("%s ×%d" % [l[0], l[1]] if l[1] > 1 else l[0])
 	last_note = ", ".join(got)
+	add_xp(XP.cache)
 	changed.emit()
 
 
@@ -1659,7 +1752,7 @@ func slot_info(i: int) -> String:
 	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "caldera1": "Кальдера, ярус 1",
 		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "caldera4": "Кальдера, ярус 4",
 		"caldera_ryhome": "Домик Рыжей", "caldera_danahome": "Будка Даны", "raid1": "Заброшенный ярус 5", "raid2": "Затопленный ярус 6",
-		"poi_station": "Заправка", "poi_river": "Река Лета", "poi_tower": "Вышка", "poi_den": "Логово псов",
+		"poi_station": "Заправка", "poi_river": "Сухотечь", "poi_tower": "Вышка", "poi_den": "Логово псов",
 		"poi_ruins": "Разрушенный посёлок", "poi_forest": "Запутанный лес", "worldmap": "Карта мира"}.get(pp.get("map", ""), "?")
 	return "%s · %s · %s" % [pp.get("callsign", "?"), where, data.get("time", "")]
 
@@ -1683,6 +1776,9 @@ func _migrate() -> void:
 		p.buffs = {}
 	if not p.has("bodies"):
 		p.bodies = []
+	for k in [["level", 1], ["xp", 0], ["extra", []], ["picks", 0]]:
+		if not p.has(k[0]):
+			p[k[0]] = k[1]
 	if int(p.flags.get("save_ver", 0)) >= 9:
 		return
 	var n := 0
@@ -1707,7 +1803,7 @@ func any_save() -> int:
 
 ## JSON превращает все числа в float; возвращаем целые там, где они нужны.
 func _fix_numbers(d: Dictionary) -> Dictionary:
-	for k in ["faction", "hp", "mind", "food", "su", "will", "mag", "steps", "day", "seed", "hour"]:
+	for k in ["faction", "hp", "mind", "food", "su", "will", "mag", "steps", "day", "seed", "hour", "level", "xp", "picks"]:
 		if d.has(k):
 			d[k] = int(d[k])
 	var inv := {}

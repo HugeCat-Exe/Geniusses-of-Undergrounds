@@ -159,6 +159,9 @@ func _show(id: String) -> void:
 			var rm := Live.pick_remark(current_who)
 			if not rm.is_empty():
 				text.text += "\n\n[color=%s][%s][/color] [i][color=%s]%s[/color][/i]" % [Pal.hex(Pal.R3), rm.trait, Pal.hex(Pal.G3), rm.line]
+	if current_who != "" and (id == first_id or n.get("hub", false)) and Story.LOOK.has(current_who) and G.flag("look_" + current_who):
+		nodes["look_" + current_who] = {"who": current_who, "text": "[i]%s[/i]" % Story.LOOK[current_who], "choices": [{"t": "Вернуться к разговору", "next": id}]}
+		live.append({"t": "Осмотреть", "next": "look_" + current_who})
 	if current_who != "" and current_who != "raider" and (id == first_id or n.get("hub", false)):
 		var acts := Live.acts_for(current_who)
 		for tr in acts.slice(0, 2):
@@ -208,7 +211,14 @@ const NIGHT_MOOD := {
 	"miron": "Мирон сидит у жаровни с кружкой. Ночью он вспоминает молодость охотнее.",
 	"pip": "Пип ночью не прячется: шныряет у жаровни и шепчет, кто куда пошёл.",
 	"librarian": "Феликс читает при огарке и откладывает книгу неохотно.",
-	"taxi": "Арсен дремлет за рулём и просыпается, только когда Вы стучите по крыше.",
+	"taxi": "Артир дремлет за рулём и просыпается, только когда Вы стучите по крыше.",
+	"wanderer": "Торговец громко зевает.\n\n– А, Гений, заходи, товары на любой вкус и цвет.",
+	"stranger": "Лесник наслаждается ночной прохладой и влажностью леса. Ветка под Вашими ногами ломается, и он приоткрывает глаза.",
+}
+## Днём – своё настроение (у кого есть).
+const DAY_MOOD := {
+	"wanderer": "– Смотри, кого принесло! Гений! Заходи, покупай, Су не жалей!",
+	"stranger": "Лесник собирает грибы, приподнимая листья тросточкой. Вы прерываете его поиски.",
 }
 
 ## Как жители относятся к Гению из-за его фракции (D.FACTIONS[...].rel).
@@ -239,12 +249,19 @@ func _faction_line(who: String) -> String:
 ## Начало разговора: отношение фракции, ночное настроение, трещины в рассудке.
 func _opening(who: String) -> String:
 	var res := ""
+	# при первой встрече – внешность; потом её можно «Осмотреть»
+	if Story.LOOK.has(who) and not G.flag("look_" + who):
+		G.set_flag("look_" + who)
+		if who != "ryzhaya":
+			res += "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.G4), Story.LOOK[who]]
 	var fl := _faction_line(who)
 	if fl != "":
 		var r := G.relation(Story.WHO[who].faction)
 		res += "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.R3 if r < 0 else Pal.G4), fl]
 	if G.is_night() and NIGHT_MOOD.has(who):
 		res += "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.G3), NIGHT_MOOD[who]]
+	elif not G.is_night() and DAY_MOOD.has(who):
+		res += "[color=%s][i]%s[/i][/color]\n\n" % [Pal.hex(Pal.G3), DAY_MOOD[who]]
 	var ml := Live.mind_line(who)
 	if ml != "" and randf() < 0.6:
 		res += "[color=%s][Рассудок %d][/color] [i]%s[/i]\n\n" % [Pal.hex(Pal.R2), int(G.p.mind), ml]
@@ -272,7 +289,7 @@ func _dynamic_choices(n: Dictionary) -> Array:
 	if n.get("hub", false) and current_who != "" and G.can_gift(current_who):
 		gift_back = current_id
 		var gl: Array = []
-		for it in G.sort_items(G.gifts_owned(), "inv"):
+		for it in G.sort_items(G.gifts_owned()):
 			gl.append({"t": "Подарить: %s" % it, "fx": [["gift", current_who, it]], "next": "gift_result"})
 		gl.append({"t": "Передумать", "next": current_id})
 		nodes["gift_pick"] = {"who": current_who, "text": "[color=%s]Что подарить? Подарок можно сделать раз в день. Не всем нравится одно и то же: кому-то по душе полезные мелочи, кому-то украшения.[/color]" % Pal.hex(Pal.G3), "choices": gl}
@@ -297,6 +314,8 @@ func _dynamic_choices(n: Dictionary) -> Array:
 				res.append({"t": t, "fx": [["cure", n.cure, tr]], "next": "stranger_cure_result" if psy else "cure_result"})
 			else:
 				res.append({"t": t + " – не хватает Су", "next": current_id})
+		if not psy:
+			_autodoc_why(res)
 	if n.has("poi"):
 		for j in G.p.jobs:
 			if j.kind == "find" and j.poi == n.poi and j.state == "active" and not j.get("spot", false):
@@ -605,7 +624,30 @@ func _cond(c: String) -> bool:
 	return false
 
 
-## Снять приобретённую черту: физическую у автодока, психологическую у незнакомца в лесу.
+## Снять приобретённую черту: физическую у автодока, психологическую у Лесника в лесу.
+## Автодок объясняет, почему не берётся за плохие свойства постсмертия без травмы тела.
+func _autodoc_why(res: Array) -> void:
+	for a in D.PERKS:
+		var bad: String = D.PERKS[a][1]
+		if not G.has_perk(bad):
+			continue
+		var causes := G.perk_cause(bad)
+		var body := false
+		for tr in causes:
+			if tr in G.p.got_phys:
+				body = true
+		if body:
+			continue
+		var why := ""
+		if causes.is_empty():
+			why = "«%s» – НЕ ТРАВМА. СВОЙСТВО ВРОЖДЁННОЕ: %s 4 И НИЖЕ ПО АНКЕТЕ. РЕКОНСТРУКЦИЯ НЕВОЗМОЖНА».\n\nМашина чинит только то, что сломала Пустошь. С тем, каким Гений родился, она ничего не сделает. Свойство уйдёт само, если %s станет выше 4: помогают книги и снаряжение." % [bad.to_upper(), a, a]
+		else:
+			why = "«%s» ВЫЗВАН ТРАВМОЙ РАССУДКА: %s. ПРОГРАММА РАБОТАЕТ ТОЛЬКО С ТЕЛОМ».\n\nТравмы рассудка автодоку не по силам. Говорят, в Запутанном лесу живёт Лесник, который умеет вынимать такое из головы. Уйдёт травма – уйдёт и «%s»." % [bad.to_upper(), ", ".join(causes).to_upper(), bad]
+		var id: String = "autodoc_why_" + str(a)
+		nodes[id] = {"who": "", "text": "Экран автодока мигает красным: «" + why, "choices": [{"t": "Понятно", "next": current_id}]}
+		res.append({"t": "Почему не лечится «%s»?" % bad, "next": id})
+
+
 func _cure(kind: String, tr: String) -> String:
 	var psy := kind == "psy"
 	G.set_flag("cure_%s_%d" % [kind, G.p.day])
@@ -616,10 +658,10 @@ func _cure(kind: String, tr: String) -> String:
 		var r := G.roll("Воля", 12)
 		if r.ok:
 			G.p.got_psy.erase(tr)
-			res = "%s\n\nНезнакомец кладёт ладони Вам на виски. Четыре часа Вы слушаете, как лес дышит. Потом что-то тонкое и холодное вытягивается из затылка, и в голове становится непривычно тихо.\n\n– Готово. Черты «%s» больше нет. Не приноси её обратно.\n\n[color=#7ff07a](Черта снята)[/color]" % [G.roll_text(r), tr]
+			res = "%s\n\nЛесник кладёт ладони Вам на виски. Четыре часа Вы слушаете, как лес дышит. Потом что-то тонкое и холодное вытягивается из затылка, и в голове становится непривычно тихо.\n\n– Готово. Черты «%s» больше нет. Не приноси её обратно.\n\n[color=#7ff07a](Черта снята)[/color]" % [G.roll_text(r), tr]
 		else:
 			var m := G.hurt(15, "mind")
-			res = "%s\n\nВы держитесь сколько можете, но голос внутри цепляется крепче. Незнакомец отнимает руки.\n\n– Не сегодня. Она вросла глубже, чем я думал. Приходи завтра.\n\n[color=#ff6650](Черта «%s» осталась, −%d ООР. Су не вернуть.)[/color]" % [G.roll_text(r), tr, m]
+			res = "%s\n\nВы держитесь сколько можете, но голос внутри цепляется крепче. Лесник отнимает руки.\n\n– Не сегодня. Она вросла глубже, чем я думал. Приходи завтра.\n\n[color=#ff6650](Черта «%s» осталась, −%d ООР. Су не вернуть.)[/color]" % [G.roll_text(r), tr, m]
 	else:
 		if randf() < 0.65:
 			G.p.flags["autodoc_cures"] = int(G.p.flags.get("autodoc_cures", 0)) + 1
@@ -727,7 +769,7 @@ func _fx(list: Array) -> void:
 				if not r.ok:
 					G.say("Пейджер тихо пискнул. Баланс почему-то стал меньше на 25 Су.")
 			"taxi":
-				# Арсен везёт в любое уже знакомое место: открываем карту мира в режиме поездки
+				# Артир везёт в любое уже знакомое место: открываем карту мира в режиме поездки
 				G.set_flag("taxi_ride")
 				G.p["map_at"] = "caldera"
 				after.append(func(): G.main().show_map())
@@ -826,6 +868,15 @@ func _fx(list: Array) -> void:
 					var cur = G.main().current
 					if cur and cur.has_method("go_mini"):
 						cur.go_mini(f[1]))
+			"ev_fight":
+				after.append(func():
+					var cur = G.main().current
+					if cur and cur.has_method("ev_fight"):
+						cur.ev_fight(f[1], int(f[2])))
+			"ev_trade":
+				after.append(func(): G.main().open_shop(G.wander_left(), "ОБОЗ ГАСПАРА", "wanderer"))
+			"bones_pray":
+				cure_result = G.bones_pray(f[1])
 			"mini_skip":
 				after.append(func():
 					var cur = G.main().current

@@ -609,6 +609,8 @@ func _prop(kind: String) -> ImageTexture:
 			cv.put(22, 11, 9)
 		"bus":
 			cv = _big_bus()
+		"skeleton":
+			cv = _big_skeleton()
 		"taxi":
 			cv = _big_taxi()
 		"bookshelf":
@@ -839,6 +841,44 @@ func _big_bus() -> Canvas:
 		for p in [p1, p2]:
 			cv.ellipse(p.x, p.y - 4, 5, 4, 1)
 			cv.ellipse(p.x, p.y - 4, 2, 1.5, 4, false)
+	return cv
+
+
+## Гигантский скелет 6×3: позвоночник наполовину в грунте, дуги рёбер и рогатый череп.
+func _big_skeleton() -> Canvas:
+	var f := _foot(6, 3, 60)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	# насыпь вокруг костей
+	cv.poly(PackedVector2Array([_ip(o, 0.3, 0.6, 0), _ip(o, 5.6, 0.4, 0), _ip(o, 5.8, 2.6, 0), _ip(o, 0.5, 2.7, 0)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, 1.0, 1.0, 4), _ip(o, 5.0, 0.9, 4), _ip(o, 5.2, 2.2, 0), _ip(o, 1.2, 2.3, 0)]), 3)
+	# позвоночник: позвонки торчат из песка
+	for i in 11:
+		var gx := 0.9 + i * 0.42
+		var p := _ip(o, gx, 1.5, 6 + sin(i * 0.5) * 3)
+		cv.ellipse(p.x, p.y, 4, 3, 5)
+		cv.line(p.x, p.y - 2, p.x, p.y - 7, 6)
+	# рёбра: дуги вверх по обе стороны
+	for i in 6:
+		var gx := 1.6 + i * 0.55
+		var hgt := 44.0 - absf(i - 2.0) * 6.0
+		for side in [-1.0, 1.0]:
+			var prev := _ip(o, gx, 1.5, 8)
+			for k in range(1, 9):
+				var t := k / 8.0
+				var q := _ip(o, gx + 0.1 * t, 1.5 + side * sin(t * PI * 0.5) * 0.9, 8 + sin(t * PI) * hgt)
+				cv.line(prev.x, prev.y, q.x, q.y, 6 if side < 0 else 5, 2)
+				prev = q
+	# череп у правого края: длинная морда, пустые глазницы, рог
+	var c := _ip(o, 5.4, 1.4, 14)
+	cv.ellipse(c.x, c.y, 13, 9, 5)
+	cv.ellipse(c.x + 10, c.y + 5, 9, 5, 5)
+	cv.ellipse(c.x - 3, c.y - 2, 3, 3, 0, false)
+	cv.ellipse(c.x + 5, c.y - 1, 2.5, 2.5, 0, false)
+	cv.line(c.x - 6, c.y - 6, c.x - 14, c.y - 22, 6, 2)
+	cv.line(c.x - 14, c.y - 22, c.x - 10, c.y - 30, 6)
+	for k in 4:
+		cv.put(int(c.x + 8 + k * 3), int(c.y + 8), 0)
 	return cv
 
 

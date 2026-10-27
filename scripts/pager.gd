@@ -17,6 +17,8 @@ const QUESTS := {
 }
 
 var tab := 0
+## Вкладка имущества (пусто – всё); помнится, пока открыт пейджер.
+var inv_tab := ""
 var content: VBoxContainer
 var scroll: ScrollContainer
 var tab_buttons: Array = []
@@ -123,8 +125,8 @@ func _sheet() -> void:
 	var idt := Pal.rich("", 9)
 	idt.custom_minimum_size = Vector2(186, 0)
 	idt.meta_hover_started.connect(_on_meta)
-	idt.text = "[b]%s[/b]\n%s\n%s · %s · %s\n%s\nРодом из: %s\n[color=%s]«%s»[/color]\n\n[url=ООЗ][color=%s]ООЗ %d/%d[/color][/url]   [url=ООР][color=%s]ООР %d/%d[/color][/url]\n[url=Воля]Воля[/url] %d/%d\n[url=Защита]Защита[/url]: физ. %d · псих. %d\nУдача: перебросов сегодня %d\nСытость %d · [url=Су]Су[/url] %d · День %d" % [
-		p.callsign, p.name, p.race, "М" if p.sex == "М" else "Ж", p.age, D.FACTIONS[p.faction].name, p.birth,
+	idt.text = "[b]%s[/b] · ур. %d\n%s\n%s · %s · %s\n%s\nРодом из: %s\n[color=%s]«%s»[/color]\n\n[url=ООЗ][color=%s]ООЗ %d/%d[/color][/url]   [url=ООР][color=%s]ООР %d/%d[/color][/url]\n[url=Воля]Воля[/url] %d/%d\n[url=Защита]Защита[/url]: физ. %d · псих. %d\nУдача: перебросов сегодня %d\nСытость %d · [url=Су]Су[/url] %d · День %d" % [
+		p.callsign, int(p.get("level", 1)), p.name, p.race, "М" if p.sex == "М" else "Ж", p.age, D.FACTIONS[p.faction].name, p.birth,
 		Pal.hex(Pal.G3), p.motive if p.motive != "" else "нет",
 		Pal.hex(Pal.R3), p.hp, G.max_hp(), Pal.hex(Pal.G5), p.mind, G.max_mind(),
 		p.will, G.max_will(), G.phys_def(), G.psy_def(), G.luck_left(), p.food, p.su, p.day]
@@ -149,10 +151,12 @@ func _sheet() -> void:
 	content.add_child(grid)
 	for sk in D.SKILLS:
 		var b := G.skill_bonus(sk[0])
-		var main: bool = sk[0] in p.main
-		var l := Pal.label("%s%s (%s) %+d" % ["★ " if main else "", sk[0], sk[1], b], Pal.G5 if main else Pal.G4, 9)
+		var times := G.main_times(sk[0])
+		var main: bool = times > 0
+		var star := ("★×%d " % times) if times > 1 else ("★ " if main else "")
+		var l := Pal.label("%s%s (%s) %+d" % [star, sk[0], sk[1], b], Pal.G5 if main else Pal.G4, 9)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
-		l.mouse_entered.connect(func(): info.text = "[b]%s[/b] (%s): %s%s" % [sk[0], sk[1], sk[2], "  ★ основной: +%d" % G.main_bonus() if main else ""])
+		l.mouse_entered.connect(func(): info.text = "[b]%s[/b] (%s): %s%s" % [sk[0], sk[1], sk[2], "  ★ основной: +%d" % (G.main_bonus() * times) if main else ""])
 		grid.add_child(l)
 
 
@@ -174,13 +178,25 @@ func _inventory() -> void:
 	content.add_child(Pal.rich("[b]Огнестрел:[/b] %s\n[b]Ближний бой:[/b] %s (урон %d)\n[b]Одежда:[/b] %s · всего защиты %d\n%s\n[b]На счету пейджера:[/b] %d Су" % [
 		w, p.melee, D.ITEMS[p.melee].dmg, p.armor, G.armor_total(), slots, p.su], 9))
 	content.add_child(HSeparator.new())
-	var sb0 := Pal.button("Сортировка: %s" % G.SORT_NAMES[G.sort_mode.inv], func():
-		G.next_sort("inv")
-		_set_tab(tab), 8)
-	sb0.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	content.add_child(sb0)
-	var keys: Array = G.sort_items(p.inv.keys(), "inv")
+	var tabs: Array = G.item_tabs(p.inv.keys())
+	if not tabs.is_empty():
+		var tb_row := HFlowContainer.new()
+		tb_row.add_theme_constant_override("h_separation", 2)
+		tb_row.add_theme_constant_override("v_separation", 2)
+		content.add_child(tb_row)
+		if not (inv_tab in tabs):
+			inv_tab = ""
+		for t in [""] + tabs:
+			var tb := Pal.button("Всё" if t == "" else t, func():
+				inv_tab = t
+				_set_tab(tab), 8)
+			tb.toggle_mode = true
+			tb.button_pressed = t == inv_tab
+			tb_row.add_child(tb)
+	var keys: Array = G.sort_items(p.inv.keys())
 	for it in keys:
+		if inv_tab != "" and G.item_tab(it) != inv_tab:
+			continue
 		var info: Dictionary = D.ITEMS[it]
 		var row := HBoxContainer.new()
 		content.add_child(row)
@@ -328,7 +344,7 @@ func _quests() -> void:
 			prog = " Прогресс: %d/%d." % [j.have, j.need]
 		var st: String = "Выполнено, вернитесь к %s." % G.giver_name(j.giver, true) if j.state == "done" else "В работе." + prog
 		if j.kind == "escort":
-			st = "Бедолага идёт за Вами. Доведите его до Кальдеры." if j.state == "escort" else "Найдите выжившего: %s." % D.LOCS[j.poi].name
+			st = "Житель Подземки идёт за Вами. Доведите его до Кальдеры." if j.state == "escort" else "Найдите выжившего: %s." % D.LOCS[j.poi].name
 		var who := G.giver_name(j.giver)
 		content.add_child(Pal.rich("[color=%s][b]%s[/b] · %s · %d Су\n%s\n%s[/color]" % [Pal.hex(Pal.G5), j.title, who, j.su, j.text, st], 9))
 		content.add_child(HSeparator.new())

@@ -8,6 +8,7 @@ const LIST := [
 	{"id": "muezzin", "t1": "Богохульник", "t2": "собачьих богов", "d": "Убейте любого Муэдзина.", "r": "редкое"},
 	{"id": "den", "t1": "Там, где воют собаки", "t2": "срывая глотки", "d": "Посетите Собачье Логово.", "r": "обычное"},
 	{"id": "forest", "t1": "Оазис", "t2": "для упокоения", "d": "Посетите Запутанный Лес.", "r": "обычное"},
+	{"id": "bones", "t1": "Старые кости", "t2": "новые проблемы", "d": "Впервые встретьте гигантские кости в Пустоши.", "r": "обычное"},
 ]
 const PATH := "user://achievements.json"
 
@@ -68,11 +69,12 @@ static func add(key: String, n: int = 1) -> void:
 
 
 ## Плашка достижения: две строки названия (первая крупнее), описание, редкость.
-static func plate(a: Dictionary, got: bool, width: float = 300.0) -> PanelContainer:
+## small – маленькая плашка для списка; условие неполученного достижения скрыто.
+static func plate(a: Dictionary, got: bool, width: float = 300.0, small: bool = false) -> PanelContainer:
 	var rare: bool = a.r == "редкое"
 	var edge: Color = (Pal.R3 if rare else Pal.G4) if got else Pal.G1
 	var pc := PanelContainer.new()
-	pc.add_theme_stylebox_override("panel", Pal.box(Pal.G0 if got else Pal.BG, edge, 2, 6))
+	pc.add_theme_stylebox_override("panel", Pal.box(Pal.G0 if got else Pal.BG, edge, 1 if small else 2, 3 if small else 6))
 	pc.custom_minimum_size = Vector2(width, 0)
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var vb := VBoxContainer.new()
@@ -80,17 +82,24 @@ static func plate(a: Dictionary, got: bool, width: float = 300.0) -> PanelContai
 	pc.add_child(vb)
 	var top := HBoxContainer.new()
 	vb.add_child(top)
-	var l1 := Pal.label(a.t1, Pal.G5 if got else Pal.G2, 12, true)
+	var l1 := Pal.label(a.t1, Pal.G5 if got else Pal.G2, 9 if small else 12, true)
 	l1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l1.custom_minimum_size = Vector2(width - 40, 0)
 	top.add_child(l1)
-	var rl := Pal.label(a.r.to_upper(), (Pal.R3 if rare else Pal.G3) if got else Pal.G1, 7)
+	var rl := Pal.label(("★" if rare else "") if small else a.r.to_upper(), (Pal.R3 if rare else Pal.G3) if got else Pal.G1, 7)
 	rl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	top.add_child(rl)
-	vb.add_child(Pal.label(a.t2, Pal.G4 if got else Pal.G2, 9))
-	if a.d != "":
-		var d := Pal.label(a.d, Pal.G3 if got else Pal.G1, 8)
+	if a.t2 != "":
+		var l2 := Pal.label(a.t2, Pal.G4 if got else Pal.G2, 7 if small else 9)
+		l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l2.custom_minimum_size = Vector2(width - 12, 0)
+		vb.add_child(l2)
+	var dtext: String = a.d if got or not small else "Условие скрыто."
+	if dtext != "":
+		var d := Pal.label(dtext, Pal.G3 if got else Pal.G1, 7 if small else 8)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.custom_minimum_size = Vector2(width - 16, 0)
+		d.custom_minimum_size = Vector2(width - (10 if small else 16), 0)
 		vb.add_child(d)
 	if a.has("need") and not got:
 		vb.add_child(Pal.label("Прогресс: %d из %d" % [mini(count(a.count), int(a.need)), int(a.need)], Pal.G2, 7))

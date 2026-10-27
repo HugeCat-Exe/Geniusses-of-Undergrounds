@@ -85,7 +85,7 @@ func _ready() -> void:
 	add_child(red)
 
 	menu = VBoxContainer.new()
-	menu.position = Vector2(28, 190)
+	menu.position = Vector2(28, 184)
 	menu.custom_minimum_size = Vector2(220, 0)
 	add_child(menu)
 	menu.add_child(Pal.button("НОВАЯ ЗАПИСЬ ГЕНИЯ", func(): G.main().show_creator(), 11))
@@ -112,7 +112,7 @@ func _ready() -> void:
 		load_box.add_child(b)
 
 	var hint := Pal.label("Управление: мышь · WASD/стрелки – ходьба · E/Пробел – действие · Tab – пейджер", Pal.G2, 8)
-	hint.position = Vector2(24, 336)
+	hint.position = Vector2(24, 346)
 	add_child(hint)
 
 	# Женевьева, Институт по Этике
@@ -183,8 +183,14 @@ func _toggle_ach() -> void:
 		if Ach.has(a.id):
 			n += 1
 	vb.add_child(Pal.label("ДОСТИЖЕНИЯ · получено %d из %d" % [n, Ach.LIST.size()], Pal.G5, 10, true))
+	vb.add_child(Pal.label("Условия неполученных скрыты.", Pal.G2, 8))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	vb.add_child(grid)
 	for a in Ach.LIST:
-		vb.add_child(Ach.plate(a, Ach.has(a.id), 300.0))
+		grid.add_child(Ach.plate(a, Ach.has(a.id), 148.0, true))
 
 
 func _toggle_load() -> void:

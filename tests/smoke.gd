@@ -509,6 +509,7 @@ func run(main: Node) -> void:
 	await _smoke_091()
 	await _smoke_010()
 	await _smoke_011()
+	await _smoke_012()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -958,11 +959,8 @@ func _smoke_011() -> void:
 	_close_overlays()
 	var ry0 := int(G.p.rel.get("ryzhaya", 0))
 	print("SMOKE 011 gift ryzhaya ", G.give_gift("ryzhaya", "Серьги-капли").length() > 0, " rel ", ry0, " -> ", G.p.rel.ryzhaya)
-	# сортировка
-	for m in ["type", "price", "name"]:
-		G.sort_mode["inv"] = m
-		print("SMOKE 011 sort ", m, " ", G.sort_items(G.p.inv.keys(), "inv").slice(0, 4))
-	G.sort_mode["inv"] = "type"
+	# вкладки вещей
+	print("SMOKE 012 tabs ", G.item_tabs(G.p.inv.keys()), " ", G.sort_items(G.p.inv.keys()).slice(0, 4))
 	M.open_pager(1)
 	await _wait(0.6)
 	await _shot("87_inventory_sort")
@@ -1017,6 +1015,114 @@ func _smoke_011() -> void:
 	await _wait(0.6)
 
 
+func _smoke_012() -> void:
+	# уровни: до пятого, полоса и плашка
+	M.show_world("caldera2", "start")
+	await _wait(0.6)
+	G.p.level = 1
+	G.p.xp = 0
+	G.add_xp(640)
+	await _wait(0.8)
+	print("SMOKE 012 level ", G.p.level, " xp ", G.p.xp, "/", G.xp_need())
+	await _shot("93_level_up")
+	# десятый уровень: выбор навыка открывается сам
+	G.p.level = 9
+	G.p.xp = 0
+	G.add_xp(G.xp_need())
+	await _wait(1.0)
+	var sp = null
+	for c in M.overlay.get_children():
+		if c.has_method("_confirm"):
+			sp = c
+	print("SMOKE 012 skill pick open ", sp != null, " picks ", G.p.picks)
+	await _shot("94_skill_pick")
+	if sp:
+		var main0: String = G.p.main[0] if G.p.main.size() > 0 else "Поиск"
+		var b0 := G.skill_bonus(main0)
+		sp._choose(D.SKILLS.filter(func(x): return x[0] == main0)[0])
+		sp._confirm()
+		print("SMOKE 012 picked ", main0, " x", G.main_times(main0), " bonus ", b0, " -> ", G.skill_bonus(main0))
+	await _wait(0.6)
+	_close_overlays()
+	# вкладки у оружейника
+	var gst: Array = []
+	for it in D.ITEMS:
+		if D.ITEMS[it].type in ["weapon", "ammo", "mod"] and gst.size() < 40:
+			gst.append(it)
+	M.open_shop(gst, "ОРУЖЕЙНИК", "gunsmith")
+	await _wait(0.6)
+	await _shot("95_shop_tabs")
+	for c in M.overlay.get_children():
+		if c.has_method("_set_tab"):
+			c._set_tab("Патроны")
+	await _wait(0.4)
+	await _shot("96_shop_tab_ammo")
+	_close_overlays()
+	# внешность при первой встрече и «Осмотреть»
+	G.p.flags.erase("look_taxi")
+	M.open_dialogue("taxi_start")
+	await _wait(1.2)
+	await _shot("97_taxi_first_look")
+	_close_overlays()
+	M.open_dialogue("taxi_start")
+	await _wait(1.2)
+	await _shot("98_taxi_again")
+	_close_overlays()
+	M.open_dialogue("autodoc")
+	await _wait(1.0)
+	await _shot("99_autodoc")
+	_close_overlays()
+	# события Пустоши
+	M.show_map()
+	await _wait(0.6)
+	var wm = M.current
+	wm.walk("river" if "river" in G.p.known else G.p.known[0])
+	wm.walk_t = 0.4
+	for ev in [{"kind": "dogs", "n": 2}, {"kind": "story", "id": "riders"}, {"kind": "story", "id": "caravan"}, {"kind": "story", "id": "mini_bones"}]:
+		wm._fire(ev)
+		await _wait(0.8)
+		await _shot("100_ev_" + str(ev.get("id", "dogs")))
+		_close_overlays()
+		await _wait(0.3)
+	# две собаки по очереди
+	wm.ev_fight("pes", 2)
+	await _wait(1.0)
+	var c1 = _overlay_of_type("Combat")
+	if c1:
+		c1._end("win")
+	await _wait(1.0)
+	var c2 = _overlay_of_type("Combat")
+	print("SMOKE 012 chain second fight ", c2 != null)
+	if c2:
+		c2._end("win")
+	await _wait(0.6)
+	wm.walking = false
+	wm.paused = false
+	# гигантские кости
+	G.p.flags["mini_n"] = int(G.p.flags.get("mini_n", 0)) + 1
+	M.show_world("mini_bones", "enter")
+	await _wait(0.8)
+	await _shot("101_bones")
+	print("SMOKE 012 bones ach ", preload("res://scripts/ach.gd").has("bones"))
+	var hp0: int = G.p.hp
+	print("SMOKE 012 pray ", G.bones_pray("Гебура").left(60), " hp ", hp0, " -> ", G.p.hp, " done ", G.mini_done("bones_pray"))
+	print("SMOKE 012 pray other ", G.bones_pray("Бина").left(40))
+	M.open_dialogue("bones_shard_3")
+	await _wait(0.8)
+	await _shot("102_bones_shard")
+	_close_overlays()
+	print("SMOKE 012 shards ", G.p.inv.get("Обломок гигантской кости", 0))
+	M.show_title()
+	await _wait(1.2)
+	await _shot("103_title")
+	M.current._toggle_ach()
+	await _wait(0.6)
+	await _shot("104_title_ach")
+	M.current._toggle_ach()
+	M.show_world("waste", "road")
+	await _wait(0.6)
+
+
 func _close_overlays() -> void:
 	for c in M.overlay.get_children():
 		c.queue_free()
@@ -1041,7 +1147,7 @@ func _check_story() -> void:
 				print("SMOKE BAD LINK ", id, " -> ", t)
 				bad += 1
 	var mp = preload("res://scripts/maps.gd").new()
-	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "caldera_danahome", "mini_bus", "mini_dogs", "mini_camp", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2"]:
+	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "caldera_danahome", "mini_bus", "mini_dogs", "mini_camp", "mini_bones", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2"]:
 		for o in mp.get_map(m).objs:
 			if o.get("action", "") != "" and not o.action.begins_with("go:") and not nodes.has(o.action):
 				print("SMOKE BAD ACTION ", o.action)
