@@ -60,7 +60,7 @@ const Live := preload("res://scripts/live.gd")
 const MIND_WORLD := [
 	"Тени по углам стали чуть гуще. Вы стараетесь на них не смотреть.",
 	"Пол под ногами иногда пружинит. Вы делаете вид, что не замечаете.",
-	"Шаги за спиной повторяют ваши. Когда вы останавливаетесь, они тоже.",
+	"Шаги за спиной повторяют Ваши. Когда Вы останавливаетесь, они тоже.",
 	"Мир дрожит по краям, как картинка на старом экране. Нужен отдых. Или успокоительное.",
 	"Вы забываете, куда шли, а потом и зачем. Рассудок вот-вот лопнет.",
 ]
@@ -99,7 +99,7 @@ void fragment() {
 var tracker: RichTextLabel
 var wx_rect: ColorRect = null
 var wx := "clear"          # погода на этой карте сейчас
-var wx_amt := Vector2.ZERO # x — пыль, y — дождь (плавно)
+var wx_amt := Vector2.ZERO # x – пыль, y – дождь (плавно)
 var wx_ok := false         # прошёл проверку «Погоды» на эту бурю/дождь
 var acid_t := 0.0
 
@@ -781,7 +781,7 @@ func _on_combat_end(result: String) -> void:
 		"down":
 			var lost := int(G.p.su * 0.25)
 			G.p.su -= lost
-			G.say("Вы очнулись в пыли. Кто-то взломал ваш пейджер и перевёл себе %d Су." % lost)
+			G.say("Вы очнулись в пыли. Кто-то взломал Ваш пейджер и перевёл себе %d Су." % lost)
 			if m != null:
 				m.stun = 20.0
 				m.pos = m.home
@@ -1030,7 +1030,7 @@ func _draw() -> void:
 			if wk > 0.0:
 				tex = Art.person_tex(o.look, _walk_frame(wk))
 			off = Vector2(-8, 4 - 28 + (_breath(o.get("ph", 0.0)) if wk <= 0.0 else (-1.0 if _walk_frame(wk) == 1 else 0.0)))
-			# жители поворачиваются к Гению, когда он рядом (в катсцене — куда скажет сценарий)
+			# жители поворачиваются к Гению, когда он рядом (в катсцене – куда скажет сценарий)
 			if o.has("face"):
 				oflip = o.face
 			elif _cheb(p, ppos) <= 3:
@@ -1097,7 +1097,7 @@ func _draw() -> void:
 const READ_DIST := 3
 
 
-## Тайники, грузы, травы, коренья — то, что лежит и что можно забрать.
+## Тайники, грузы, травы, коренья – то, что лежит и что можно забрать.
 func _lootable(o: Dictionary) -> bool:
 	var a: String = str(o.get("action", ""))
 	return o.get("kind", "") in ["cache", "roots", "herb_ash", "herb_mint", "herb_pepper"] or a.begins_with("jobspot:") \
@@ -1197,7 +1197,7 @@ func _sched_put(o: Dictionary, t: Vector2i) -> void:
 	astar.set_point_solid(t, true)
 
 
-## Идти по отрезку распорядка: путь считаем один раз, место — по доле прошедшего времени.
+## Идти по отрезку распорядка: путь считаем один раз, место – по доле прошедшего времени.
 func _sched_walk(o: Dictionary, st: Dictionary, delta: float) -> void:
 	var lg: Dictionary = st.leg
 	var key := "%s|%s|%s" % [o.id, str(lg.a), str(lg.b)]
@@ -1274,7 +1274,7 @@ func _weather_change(first: bool) -> void:
 		if wx == "dust":
 			G.say(("Пыльная буря. Вы натягиваете ворот на лицо и щуритесь: видно чуть дальше вытянутой руки. " if r.ok else "Пыльная буря. Песок забивает глаза, дальше пары шагов ничего не видно. ") + G.roll_text(r))
 		else:
-			G.say(("Кислотный дождь. Вы знаете, как укрываться: капли почти не достают. " if r.ok else "Кислотный дождь. Капли жгут кожу, пока вы под открытым небом. ") + G.roll_text(r))
+			G.say(("Кислотный дождь. Вы знаете, как укрываться: капли почти не достают. " if r.ok else "Кислотный дождь. Капли жгут кожу, пока Вы под открытым небом. ") + G.roll_text(r))
 	_update_hud()
 
 
@@ -1314,7 +1314,7 @@ func _weather_tick(delta: float) -> void:
 			G.say("Кислота разъедает кожу: -%d ООЗ. Лучше переждать в укрытии." % hit)
 
 
-## Убитые лежат на месте боя до конца дня, вокруг — кровь (G.p.bodies, чистится в new_day).
+## Убитые лежат на месте боя до конца дня, вокруг – кровь (G.p.bodies, чистится в new_day).
 func _add_body(m: Dictionary) -> void:
 	if not G.p.has("bodies"):
 		G.p.bodies = []
@@ -1553,7 +1553,7 @@ func _update_hud() -> void:
 	s += "День %d · %s%s\n" % [p.day, G.clock(), "  [color=%s]ночь[/color]" % Pal.hex(Pal.G3) if G.is_night() else ""]
 	if waste and wx != "clear":
 		s += "[color=%s]%s[/color]\n" % [Pal.hex(Pal.R3 if wx == "acid" else Pal.G3), _cap(G.WEATHER_NAME[wx])]
-	var wtxt := "—"
+	var wtxt := "нет"
 	if p.weapon != "":
 		wtxt = "%s %d/%d · %d" % [p.weapon, p.mag, G.mag_size(p.weapon), G.ammo_left() - p.mag]
 	s += "Су %d\nОружие: %s" % [p.su, wtxt]
@@ -1565,9 +1565,9 @@ func _update_hud() -> void:
 	for i in mini(4, tl.size()):
 		tt += "[right][color=%s]▪ %s[/color][/right]\n" % [Pal.hex(Pal.G4), tl[i]]
 	if tl.size() > 4:
-		tt += "[right][color=%s]и ещё %d — в пейджере[/color][/right]" % [Pal.hex(Pal.G3), tl.size() - 4]
+		tt += "[right][color=%s]и ещё %d – в пейджере[/color][/right]" % [Pal.hex(Pal.G3), tl.size() - 4]
 	tracker.text = tt
-	# пороги рассудка: при каждом новом падении — тревожная строка
+	# пороги рассудка: при каждом новом падении – тревожная строка
 	var st := Live.mind_step()
 	if st > int(p.flags.get("mind_step", 0)):
 		G.say("[Рассудок %d] %s" % [int(p.mind), MIND_WORLD[st - 1]])

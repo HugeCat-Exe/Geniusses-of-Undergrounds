@@ -216,7 +216,7 @@ func show_creator() -> void:
 	ui.add_child(current)
 
 
-## Войти в мир (на карту map). spawn: имя точки появления или пусто — позиция из сохранения.
+## Войти в мир (на карту map). spawn: имя точки появления или пусто – позиция из сохранения.
 func show_map() -> void:
 	_clear()
 	G.p.map = "worldmap"
@@ -360,7 +360,7 @@ func open_shop(stock: Array, title: String = "ЛАВКА", owner: String = "") -
 	overlay.add_child(s)
 
 
-## Плашка сверху экрана: достижение (rarity — его редкость) или оповещение (rarity == "").
+## Плашка сверху экрана: достижение (rarity – его редкость) или оповещение (rarity == "").
 func toast(t1: String, t2: String, rarity: String = "", sound: String = "notify") -> void:
 	var Ach := preload("res://scripts/ach.gd")
 	var a := {"t1": t1, "t2": t2, "d": "Достижение получено" if rarity != "" else "", "r": rarity}
@@ -381,7 +381,7 @@ func open_book(item: String) -> void:
 	overlay.add_child(bv)
 
 
-## Бой на отдельном экране. on_end(result: String) — "win", "fled", "down", "dead".
+## Бой на отдельном экране. on_end(result: String) – "win", "fled", "down", "dead".
 func start_combat(enemy_id: String, on_end: Callable) -> void:
 	var cb := Combat.new()
 	cb.enemy_id = enemy_id
@@ -404,7 +404,7 @@ func _battle_end(result: String, win_node: String, job_id: String) -> void:
 		"down":
 			var lost := int(G.p.su * 0.25)
 			G.p.su -= lost
-			G.say("Гений очнулся в пыли. Кто-то взломал ваш пейджер и перевёл себе %d Су." % lost)
+			G.say("Гений очнулся в пыли. Кто-то взломал Ваш пейджер и перевёл себе %d Су." % lost)
 		"win":
 			if job_id != "":
 				G.job_found(job_id)
@@ -456,7 +456,7 @@ func explore_now() -> void:
 			txt = "Через час ходьбы ветер доносит запах псины и пота. Из-за руин выходит %s." % D.ENEMIES[r.enemy].name.to_lower()
 			var chs: Array = [{"t": "К бою!", "fx": [["battle", r.enemy]], "next": "end"}]
 			if warn:
-				txt = "[color=%s][Паранойя][/color] [i]Это ловушка. Не иди туда.[/i]\n\nВы замираете за обломком стены. Впереди %s ждёт в засаде, но вас не заметил." % [red, D.ENEMIES[r.enemy].name.to_lower()]
+				txt = "[color=%s][Паранойя][/color] [i]Это ловушка. Не иди туда.[/i]\n\nВы замираете за обломком стены. Впереди %s ждёт в засаде, но Вас не заметил." % [red, D.ENEMIES[r.enemy].name.to_lower()]
 				chs = [{"t": "Обойти засаду стороной", "next": "end"}, {"t": "Напасть первым", "fx": [["battle", r.enemy]], "next": "end"}]
 			G.temp_nodes["explore"] = {"who": "", "text": txt, "choices": chs}
 			open_dialogue("explore")

@@ -112,7 +112,7 @@ func _ready() -> void:
 			_walk.call_deferred(res, true)
 	G.logged.connect(_on_log)
 	_refresh_hud()
-	_on_log("Клик по точке — куда идти. Пешком тратится время и сытость, такси стоит Су.")
+	_on_log("Клик по точке – куда идти. Пешком тратится время и сытость, такси стоит Су.")
 
 
 func _explore() -> void:
@@ -405,7 +405,7 @@ func enter(id: String) -> void:
 		"caldera":
 			G.main().show_world("waste", "road")
 		_:
-			# Открытые места — настоящие карты, по ним можно ходить.
+			# Открытые места – настоящие карты, по ним можно ходить.
 			G.main().show_world("poi_" + id, "enter")
 
 

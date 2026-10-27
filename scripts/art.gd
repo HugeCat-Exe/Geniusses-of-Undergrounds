@@ -238,7 +238,7 @@ func _wall(kind: String, hgt: int, variant: int) -> ImageTexture:
 	for y in TH + hgt:
 		for x in TW:
 			var cx := x + 0.5 - TW / 2.0
-			# верхняя грань — ромб в [0, TH]
+			# верхняя грань – ромб в [0, TH]
 			if absf(cx) / (TW / 2.0) + absf(y + 0.5 - TH / 2.0) / (TH / 2.0) <= 1.0:
 				var c := top_l
 				if kind == "ruin" and rng.randf() < 0.2:
@@ -752,7 +752,7 @@ func _prop(kind: String) -> ImageTexture:
 
 
 # ---------------- Большие предметы ----------------
-## След предмета w×h клеток; нижняя вершина следа — на нижней кромке картинки (так их ставит world.gd).
+## След предмета w×h клеток; нижняя вершина следа – на нижней кромке картинки (так их ставит world.gd).
 
 func _foot(w: int, h: int, top: int) -> Dictionary:
 	var cw := (w + h) * 16
@@ -937,7 +937,7 @@ func _big_ryhouse() -> Canvas:
 	var y0 := 0.15
 	var y1 := 1.85
 	var z := 26.0
-	# левый бок — к камере, с дверью и окном
+	# левый бок – к камере, с дверью и окном
 	cv.poly(PackedVector2Array([_ip(o, x0, y1, z), _ip(o, x1, y1, z), _ip(o, x1, y1, 0), _ip(o, x0, y1, 0)]), 3)
 	# правый торец
 	cv.poly(PackedVector2Array([_ip(o, x1, y1, z), _ip(o, x1, y0, z), _ip(o, x1, y0, 0), _ip(o, x1, y1, 0)]), 2)
@@ -1277,7 +1277,7 @@ func _portrait(look: Dictionary) -> ImageTexture:
 
 # ---------------- Враги для экрана боя ----------------
 
-## Возвращает {tex, parts: {имя части: Rect2}} — прямоугольники для подсветки цели.
+## Возвращает {tex, parts: {имя части: Rect2}} – прямоугольники для подсветки цели.
 func enemy_art(kind: String) -> Dictionary:
 	if cache.has("enemy_" + kind):
 		return cache["enemy_" + kind]

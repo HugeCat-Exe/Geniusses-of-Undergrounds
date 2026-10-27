@@ -35,7 +35,7 @@ func _ready() -> void:
 	add_child(hb)
 	limited = G.shop_who == "librarian"
 	if not limited:
-		var hs := Pal.label("ПРОДАТЬ (половина цены, трофеи — полная)", Pal.G3, 9, true)
+		var hs := Pal.label("ПРОДАТЬ (половина цены, трофеи – полная)", Pal.G3, 9, true)
 		hs.position = Vector2(330, 44)
 		add_child(hs)
 	var sort_b := Pal.button("Сортировка: %s" % G.SORT_NAMES[G.sort_mode.shop], func():
@@ -66,7 +66,7 @@ func _ready() -> void:
 			buy_box = vb
 		else:
 			sell_box = vb
-	# Описание предмета под курсором: у оружия — характеристики и текст из хранилища.
+	# Описание предмета под курсором: у оружия – характеристики и текст из хранилища.
 	about = Pal.rich("[color=%s]Наведите курсор на предмет, чтобы прочитать описание.[/color]" % Pal.hex(Pal.G3), 8)
 	about.fit_content = false
 	about.position = Vector2(44, 250)
@@ -107,11 +107,11 @@ func _fill() -> void:
 	for it in G.sort_items(stock, "shop"):
 		var price: int = _buy_price(it)
 		var deal: bool = it == G.p.get("deal_today", "")
-		var line := "%s — %d Су%s" % [it, price, "  ★ для своих −25%" if deal else ""]
+		var line := "%s – %d Су%s" % [it, price, "  ★ для своих −25%" if deal else ""]
 		if wander:
 			var base: int = G.price(D.ITEMS[it].price, it)
 			var cmp := "дешевле рынка" if price < base * 0.95 else ("дороже рынка" if price > base * 1.05 else "как на рынке")
-			line = "%s ×%d — %d Су · %s" % [it, G.wander_qty(it), price, cmp]
+			line = "%s ×%d – %d Су · %s" % [it, G.wander_qty(it), price, cmp]
 		var b := Pal.button(line, _buy.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.mouse_entered.connect(_show_about.bind(it))
@@ -127,7 +127,7 @@ func _fill() -> void:
 		if info.type in ["quest", "tool"]:
 			continue
 		var takes: bool = G.buy_k(G.shop_who, it) > 0.0
-		var line := "%s ×%d — %d Су" % [it, G.p.inv[it], _sell_price(it)] if takes else "%s ×%d — %s" % [it, G.p.inv[it], D.REFUSE_TEXT.get(G.shop_who, "не берёт")]
+		var line := "%s ×%d – %d Су" % [it, G.p.inv[it], _sell_price(it)] if takes else "%s ×%d – %s" % [it, G.p.inv[it], D.REFUSE_TEXT.get(G.shop_who, "не берёт")]
 		var b := Pal.button(line, _sell.bind(it), 9)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.mouse_entered.connect(_show_about.bind(it))

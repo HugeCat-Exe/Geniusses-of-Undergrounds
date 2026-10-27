@@ -192,7 +192,7 @@ func _show(id: String) -> void:
 
 ## Ночью у жителей другое настроение.
 const NIGHT_MOOD := {
-	"guard": "Страж зевает в кулак и светит фонарём вам в лицо дольше, чем нужно.",
+	"guard": "Страж зевает в кулак и светит фонарём Вам в лицо дольше, чем нужно.",
 	"beggar": "Тимоха греет руки над жаровней и говорит тише обычного, будто боится разбудить ярус.",
 	"smoker": "Лёва уже не курит у лестницы, а пьёт в «Клыке». Глаза мутные, язык развязался.",
 	"ian": "Ян сидит у стойки, крутит пустой стакан и явно не торопится домой.",
@@ -201,14 +201,14 @@ const NIGHT_MOOD := {
 	"surgeon": "Кост не спит: под глазами тени, на халате свежие пятна. Ночью к нему приходят с самым страшным.",
 	"cook": "Грета домывает котёл. Ночью она мягче: остатки похлёбки всё равно пропадут.",
 	"bartender": "Ночью в «Клыке» людно и душно. Гарри отвечает через плечо, разливая сразу на троих.",
-	"ryzhaya": "Ночью Рыжая другая: тише, медленнее, и смотрит на вас дольше обычного.",
+	"ryzhaya": "Ночью Рыжая другая: тише, медленнее, и смотрит на Вас дольше обычного.",
 	"old": "Ефим не спит. Говорит, что ночью Подземка слышна лучше.",
-	"mistel": "Ода выглядывает из-за двери в накинутом пальто. Видно, что вы её разбудили.",
+	"mistel": "Ода выглядывает из-за двери в накинутом пальто. Видно, что Вы её разбудили.",
 	"patrol": "Дана в ночном обходе: дубинка в руке, фонарь на плече, взгляд по углам.",
 	"miron": "Мирон сидит у жаровни с кружкой. Ночью он вспоминает молодость охотнее.",
 	"pip": "Пип ночью не прячется: шныряет у жаровни и шепчет, кто куда пошёл.",
 	"librarian": "Феликс читает при огарке и откладывает книгу неохотно.",
-	"taxi": "Арсен дремлет за рулём и просыпается, только когда вы стучите по крыше.",
+	"taxi": "Арсен дремлет за рулём и просыпается, только когда Вы стучите по крыше.",
 }
 
 ## Как жители относятся к Гению из-за его фракции (D.FACTIONS[...].rel).
@@ -232,7 +232,7 @@ func _faction_line(who: String) -> String:
 	if r >= 4:
 		return "%s видит нашивку «%s» и заметно теплеет: %s с вашими давно заодно." % [nm, mine, theirs]
 	if r >= 2:
-		return "%s кивает на вашу нашивку «%s»: %s таких уважают." % [nm, mine, theirs]
+		return "%s кивает на Вашу нашивку «%s»: %s таких уважают." % [nm, mine, theirs]
 	return ""
 
 
@@ -292,11 +292,11 @@ func _dynamic_choices(n: Dictionary) -> Array:
 			if not psy and G.perks_from(tr).size() > 0:
 				t = "Реконструкция: «%s», уйдёт «%s» (%d Су)" % [tr, ", ".join(G.perks_from(tr)), cost]
 			if used:
-				res.append({"t": t + " — только завтра", "next": current_id})
+				res.append({"t": t + " – только завтра", "next": current_id})
 			elif G.p.su >= cost:
 				res.append({"t": t, "fx": [["cure", n.cure, tr]], "next": "stranger_cure_result" if psy else "cure_result"})
 			else:
-				res.append({"t": t + " — не хватает Су", "next": current_id})
+				res.append({"t": t + " – не хватает Су", "next": current_id})
 	if n.has("poi"):
 		for j in G.p.jobs:
 			if j.kind == "find" and j.poi == n.poi and j.state == "active" and not j.get("spot", false):
@@ -310,7 +310,7 @@ func _dynamic_choices(n: Dictionary) -> Array:
 			res.append({"t": "Получить 90 Су за заказ №117", "fx": [["su", 90], ["quest", "dogs", "closed"]], "next": "board"})
 		for o in G.board_offers():
 			var who := G.giver_name(o.giver)
-			res.append({"t": "Взять: %s — %s (%d Су)" % [o.title, who, o.su], "fx": [["take_offer", o]], "next": "board"})
+			res.append({"t": "Взять: %s – %s (%d Су)" % [o.title, who, o.su], "fx": [["take_offer", o]], "next": "board"})
 		for sp in G.special_offers():
 			if sp[0] != null:
 				res.append({"t": "★ Особое: %s (%d Су)" % [sp[0].title, sp[0].su], "fx": [["take_offer", sp[0]]], "next": "board"})
@@ -326,7 +326,7 @@ func _craft_text(giver: String) -> String:
 	var s := ""
 	for r in D.CRAFT[giver]:
 		var ok: bool = G.craft_can(r)
-		s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5 if ok else Pal.G2), r[0], G.craft_need(r)]
+		s += "\n[color=%s]%s[/color] – %s" % [Pal.hex(Pal.G5 if ok else Pal.G2), r[0], G.craft_need(r)]
 	return s
 
 
@@ -336,13 +336,13 @@ func _board_text() -> String:
 	if offers.is_empty():
 		s += "\nСегодня всё разобрали. Загляните завтра."
 	for o in offers:
-		s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5), o.title, o.text]
+		s += "\n[color=%s]%s[/color] – %s" % [Pal.hex(Pal.G5), o.title, o.text]
 	s += "\n\n[color=%s][b]★ ОСОБЫЕ ЗАДАНИЯ[/b][/color]" % Pal.hex(Pal.R3)
 	var sps := G.special_offers()
 	var shown := 0
 	for sp in sps:
 		if sp[0] != null:
-			s += "\n[color=%s]%s[/color] — %s" % [Pal.hex(Pal.G5), sp[0].title, sp[0].text]
+			s += "\n[color=%s]%s[/color] – %s" % [Pal.hex(Pal.G5), sp[0].title, sp[0].text]
 			shown += 1
 		else:
 			s += "\n[color=%s][ДОСТУП ЗАКРЫТ] %s[/color]" % [Pal.hex(Pal.G2), sp[1]]
@@ -353,7 +353,7 @@ func _board_text() -> String:
 	for j in G.p.jobs:
 		mine += 1
 	if mine > 0:
-		s += "\n\n[color=%s]Ваших подработок: %d. Подробности — в пейджере, вкладка «Задачи».[/color]" % [Pal.hex(Pal.G3), mine]
+		s += "\n\n[color=%s]Ваших подработок: %d. Подробности – в пейджере, вкладка «Задачи».[/color]" % [Pal.hex(Pal.G3), mine]
 	return s
 
 
@@ -374,7 +374,7 @@ func _add_choice(label: String, cb: Callable) -> void:
 	choices.add_child(b)
 
 
-## Сдвиг сложностей под шкалу Б+В: модификаторы стали крупнее, проверки — на 2 строже.
+## Сдвиг сложностей под шкалу Б+В: модификаторы стали крупнее, проверки – на 2 строже.
 const DC_SHIFT := 2
 
 
@@ -616,10 +616,10 @@ func _cure(kind: String, tr: String) -> String:
 		var r := G.roll("Воля", 12)
 		if r.ok:
 			G.p.got_psy.erase(tr)
-			res = "%s\n\nНезнакомец кладёт ладони вам на виски. Четыре часа вы слушаете, как лес дышит. Потом что-то тонкое и холодное вытягивается из затылка, и в голове становится непривычно тихо.\n\n— Готово. Черты «%s» больше нет. Не приноси её обратно.\n\n[color=#7ff07a](Черта снята)[/color]" % [G.roll_text(r), tr]
+			res = "%s\n\nНезнакомец кладёт ладони Вам на виски. Четыре часа Вы слушаете, как лес дышит. Потом что-то тонкое и холодное вытягивается из затылка, и в голове становится непривычно тихо.\n\n– Готово. Черты «%s» больше нет. Не приноси её обратно.\n\n[color=#7ff07a](Черта снята)[/color]" % [G.roll_text(r), tr]
 		else:
 			var m := G.hurt(15, "mind")
-			res = "%s\n\nВы держитесь сколько можете, но голос внутри цепляется крепче. Незнакомец отнимает руки.\n\n— Не сегодня. Она вросла глубже, чем я думал. Приходи завтра.\n\n[color=#ff6650](Черта «%s» осталась, −%d ООР. Су не вернуть.)[/color]" % [G.roll_text(r), tr, m]
+			res = "%s\n\nВы держитесь сколько можете, но голос внутри цепляется крепче. Незнакомец отнимает руки.\n\n– Не сегодня. Она вросла глубже, чем я думал. Приходи завтра.\n\n[color=#ff6650](Черта «%s» осталась, −%d ООР. Су не вернуть.)[/color]" % [G.roll_text(r), tr, m]
 	else:
 		if randf() < 0.65:
 			G.p.flags["autodoc_cures"] = int(G.p.flags.get("autodoc_cures", 0)) + 1
@@ -701,7 +701,7 @@ func _fx(list: Array) -> void:
 				var tr: String = G.p.got_phys[G.p.got_phys.size() - 1]
 				if true:
 					G.p.got_phys.erase(tr)
-					injury_result = "Кост работает молча и долго. Когда вы приходите в себя, травмы «%s» больше нет.\n\n— Не благодари. Плати." % tr
+					injury_result = "Кост работает молча и долго. Когда Вы приходите в себя, травмы «%s» больше нет.\n\n– Не благодари. Плати." % tr
 				else:
 					G.p.mind = maxi(1, G.p.mind - 10)
 					injury_result = "Что-то идёт не так. Вы просыпаетесь посреди операции и видите свои внутренности. Травма «%s» осталась.\n\n[color=#ff6650](-10 ООР)[/color]" % tr
@@ -736,7 +736,7 @@ func _fx(list: Array) -> void:
 				for u in D.SHOP_UNLOCKS.get(f[1], []):
 					if G.flag("job_done_" + u[0]):
 						stock.append(u[1])
-				# в Кальдере не продают оружие мощнее 35: лучшее — крафтом или в других Подземках
+				# в Кальдере не продают оружие мощнее 35: лучшее – крафтом или в других Подземках
 				stock = stock.filter(func(it): return D.ITEMS[it].type != "weapon" or int(D.ITEMS[it].dmg) <= D.CALDERA_MAX_DMG)
 				if f[1] == "library":
 					stock = G.lib_stock()

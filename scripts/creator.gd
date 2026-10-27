@@ -9,7 +9,7 @@ const HELP := [
 	"Выберите вид из Реестра рас. Наведите курсор, чтобы прочесть справку.",
 	"Укажите родную фракцию. Система покажет, как к Вам будут относиться другие.",
 	"Возрастная категория определяет число черт, которые Вы обязаны внести.",
-	"Подземка, в которой Вы появились на свет. Актуальный список — в Реестре Подземок.",
+	"Подземка, в которой Вы появились на свет. Актуальный список – в Реестре Подземок.",
 	"Внесите внешние черты согласно «Справочнику Занимательных Черт».",
 	"Внесите черты характера. Гении должны знать, чего ожидать друг от друга.",
 	"Отметьте основные навыки: к ним добавляется бонус удачи (мод УДЧ + 1, не меньше +1). Два навыка, три при ИНТ 16+ («Эрудит»).",
@@ -320,7 +320,7 @@ func _verdict() -> String:
 			wv = v
 			worst = k
 	return "Позывной: %s\nИмя: %s\n%s, %s, %s\nФракция: %s\nРодом из: %s\n\nСильная сторона: %s (%s).\nСлабое место: %s (%s).\n\n«%s»" % [
-		c.callsign, c.name if c.name != "" else "—", c.race, "мужчина" if c.sex == "М" else "женщина",
+		c.callsign, c.name if c.name != "" else "нет", c.race, "мужчина" if c.sex == "М" else "женщина",
 		c.age.to_lower(), D.FACTIONS[c.faction].short, c.birth, best, D.grade(bv), worst, D.grade(wv),
 		c.motive if c.motive != "" else "Без ключевой фразы"]
 
@@ -364,7 +364,7 @@ static func sheet_text(ch: Dictionary, creating: bool) -> String:
 	var tr: Array = []
 	for t in ch.phys + ch.psy:
 		tr.append("[url=%s]%s[/url]" % [t, t])
-	s += "\n[color=%s]Черты:[/color] %s\n" % [Pal.hex(Pal.G3), ", ".join(tr) if tr.size() > 0 else "—"]
+	s += "\n[color=%s]Черты:[/color] %s\n" % [Pal.hex(Pal.G3), ", ".join(tr) if tr.size() > 0 else "нет"]
 	if creating:
-		s += "[color=%s]Основные навыки:[/color] %s" % [Pal.hex(Pal.G3), ", ".join(ch.main) if ch.main.size() > 0 else "—"]
+		s += "[color=%s]Основные навыки:[/color] %s" % [Pal.hex(Pal.G3), ", ".join(ch.main) if ch.main.size() > 0 else "нет"]
 	return s

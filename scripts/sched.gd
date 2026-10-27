@@ -4,7 +4,7 @@ extends RefCounted
 ## через который он проходит, а при входе на карту стоит там, где должен быть сейчас.
 
 ## Переходы между картами: [карта A, точка выхода на A, карта B, точка прихода на B].
-## Обратно — наоборот. Точки — это spawns карт (там же появляется и Гений).
+## Обратно – наоборот. Точки – это spawns карт (там же появляется и Гений).
 const LINKS := [
 	["caldera1", "up2", "caldera2", "down1"],
 	["caldera2", "up3", "caldera3", "down2"],
@@ -12,7 +12,7 @@ const LINKS := [
 	["caldera1", "danabooth", "caldera_danahome", "door"],
 ]
 
-## Днём и ночью. Четвёртый элемент "hide" — дошёл до двери своего дома и скрылся внутри.
+## Днём и ночью. Четвёртый элемент "hide" – дошёл до двери своего дома и скрылся внутри.
 const ROUTINE := {
 	"kid": {"day": ["caldera1", 13, 3], "night": ["caldera1", 13, 2, "hide"]},
 	"smoker": {"day": ["caldera1", 4, 5], "night": ["caldera3", 16, 4]},
@@ -99,7 +99,7 @@ static func _stagger(id: String, salt: String) -> int:
 	return absi(hash(id + salt)) % 40
 
 
-## Где житель сейчас: {map, cell, walk: bool, leg, f (доля пройденного отрезка)}; map == "" — не виден.
+## Где житель сейчас: {map, cell, walk: bool, leg, f (доля пройденного отрезка)}; map == "" – не виден.
 static func state(id: String) -> Dictionary:
 	var r: Dictionary = ROUTINE[id]
 	var m := float(G.p.hour) * 60.0 + float(G.p.get("minf", 0.0))

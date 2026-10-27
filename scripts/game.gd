@@ -143,15 +143,15 @@ func active_buffs() -> Array:
 	return res
 
 
-## Текст книги: у учебников — из data.gd, у справочников собирается из того, что есть в игре.
+## Текст книги: у учебников – из data.gd, у справочников собирается из того, что есть в игре.
 func book_text(item: String) -> String:
 	var bk: Dictionary = D.BOOKS[item]
 	match bk.get("lore", ""):
 		"herbs":
 			var t := "Что растёт у Кальдеры и зачем это рвать.\n"
 			for h in D.HERBS:
-				t += "\n• [b]%s[/b] — %s" % [h, D.ITEMS[h].desc]
-			t += "\n\nНе ешьте то, что светится. Не нюхайте то, что пахнет мёдом и кровью: это хищный цветок, и он уже нюхает вас."
+				t += "\n• [b]%s[/b] – %s" % [h, D.ITEMS[h].desc]
+			t += "\n\nНе ешьте то, что светится. Не нюхайте то, что пахнет мёдом и кровью: это хищный цветок, и он уже нюхает Вас."
 			return t
 		"beasts":
 			var t2 := "Кого можно встретить за воротами и как с ним быть.\n"
@@ -161,7 +161,7 @@ func book_text(item: String) -> String:
 				if seen.has(en.name):
 					continue
 				seen[en.name] = true
-				t2 += "\n• [b]%s[/b] — %s" % [en.name, str(en.get("intro", "")).split(".")[0] + "."]
+				t2 += "\n• [b]%s[/b] – %s" % [en.name, str(en.get("intro", "")).split(".")[0] + "."]
 			return t2
 		"sefiry":
 			var t3 := "Одиннадцать Сефир держат Подземки, пока Пустошь путается сама в себе. Каждая создаёт души по-своему.\n"
@@ -282,7 +282,7 @@ func perks(c: Dictionary = p) -> Array:
 
 
 ## Свойство постсмертия: его не было при создании, оно появилось от травм.
-## Возвращает травмы, из-за которых оно есть (пусто — врождённое).
+## Возвращает травмы, из-за которых оно есть (пусто – врождённое).
 func perk_cause(name: String, c: Dictionary = p) -> Array:
 	var base := c.duplicate()
 	base.got_phys = []
@@ -393,7 +393,7 @@ func lib_stock() -> Array:
 	return pick.filter(func(b): return not flag("lib_%d_%s" % [p.day, b]))
 
 
-## Множитель выкупа у хозяина лавки: 0 — не возьмёт вовсе.
+## Множитель выкупа у хозяина лавки: 0 – не возьмёт вовсе.
 func buy_k(who: String, item: String) -> float:
 	var r: Dictionary = D.BUY_RATES.get(who, {})
 	var t: String = D.ITEMS[item].type
@@ -415,21 +415,21 @@ func sell_price(base: int) -> int:
 
 ## Приветствие по отношению: от «прикидывает, где закопать» до «садись, рассказывай».
 const REL_GREET := {
-	-2: "{name} смотрит на вас так, будто прикидывает, где закопать тело. Цены для вас выросли.",
-	-1: "Вас встречают холодно, без улыбки. Здесь вам не рады.",
+	-2: "{name} смотрит на Вас так, будто прикидывает, где закопать тело. Цены для Вас выросли.",
+	-1: "Вас встречают холодно, без улыбки. Здесь Вам не рады.",
 	1: "Вас узнают и коротко кивают.",
 	2: "{name} улыбается: «А, это ты. Заходи, свои».",
-	3: "{name} по-настоящему рад{а} вам: «Садись, рассказывай. Живой, и слава Сефирам».",
+	3: "{name} по-настоящему рад{а} Вам: «Садись, рассказывай. Живой, и слава Сефирам».",
 }
 ## Мелкие услуги для приятелей: раз в день, не всегда.
 const REL_FAVOR := {
-	"cook": ["feed", 25, "Грета молча ставит перед вами миску: «За счёт дома. Худой ты какой-то». (+25 сытости)"],
-	"surgeon": ["item", "Бинт", "Кост, не глядя, кидает вам бинт: «Чтобы не шёл ко мне с каждой царапиной». (+1 Бинт)"],
-	"gunsmith": ["item", "Пистолетные патроны", "Сава подталкивает к вам пачку патронов: «Бракованные гильзы, но стреляют». (+1 Пистолетные патроны)"],
+	"cook": ["feed", 25, "Грета молча ставит перед Вами миску: «За счёт дома. Худой ты какой-то». (+25 сытости)"],
+	"surgeon": ["item", "Бинт", "Кост, не глядя, кидает Вам бинт: «Чтобы не шёл ко мне с каждой царапиной». (+1 Бинт)"],
+	"gunsmith": ["item", "Пистолетные патроны", "Сава подталкивает к Вам пачку патронов: «Бракованные гильзы, но стреляют». (+1 Пистолетные патроны)"],
 	"bartender": ["item", "Самогон", "Гарри наливает и подвигает стакан: «Этот за мой счёт». (+1 Самогон)"],
-	"trader": ["item", "Сухпаёк", "Бартоломей суёт вам сухпаёк: «Просрочен, но тебе можно». (+1 Сухпаёк)"],
-	"old": ["calm", 6, "Ефим кладёт сухую ладонь вам на плечо, и в голове становится тише. (+6 ООР)"],
-	"mistel": ["feed", 15, "Ода угощает вас лепёшкой: «Дети велели передать». (+15 сытости)"],
+	"trader": ["item", "Сухпаёк", "Бартоломей суёт Вам сухпаёк: «Просрочен, но тебе можно». (+1 Сухпаёк)"],
+	"old": ["calm", 6, "Ефим кладёт сухую ладонь Вам на плечо, и в голове становится тише. (+6 ООР)"],
+	"mistel": ["feed", 15, "Ода угощает Вас лепёшкой: «Дети велели передать». (+15 сытости)"],
 }
 
 
@@ -510,7 +510,7 @@ func roll(skill: String, dc: int, cat: String = "check") -> Dictionary:
 	return {"d": d, "bonus": b, "total": d + b, "dc": dc, "ok": ok, "skill": skill, "cursed": cursed}
 
 
-## С какого значения к20 считается критом: «Везунчик» — с 19.
+## С какого значения к20 считается критом: «Везунчик» – с 19.
 func crit_from() -> int:
 	return 19 if has_perk("Везунчик") else 20
 
@@ -524,7 +524,7 @@ func roll_text(r: Dictionary) -> String:
 	var res := "УСПЕХ" if r.ok else "ПРОВАЛ"
 	if r.get("cursed", false):
 		res = "ПРОВАЛ · сработало «Проклятый»"
-	return "[%s: к20=%d %+d = %d против %d — %s]" % [r.skill, r.d, r.bonus, r.total, r.dc, res]
+	return "[%s: к20=%d %+d = %d против %d – %s]" % [r.skill, r.d, r.bonus, r.total, r.dc, res]
 
 
 ## Как фракция NPC относится к Гению (матрица «К Вам будут относиться»).
@@ -585,7 +585,7 @@ func death_saves() -> Dictionary:
 		if r.ok:
 			ok += 1
 	var res := {"alive": ok >= 2, "ok": ok, "rolls": rolls, "injury": "", "fragile": false}
-	# «Хрупкий»: травма на ступень тяжелее — даже чистый успех оставляет след, а с двумя успехами ещё и рана.
+	# «Хрупкий»: травма на ступень тяжелее – даже чистый успех оставляет след, а с двумя успехами ещё и рана.
 	var fragile := has_perk("Хрупкий")
 	if fragile and ok == 2:
 		var free_parts: Array = ["Голова", "Руки", "Ноги"].filter(func(w): return not (w in p.wounds))
@@ -783,16 +783,16 @@ func gift_points(who: String, item: String) -> int:
 
 
 const GIFT_LINES := {
-	"patrol": {6: "Дана вертит в пальцах «{item}», проверяет, и впервые за долгое время улыбается по-настоящему.\n\n— Вот это вещь. В обходе пригодится. Спасибо, правда.",
-		-2: "Дана поднимает бровь.\n\n— И куда я это надену? На дубинку? Ладно... спасибо, наверное."},
-	"ryzhaya": {6: "Рыжая ахает, тут же примеряет «{item}» и смотрится в мутное стекло бутылки.\n\n— Ну всё, теперь я самая красивая в «Клыке». Даже не спорь.",
-		-2: "Рыжая крутит «{item}» и хмыкает.\n\n— Практично. Я таких полный карман натаскала. Но раз ты принёс{pa}... оставлю."},
+	"patrol": {6: "Дана вертит в пальцах «{item}», проверяет, и впервые за долгое время улыбается по-настоящему.\n\n– Вот это вещь. В обходе пригодится. Спасибо, правда.",
+		-2: "Дана поднимает бровь.\n\n– И куда я это надену? На дубинку? Ладно... спасибо, наверное."},
+	"ryzhaya": {6: "Рыжая ахает, тут же примеряет «{item}» и смотрится в мутное стекло бутылки.\n\n– Ну всё, теперь я самая красивая в «Клыке». Даже не спорь.",
+		-2: "Рыжая крутит «{item}» и хмыкает.\n\n– Практично. Я таких полный карман натаскала. Но раз ты принёс{pa}... оставлю."},
 }
 const GIFT_GENERIC := {
-	6: "{name} долго смотрит на «{item}», потом бережно прячет подарок за пазуху.\n\n— Вот уж угадал{pa}. Спасибо. Честно, спасибо.",
-	3: "{name} принимает «{item}» с улыбкой.\n\n— Спасибо. Приятно, что вспомнил{pa}.",
-	1: "{name} вежливо кивает и убирает «{item}».\n\n— Спасибо.",
-	-2: "{name} неловко держит «{item}».\n\n— Э-э... спасибо. Наверное, кому-нибудь пригодится.",
+	6: "{name} долго смотрит на «{item}», потом бережно прячет подарок за пазуху.\n\n– Вот уж угадал{pa}. Спасибо. Честно, спасибо.",
+	3: "{name} принимает «{item}» с улыбкой.\n\n– Спасибо. Приятно, что вспомнил{pa}.",
+	1: "{name} вежливо кивает и убирает «{item}».\n\n– Спасибо.",
+	-2: "{name} неловко держит «{item}».\n\n– Э-э... спасибо. Наверное, кому-нибудь пригодится.",
 }
 
 
@@ -861,7 +861,7 @@ func heart_state(who: String) -> Dictionary:
 	var h: Dictionary = Hearts.HEARTS[who][n]
 	if h.is_empty():
 		return {"state": "unwritten", "text": "Сердце %d: сюжет ещё не написан." % (n + 1)}
-	return {"state": "ready", "text": "Сердце %d «%s»: загляните сюда — %s." % [n + 1, h.get("title", "…"), h.get("where", h.map)], "heart": h}
+	return {"state": "ready", "text": "Сердце %d «%s»: загляните сюда – %s." % [n + 1, h.get("title", "…"), h.get("where", h.map)], "heart": h}
 
 
 ## Готовая сцена сердца, которая происходит на этой карте (или null).
@@ -912,11 +912,11 @@ func rel_add(who: String, n: int) -> void:
 	var after := rel_tier(who)
 	if after.name != before.name:
 		var nm: String = preload("res://scripts/story.gd").WHO.get(who, {}).get("name", who)
-		say("Отношения: %s — теперь «%s»." % [nm, after.name])
+		say("Отношения: %s – теперь «%s»." % [nm, after.name])
 	changed.emit()
 
 
-## {name, idx (−2..3), pts, next — очки до следующей ступени или −1}
+## {name, idx (−2..3), pts, next – очки до следующей ступени или −1}
 func rel_tier(who: String) -> Dictionary:
 	var pts := rel_points(who)
 	var res: Dictionary = {}
@@ -982,13 +982,13 @@ func tracker_lines() -> Array:
 	for j in p.jobs:
 		var t: String = str(j.title)
 		if j.state == "done":
-			t += " — сдать %s" % giver_name(j.giver, true)
+			t += " – сдать %s" % giver_name(j.giver, true)
 		elif j.kind == "kill":
 			t += " · %d/%d" % [int(j.have), int(j.need)]
 		elif j.kind == "escort":
-			t += " — довести до Кальдеры" if j.state == "escort" else " — %s" % D.LOCS[j.poi].name
+			t += " – довести до Кальдеры" if j.state == "escort" else " – %s" % D.LOCS[j.poi].name
 		elif j.has("poi") and D.LOCS.has(j.poi):
-			t += " — %s" % D.LOCS[j.poi].name
+			t += " – %s" % D.LOCS[j.poi].name
 		res.append(t)
 	var qn := {"med": "Груз для хирурга", "dogs": "Заказ №117", "spice": "Запутанные специи"}
 	for q in p.quests:
@@ -997,9 +997,9 @@ func tracker_lines() -> Array:
 			continue
 		var t2: String = qn[q]
 		match q:
-			"dogs": t2 += " — сдать на доске" if st == "done" else " · псы %d/3" % int(p.flags.get("dogs", 0))
+			"dogs": t2 += " – сдать на доске" if st == "done" else " · псы %d/3" % int(p.flags.get("dogs", 0))
 			"spice": t2 += " · травы %d/3" % spice_herbs()
-			"med": t2 += " — ящик у каравана"
+			"med": t2 += " – ящик у каравана"
 		res.append(t2)
 	return res
 
@@ -1027,7 +1027,7 @@ func board_offers() -> Array:
 	return res
 
 
-## Сколько дней ещё ждать, пока этот житель снова попросит о том же (0 — можно).
+## Сколько дней ещё ждать, пока этот житель снова попросит о том же (0 – можно).
 func job_cooldown(k: int) -> int:
 	var last := int(p.flags.get("jobcd_%d" % k, -99))
 	return maxi(0, last + int(D.JOBS[k].get("cd", 1)) - int(p.day))
@@ -1092,7 +1092,7 @@ func escort_start() -> void:
 	if j == null:
 		return
 	j.state = "escort"
-	say("Бедолага идёт за вами. Доведите его до Кальдеры.")
+	say("Бедолага идёт за Вами. Доведите его до Кальдеры.")
 	changed.emit()
 
 
@@ -1105,7 +1105,7 @@ func escort_arrive() -> void:
 	turn_in(j.id)
 	set_flag("rescued_once")
 	# отдельная сцена: человек благодарит, Институт переводит оплату на пейджер
-	temp_nodes["stray_thanks"] = {"who": "stray", "text": "У ворот Кальдеры бедолага останавливается, будто не верит, что дошёл. Трогает холодную стену, потом хватает вас за руку обеими ладонями.\n\n— Я думал, там и останусь. В том посёлке. Спасибо, Гений. Я... я не знаю, чем отдать.\n\nОн уходит вглубь яруса, оглядываясь на каждом шагу. У него теперь есть дом.\n\nПейджер дважды пищит. На экране: «ИНСТИТУТ ПО ЭТИКЕ. ЗАДАНИЕ «СИГНАЛ ИЗ ПОСЁЛКА» ЗАКРЫТО. ПЕРЕВЕДЕНО: %d СУ».\n\n[color=#7ff07a](+%d Су на счёт пейджера)[/color]" % [su, su],
+	temp_nodes["stray_thanks"] = {"who": "stray", "text": "У ворот Кальдеры бедолага останавливается, будто не верит, что дошёл. Трогает холодную стену, потом хватает Вас за руку обеими ладонями.\n\n– Я думал, там и останусь. В том посёлке. Спасибо, Гений. Я... я не знаю, чем отдать.\n\nОн уходит вглубь яруса, оглядываясь на каждом шагу. У него теперь есть дом.\n\nПейджер дважды пищит. На экране: «ИНСТИТУТ ПО ЭТИКЕ. ЗАДАНИЕ «СИГНАЛ ИЗ ПОСЁЛКА» ЗАКРЫТО. ПЕРЕВЕДЕНО: %d СУ».\n\n[color=#7ff07a](+%d Су на счёт пейджера)[/color]" % [su, su],
 		"choices": [{"t": "Не за что.", "next": "end"}]}
 	main().open_dialogue.call_deferred("stray_thanks")
 
@@ -1125,7 +1125,7 @@ func on_kill(enemy: String) -> void:
 		p.flags["dogs"] = int(p.flags.get("dogs", 0)) + 1
 		if p.quests.get("dogs", "") == "active" and int(p.flags.dogs) >= 3:
 			quest("dogs", "done")
-	# слепец — взрослый слепыш: засчитывается и в задания на слепышей
+	# слепец – взрослый слепыш: засчитывается и в задания на слепышей
 	var alias := "slepysh" if enemy == "slepets" else enemy
 	for j in p.jobs:
 		if j.state == "active" and j.kind == "kill" and (j.enemy == enemy or j.enemy == alias):
@@ -1314,7 +1314,7 @@ func self_heal(k: int) -> String:
 	var skill := skill_bonus("Медицина")
 	var d := randi_range(1, 20)
 	var ok := d + skill >= 12
-	var res := "Самолечение: зашито %d из 6, к20=%d %+d (Медицина) — %s. " % [k, d, skill, "удачно" if ok else "неудачно"]
+	var res := "Самолечение: зашито %d из 6, к20=%d %+d (Медицина) – %s. " % [k, d, skill, "удачно" if ok else "неудачно"]
 	if k <= 1:
 		var dmg := hurt(6, "body")
 		changed.emit()
@@ -1345,8 +1345,8 @@ func buy_rumor() -> String:
 	if not unknown.is_empty():
 		var id: String = unknown.pick_random()
 		p.known.append(id)
-		last_note = "— Говорят, %s. Сам не видел, но дорогу тебе нарисую.\n\n[color=#7ff07a]На карте отмечено: %s.[/color]" % [D.LOCS[id].desc.to_lower().trim_suffix("."), D.LOCS[id].name]
-		say("Слух: на карте отмечено новое место — %s." % D.LOCS[id].name)
+		last_note = "– Говорят, %s. Сам не видел, но дорогу тебе нарисую.\n\n[color=#7ff07a]На карте отмечено: %s.[/color]" % [D.LOCS[id].desc.to_lower().trim_suffix("."), D.LOCS[id].name]
+		say("Слух: на карте отмечено новое место – %s." % D.LOCS[id].name)
 		return id
 	var pois: Array = []
 	for id in p.known:
@@ -1354,7 +1354,7 @@ func buy_rumor() -> String:
 			pois.append(id)
 	var poi: String = pois.pick_random()
 	p.flags["rumor_cache"] = poi
-	last_note = "— Один падальщик, перед тем как его съели, хвастался тайником: место «%s», у самой тропы. Проверь, пока другие не проверили.\n\n[color=#7ff07a]В месте «%s» появился тайник.[/color]" % [D.LOCS[poi].name, D.LOCS[poi].name]
+	last_note = "– Один падальщик, перед тем как его съели, хвастался тайником: место «%s», у самой тропы. Проверь, пока другие не проверили.\n\n[color=#7ff07a]В месте «%s» появился тайник.[/color]" % [D.LOCS[poi].name, D.LOCS[poi].name]
 	say("Слух: тайник в месте «%s»." % D.LOCS[poi].name)
 	return poi
 
@@ -1518,7 +1518,7 @@ func has_wmod(w: String, kind: String) -> bool:
 	return false
 
 
-## Поставить обвес на оружие в руках (огнестрел или ближний бой — по классу обвеса).
+## Поставить обвес на оружие в руках (огнестрел или ближний бой – по классу обвеса).
 func install_mod(m: String) -> String:
 	var it: Dictionary = D.ITEMS[m]
 	var w: String = p.melee if it.fits == "Ближний бой" else p.weapon
@@ -1651,10 +1651,10 @@ func autosave() -> void:
 
 func slot_info(i: int) -> String:
 	if not FileAccess.file_exists(slot_path(i)):
-		return "— пусто —"
+		return "– пусто –"
 	var data = JSON.parse_string(FileAccess.get_file_as_string(slot_path(i)))
 	if typeof(data) != TYPE_DICTIONARY:
-		return "— повреждено —"
+		return "– повреждено –"
 	var pp: Dictionary = data.p
 	var where: String = {"waste": "Пустошь", "caldera": "Кальдера", "caldera1": "Кальдера, ярус 1",
 		"caldera2": "Кальдера, ярус 2", "caldera3": "Кальдера, ярус 3", "caldera4": "Кальдера, ярус 4",

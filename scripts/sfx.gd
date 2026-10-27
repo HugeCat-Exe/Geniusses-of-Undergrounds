@@ -50,7 +50,7 @@ func play(name: String, gain: float = 1.0) -> void:
 	p.play()
 
 
-## Фон места: "hum" — Подземка, "wind" — Пустошь, "" — тишина.
+## Фон места: "hum" – Подземка, "wind" – Пустошь, "" – тишина.
 func ambience(name: String) -> void:
 	_switch(_amb, name, "_amb_name")
 

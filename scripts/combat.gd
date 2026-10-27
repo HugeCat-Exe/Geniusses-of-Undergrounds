@@ -110,7 +110,7 @@ func _process(delta: float) -> void:
 	view.queue_redraw()
 
 
-## Всплывающая цифра: урон, «мимо», крит. pos — в координатах экрана боя.
+## Всплывающая цифра: урон, «мимо», крит. pos – в координатах экрана боя.
 func _pop(text: String, pos: Vector2, col: Color, big := false) -> void:
 	var l := Pal.label(text, col, 14 if big else 11, true)
 	l.position = pos - Vector2(30, 8)
@@ -156,7 +156,7 @@ func _start() -> void:
 	busy = true
 	# «Страшный человек»: слабые твари могут сбежать ещё до драки.
 	if Live.has("Страшный человек") and enemy_id in ["pes", "padal"] and randf() < 0.25:
-		_log("[color=%s][Страшный человек][/color] %s встречается с вами взглядом, пятится и убегает." % [Pal.hex(Pal.R3), E.name])
+		_log("[color=%s][Страшный человек][/color] %s встречается с Вами взглядом, пятится и убегает." % [Pal.hex(Pal.R3), E.name])
 		finished = true
 		_update_status()
 		_clear_actions()
@@ -172,18 +172,18 @@ func _start() -> void:
 				weak = q.name
 		_log("[color=%s][Одержимость кровью][/color] [i]Бей в «%s». Там больнее всего.[/i]" % [Pal.hex(Pal.R3), weak])
 	if E.horror > 0 and Live.has("Невозмутимость"):
-		_log("[color=%s][Невозмутимость][/color] Вид твари не трогает вас. Рассудок цел." % Pal.hex(Pal.G5))
+		_log("[color=%s][Невозмутимость][/color] Вид твари не трогает Вас. Рассудок цел." % Pal.hex(Pal.G5))
 	elif E.horror > 0:
 		var m := G.hurt(E.horror, "mind")
 		_log("[color=%s]От одного вида рассудок трещит: -%d ООР.[/color]" % [Pal.hex(Pal.R3), m])
 		_check_mind()
 	if G.has_perk("Чуткий"):
-		_log("Вы чуете врага раньше, чем он вас («Чуткий»). Вы действуете первым.")
+		_log("Вы чуете врага раньше, чем он Вас («Чуткий»). Вы действуете первым.")
 	elif G.has_perk("Глухой к миру") or E.speed > _player_speed():
 		if G.has_perk("Глухой к миру"):
-			_log("%s оказывается рядом раньше, чем вы его замечаете («Глухой к миру»)." % E.name)
+			_log("%s оказывается рядом раньше, чем Вы его замечаете («Глухой к миру»)." % E.name)
 		else:
-			_log("%s быстрее вас (Внимание %d против %d) и атакует первым!" % [E.name, E.speed, _player_speed()])
+			_log("%s быстрее Вас (Внимание %d против %d) и атакует первым!" % [E.name, E.speed, _player_speed()])
 		await _wait(0.7)
 		await _enemy_turn()
 	else:
@@ -349,7 +349,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 	if misfire:
 		_log("[color=%s]Осечка: руки подводят («Неуклюжий»), к20=%d.[/color]" % [Pal.hex(Pal.R3), d])
 	elif not hit:
-		_log("Вы %s в «%s» (%s): к20=%d %+d против %d — [color=%s]мимо[/color]." % [verb, part.name, wname, d, bonus, E.evade, Pal.hex(Pal.G2)])
+		_log("Вы %s в «%s» (%s): к20=%d %+d против %d – [color=%s]мимо[/color]." % [verb, part.name, wname, d, bonus, E.evade, Pal.hex(Pal.G2)])
 		_pop("мимо", _part_pos(part), Pal.G3)
 	else:
 		var dmg := int(round(base * randf_range(0.85, 1.15)))
@@ -366,7 +366,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 		dmg = maxi(1, dmg - int(E.def))
 		part.hp -= dmg
 		var crit := " [color=%s]КРИТ![/color]" % Pal.hex(Pal.R3) if d >= crit_on else ""
-		_log("Вы %s в «%s» (%s): к20=%d %+d — [color=%s]попадание, %d урона[/color].%s" % [verb, part.name, wname, d, bonus, Pal.hex(Pal.G5), dmg, crit])
+		_log("Вы %s в «%s» (%s): к20=%d %+d – [color=%s]попадание, %d урона[/color].%s" % [verb, part.name, wname, d, bonus, Pal.hex(Pal.G5), dmg, crit])
 		if not part.get("kill", false):
 			for q in parts:
 				if q.name == "Туловище":
@@ -389,7 +389,7 @@ func _attack(melee: bool, part: Dictionary) -> void:
 	_after_enemy()
 
 
-## Перезарядка из таблицы оружия: 0,5 и меньше — ход не тратится, 2 и больше — враг успевает ударить лишний раз.
+## Перезарядка из таблицы оружия: 0,5 и меньше – ход не тратится, 2 и больше – враг успевает ударить лишний раз.
 func _reload() -> void:
 	busy = true
 	var rl: float = G.reload_time(G.p.weapon)
@@ -439,7 +439,7 @@ func _defend() -> void:
 	busy = true
 	var r := G.roll("Самозащита", 12)
 	defending = r.ok
-	_log("%s %s" % [G.roll_text(r), "Вы закрываетесь — урон этого хода вдвое меньше." if r.ok else "Вы не успеваете закрыться."])
+	_log("%s %s" % [G.roll_text(r), "Вы закрываетесь – урон этого хода вдвое меньше." if r.ok else "Вы не успеваете закрыться."])
 	await _wait(0.5)
 	await _round_end()
 	defending = false
@@ -579,7 +579,7 @@ func _ally_turn() -> void:
 		target = alive.pick_random()
 	var ch := 0.55 + 0.07 * maxi(0, tier - 1) + 0.03 * int(target.mod)
 	if randf() > ch:
-		_log("[color=%s]Рыжая стреляет в «%s» — мимо. Ругается сквозь зубы.[/color]" % [Pal.hex(Pal.G3), target.name])
+		_log("[color=%s]Рыжая стреляет в «%s» – мимо. Ругается сквозь зубы.[/color]" % [Pal.hex(Pal.G3), target.name])
 		_pop("мимо", _part_pos(target), Pal.G3)
 		await _wait(0.4)
 		return
@@ -690,11 +690,11 @@ func _enemy_act() -> void:
 		evade = 9 + G.mod("ВСП")
 	var hit := (d + 4 >= evade or d == 20) and d != 1
 	enemy_streak = enemy_streak + 1 if hit else 0
-	var where := target.to_lower() if a.kind == "body" else "ваш разум"
+	var where := target.to_lower() if a.kind == "body" else "Ваш разум"
 	if a.kind == "mind":
-		where = "вас"
+		where = "Вас"
 	if not hit:
-		_log("%s %s %s — [color=%s]промах[/color]." % [E.name, a.text, where if a.kind == "mind" else _acc(target), Pal.hex(Pal.G3)])
+		_log("%s %s %s – [color=%s]промах[/color]." % [E.name, a.text, where if a.kind == "mind" else _acc(target), Pal.hex(Pal.G3)])
 		_pop("уклон", Vector2(132, 262), Pal.G4)
 		return
 	# Дана может принять удар на щит
@@ -711,13 +711,13 @@ func _enemy_act() -> void:
 	_shake()
 	_hurt_fx(dealt, a.kind == "mind")
 	if a.kind == "mind":
-		_log("%s %s вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
+		_log("%s %s Вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
 		_check_mind()
 	else:
 		_log("%s %s %s. [color=%s]-%d ООЗ.[/color]" % [E.name, a.text, _acc(target), Pal.hex(Pal.R3), dealt])
 		if Live.has("Вспышки гнева") and rage == 0 and randf() < 0.35:
 			rage = 1
-			_log("[color=%s][Вспышки гнева][/color] Красная пелена. Следующий ход — только атака, зато сильнее." % Pal.hex(Pal.R3))
+			_log("[color=%s][Вспышки гнева][/color] Красная пелена. Следующий ход – только атака, зато сильнее." % Pal.hex(Pal.R3))
 		if target == "Голова":
 			var m := G.hurt(3, "mind")
 			_log("В глазах темнеет: -%d ООР." % m)
@@ -737,14 +737,14 @@ func _prayer(a: Dictionary) -> void:
 	var ok: bool = await pg.done
 	if ok:
 		enemy_streak = 0
-		_log("[color=%s]Вы выдерживаете все три волны. Молитва разбивается о вашу волю.[/color]" % Pal.hex(Pal.G4))
+		_log("[color=%s]Вы выдерживаете все три волны. Молитва разбивается о Вашу волю.[/color]" % Pal.hex(Pal.G4))
 		return
 	enemy_streak += 1
 	var dmg := int(round(float(a.dmg) * randf_range(0.9, 1.1)))
 	var dealt := G.hurt(dmg, "mind")
 	_shake()
 	_hurt_fx(dealt, true)
-	_log("%s %s вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
+	_log("%s %s Вас. [color=%s]-%d ООР.[/color]" % [E.name, a.text, Pal.hex(Pal.R3), dealt])
 	var hp := G.hurt(int(a.get("body", 0)), "body")
 	if hp > 0:
 		_log("Из ушей течёт кровь: [color=%s]-%d ООЗ.[/color]" % [Pal.hex(Pal.R3), hp])
@@ -793,7 +793,7 @@ func _death_saves() -> void:
 		_log("[color=%s]Вы выжили, но останется травма: «%s».[/color]" % [Pal.hex(Pal.R3), res.injury])
 	else:
 		_log("[color=%s]Все три проверки пройдены. Вы выжили без последствий.[/color]" % Pal.hex(Pal.G5))
-	_log("%s теряет к вам интерес и уходит." % E.name)
+	_log("%s теряет к Вам интерес и уходит." % E.name)
 	finished = true
 	_update_status()
 	_clear_actions()

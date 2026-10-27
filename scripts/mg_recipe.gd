@@ -63,7 +63,7 @@ func _process(delta: float) -> void:
 				for b in buttons:
 					b.modulate = Color.WHITE
 					b.disabled = false
-				info.text = "Теперь ваша очередь: повторите порядок."
+				info.text = "Теперь Ваша очередь: повторите порядок."
 	elif phase == "input" and auto and t > 0.3:
 		t = 0.0
 		_pick(seq[pos])
