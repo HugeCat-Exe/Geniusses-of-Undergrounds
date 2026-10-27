@@ -780,7 +780,7 @@ func _poi_den() -> Dictionary:
 		objs.append(_prop("burrow", pos.x, pos.y, "Нора"))
 	objs.append(_mob("pes", _daily("den_pes_a"), 8, 5, 4))
 	objs.append(_mob("pes", _daily("den_pes_b"), 16, 6, 4))
-	# Собачий Муэдзин сидит в глубине логова; убитый, он возвращается через три дня.
+	# Муэдзин собак Пустоши сидит в глубине логова; убитый, он возвращается через три дня.
 	var dead := int(G.p.flags.get("muezzin_dead_day", -99))
 	if int(G.p.get("day", 1)) >= dead + 3:
 		objs.append(_mob("muezzin", "den_muezzin_%d" % dead, 19, 3, 3))
