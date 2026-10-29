@@ -155,7 +155,7 @@ func _player_speed() -> int:
 func _start() -> void:
 	busy = true
 	# «Страшный человек»: слабые твари могут сбежать ещё до драки.
-	if Live.has("Страшный человек") and enemy_id in ["pes", "padal"] and randf() < 0.25:
+	if Live.has("Страшный человек") and enemy_id in ["pes", "padal", "pes_cave"] and randf() < 0.25:
 		_log("[color=%s][Страшный человек][/color] %s встречается с Вами взглядом, пятится и убегает." % [Pal.hex(Pal.R3), E.name])
 		finished = true
 		_update_status()
@@ -221,6 +221,8 @@ func _update_status() -> void:
 		s += "\n[color=%s]Рыжая рядом: стреляет сама[/color]" % Pal.hex(Pal.G5)
 	elif p.get("companion", "") == "patrol":
 		s += "\n[color=%s]Дана рядом: прикрывает щитом[/color]" % Pal.hex(Pal.G5)
+	elif p.get("companion", "") == "barbaris":
+		s += "\n[color=%s]Барбарис рядом: пугает и поёт[/color]" % Pal.hex(Pal.G5)
 	if p.wounds.size() > 0:
 		s += "\n[color=%s]Раны: %s[/color]" % [Pal.hex(Pal.R3), ", ".join(p.wounds)]
 	if not intent.is_empty() and not finished:
@@ -536,7 +538,31 @@ func _round_end() -> void:
 			await _wait(0.4)
 			_victory()
 			return
+	if G.p.get("companion", "") == "barbaris" and not finished:
+		await _barb_turn()
 	await _enemy_turn()
+
+
+## Барбарис не кусает: либо гудит так, что враг пятится и пропускает ход,
+## либо поёт, и от этой песни затягиваются раны и стихает шёпот в голове.
+func _barb_turn() -> void:
+	var tier: int = G.rel_tier("barbaris").idx
+	if randf() > 0.6 + 0.05 * maxi(0, tier):
+		return
+	if randf() < 0.5 and not E.get("boss", false) or randf() < 0.2:
+		enemy_skip = true
+		_log("[color=%s]Барбарис вытягивает шею и гудит, как ветер в трубе. %s пятится и пропускает ход.[/color]" % [Pal.hex(Pal.G5), E.name])
+		_pop("напуган", view.position + Vector2(96, 30), Pal.G4)
+		_tw("knock", 0.8, 0.05, 0.3)
+	else:
+		var hp := randi_range(5, 9) + maxi(0, tier) * 2
+		var mind := randi_range(4, 7) + maxi(0, tier)
+		G.heal(hp)
+		G.calm(mind)
+		_log("[color=%s]Барбарис поёт низким урчащим голосом. Раны ноют меньше: +%d ООЗ, +%d ООР.[/color]" % [Pal.hex(Pal.G5), hp, mind])
+		_pop("+%d" % hp, Vector2(120, 250), Pal.G5)
+	_update_status()
+	await _wait(0.5)
 
 
 ## Дана: бьёт дубинкой не всегда, зато может сбить врага с ног, и тогда он пропускает ход.
@@ -733,6 +759,7 @@ func _prayer(a: Dictionary) -> void:
 	_log("%s задирает голову и начинает молитву. Остальные псы подхватывают вой..." % E.name)
 	await _wait(0.5)
 	var pg := preload("res://scripts/prayer.gd").new()
+	pg.hard = a.get("hard", false)
 	add_child(pg)
 	var ok: bool = await pg.done
 	if ok:
@@ -814,7 +841,7 @@ func _victory() -> void:
 	finished = true
 	match enemy_id:
 		"pes": preload("res://scripts/ach.gd").unlock("dog")
-		"muezzin": preload("res://scripts/ach.gd").unlock("muezzin")
+		"muezzin", "muezzin_cave": preload("res://scripts/ach.gd").unlock("muezzin")
 	create_tween().tween_method(func(v): dead_k = v, 0.0, 1.0, 0.7).set_ease(Tween.EASE_IN)
 	_log("\n[color=%s]%s повержен.[/color]" % [Pal.hex(Pal.G5), E.name])
 	var su := randi_range(E.su[0], E.su[1])

@@ -29,6 +29,8 @@ var player_pos := Vector2.ZERO
 var blink := 0.0
 var scout_pt := Vector2.ZERO
 var story_wait := false
+var riding := false       # Артир везёт на юг или обратно: карта едет сама
+var south := false        # показан южный лист карты
 
 const MINI := {
 	"mini_bus": "У обочины старой трассы лежит на боку автобус. Стёкла выбиты, дверь распахнута, вокруг следы ботинок, уже заметённые песком.",
@@ -97,6 +99,14 @@ func _ready() -> void:
 	info_box = VBoxContainer.new()
 	info.add_child(info_box)
 
+	var ride: String = str(G.p.flags.get("vb_ride", ""))
+	if ride != "":
+		G.p.flags.erase("vb_ride")
+		G.changed.connect(_refresh_hud)
+		G.logged.connect(_on_log)
+		_refresh_hud()
+		_ride_south.call_deferred(ride)
+		return
 	var at: String = G.p.get("map_at", "caldera")
 	if at == "wild" and G.p.has("map_xy"):
 		player_pos = Vector2(G.p.map_xy[0], G.p.map_xy[1])
@@ -121,7 +131,62 @@ func _ready() -> void:
 	_on_log("Клик по точке – куда идти. Пешком тратится время и сытость, такси стоит Су.")
 
 
+## Поездка с Артиром в «Южную Звезду» и обратно: карта уезжает за край листа,
+## появляется южный лист, где отмечена только Звезда.
+func _ride_south(dir: String) -> void:
+	riding = true
+	walking = true
+	paused = true
+	var star: Vector2 = D.LOCS_SOUTH.star.pos
+	var home: Vector2 = LOCS.caldera.pos
+	var north := dir != "south"
+	south = north
+	tex_rect.texture = Art.cached("worldmap_south", _terrain_south) if south else Art.cached("worldmap", _terrain)
+	player_pos = star if north else home
+	_on_log("Колымага Артира, чихая, катит по старой трассе %s." % ("на север, домой" if north else "на юг"))
+	await get_tree().create_timer(0.6).timeout
+	# к краю листа
+	var edge := Vector2(home.x, -10.0 if north else 370.0)
+	var tw := create_tween()
+	tw.tween_property(self, "player_pos", edge, 1.6).set_trans(Tween.TRANS_SINE)
+	await tw.finished
+	# лист сменяется
+	var shift := 360.0 if north else -360.0
+	var tw2 := create_tween().set_parallel(true)
+	tw2.tween_property(tex_rect, "position:y", shift, 0.7)
+	tw2.tween_property(marks, "position:y", shift, 0.7)
+	await tw2.finished
+	south = not north
+	tex_rect.texture = Art.cached("worldmap_south", _terrain_south) if south else Art.cached("worldmap", _terrain)
+	tex_rect.position.y = -shift
+	marks.position.y = -shift
+	var goal := home if north else star
+	player_pos = Vector2(home.x, 370.0 if north else -10.0)
+	var tw3 := create_tween().set_parallel(true)
+	tw3.tween_property(tex_rect, "position:y", 0.0, 0.7)
+	tw3.tween_property(marks, "position:y", 0.0, 0.7)
+	await tw3.finished
+	var tw4 := create_tween()
+	tw4.tween_property(self, "player_pos", goal, 1.6).set_trans(Tween.TRANS_SINE)
+	await tw4.finished
+	pass_time(6)
+	G.rel_add("taxi", 1)
+	await get_tree().create_timer(0.5).timeout
+	riding = false
+	walking = false
+	paused = false
+	if north:
+		G.p.map_at = "caldera"
+		G.say("Артир довёз Вас до Кальдеры. Всю дорогу он рассказывал про свою первую машину.")
+		enter("caldera")
+	else:
+		G.p.map_at = "star"
+		G.main().show_world("star_camp", "arrive")
+
+
 func _explore() -> void:
+	if riding:
+		return
 	if walking or G.main().has_overlay():
 		return
 	info.visible = false
@@ -134,6 +199,8 @@ func _pager() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if riding:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_TAB:
@@ -497,10 +564,15 @@ func _draw_marks() -> void:
 		for i in n:
 			if i % 2 == 0:
 				marks.draw_line(walk_from.lerp(walk_to, i / float(n)), walk_from.lerp(walk_to, (i + 1) / float(n)), Pal.G3, 2)
-	for id in G.p.known:
-		if not LOCS.has(id):
+	var shown: Array = G.p.known
+	var locs: Dictionary = LOCS
+	if south:
+		shown = ["star"]
+		locs = D.LOCS_SOUTH
+	for id in shown:
+		if not locs.has(id):
 			continue
-		var l: Dictionary = LOCS[id]
+		var l: Dictionary = locs[id]
 		var p: Vector2 = l.pos
 		var col := Pal.G5 if id == selected else Pal.G4
 		match l.kind:
@@ -522,7 +594,7 @@ func _draw_marks() -> void:
 		var w := font.get_string_size(l.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
 		marks.draw_rect(Rect2(p + Vector2(-w / 2 - 2, 9), Vector2(w + 4, 12)), Color(Pal.BG, 0.8))
 		marks.draw_string(font, p + Vector2(-w / 2, 19), l.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
-		if has_marker(id) and fmod(blink, 1.0) < 0.7:
+		if not south and has_marker(id) and fmod(blink, 1.0) < 0.7:
 			marks.draw_string(Pal.font_title, p + Vector2(8, -6), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Pal.R3)
 	# Гений.
 	var on := fmod(blink, 0.6) < 0.4 or walking
@@ -569,4 +641,38 @@ func _terrain() -> ImageTexture:
 	for a in 48:
 		var ang := a * TAU / 48.0
 		cv.put(95 + int(cos(ang) * 16), 105 + int(sin(ang) * 10), 4)
+	return Art.to_tex(cv)
+
+
+## Южный лист: та же Пустошь, но без гор, с сухими руслами и трассой, уходящей к «Южной Звезде».
+func _terrain_south() -> ImageTexture:
+	var cv = ArtLib.Canvas.new(320, 180)
+	var noise := FastNoiseLite.new()
+	noise.seed = 4242
+	noise.frequency = 0.03
+	var n2 := FastNoiseLite.new()
+	n2.seed = 99
+	n2.frequency = 0.11
+	for y in 180:
+		for x in 320:
+			var v := noise.get_noise_2d(x, y) * 0.8 + n2.get_noise_2d(x, y) * 0.25
+			var base := 1
+			if v > 0.5:
+				base = 3
+			elif v > 0.15:
+				base = 2
+			cv.put(x, y, cv.lit(base, v * 0.6, x, y))
+	# сухие русла
+	for r in 2:
+		var rx := 60.0 + r * 150.0
+		for y in 180:
+			rx += sin(y * 0.07 + r) * 0.8
+			cv.put(int(rx), y, 1)
+	# трасса с севера к Звезде
+	cv.line(95, 0, 120, 60, 3)
+	cv.line(120, 60, 165, 107, 3)
+	# воронка Подземки
+	for a in 40:
+		var ang := a * TAU / 40.0
+		cv.put(165 + int(cos(ang) * 12), 107 + int(sin(ang) * 7), 4)
 	return Art.to_tex(cv)

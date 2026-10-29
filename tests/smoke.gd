@@ -57,6 +57,12 @@ func run(main: Node) -> void:
 	await _shot("06_intro")
 	_close_overlays()
 	await _wait(0.8)
+	if OS.get_environment("GP_ONLY") == "013":
+		await _smoke_013()
+		_check_story()
+		print("SMOKE DONE")
+		get_tree().quit()
+		return
 	await _shot("07_floor1")
 	print("SMOKE map ", G.p.map, " pos ", G.p.pos)
 	M.open_dialogue("res_kid")
@@ -510,6 +516,7 @@ func run(main: Node) -> void:
 	await _smoke_010()
 	await _smoke_011()
 	await _smoke_012()
+	await _smoke_013()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -1123,6 +1130,258 @@ func _smoke_012() -> void:
 	await _wait(0.6)
 
 
+## Проверки версии 0.13: портреты и квест «Венок из ветвей барбариса» от начала до конца.
+func _smoke_013() -> void:
+	for who in ["trader", "taxi", "wanderer", "ryzhaya", "nikki", "tauros", "barbaris"]:
+		var t: Texture2D = Art.who_portrait(who)
+		print("SMOKE 013 portrait ", who, " ", t.get_width() if t != null else -1)
+	var nodes: Dictionary = preload("res://scripts/story.gd").nodes()
+	var dash := 0
+	for id in nodes:
+		var txt := str(nodes[id].get("text", ""))
+		for ch in nodes[id].get("choices", []):
+			txt += str(ch.get("t", ""))
+		if "—" in txt:
+			dash += 1
+			print("SMOKE 013 em dash in ", id)
+	print("SMOKE 013 nodes with em dash: ", dash)
+	# Артир предлагает работу с пятого уровня
+	G.p.level = 5
+	G.p.su += 400
+	G.p.quests.erase("vb")
+	M.show_world("waste", "road")
+	await _wait(0.6)
+	G.p.flags["look_taxi"] = true
+	M.open_dialogue("taxi_start")
+	await _wait(1.0)
+	await _shot("110_taxi_offer")
+	_close_overlays()
+	M.open_dialogue("vb_artir_go")
+	await _wait(0.8)
+	await _shot("111_artir_go")
+	var dlg = _dialogue()
+	if dlg:
+		dlg._choose({"t": "x", "fx": [["vb", "start"]], "next": "end"})
+	await _wait(2.6)
+	await _shot("112_ride")
+	for k in 40:
+		if G.p.map == "star_camp":
+			break
+		await _wait(0.5)
+	await _wait(1.0)
+	await _shot("113_camp_arrive")
+	await _wait(5.0)
+	_close_overlays()
+	print("SMOKE 013 camp map ", G.p.map, " arrived ", G.flag("vb_arrived"), " quest ", G.p.quests.get("vb", ""))
+	await _shot("114_camp")
+	G.set_flag("vb_nikki")
+	G.set_flag("vb_tauros")
+	G.set_flag("vb_gate_open")
+	for id in ["vb_sutura_start", "vb_ferro", "vb_berberis", "vb_scribl"]:
+		M.open_dialogue(id)
+		await _wait(0.8)
+		await _shot("115_" + id)
+		_close_overlays()
+	M.open_minigame("sutura")
+	await _wait(3.0)
+	await _shot("115_sutura_after")
+	_close_overlays()
+	# этаж 1: псы лезут, рыцари стреляют
+	M.show_world("star1", "up")
+	await _wait(3.0)
+	_close_overlays()
+	await _wait(5.0)
+	await _fights()
+	await _shot("116_floor1")
+	print("SMOKE 013 f1 mobs ", M.world.mobs.size(), " kills ", G.p.flags.get("vb_k1_pes_cave", 0), " tracker ", G.tracker_lines())
+	G.p.flags["vb_k1_pes_cave"] = 5
+	M.world.star._check_clear()
+	await _wait(4.0)
+	await _fights()
+	print("SMOKE 013 f1 clear ", G.flag("vb_f1"), " burrows now ", M.world.map.burrows.size())
+	await _shot("117_floor1_clear")
+	# этаж 2: вывести троих к лифту
+	M.show_world("star2", "up")
+	await _wait(4.0)
+	_close_overlays()
+	for id in ["pimm", "vella", "kort"]:
+		M.world.star.follow(id)
+	await _wait(0.5)
+	for c in [Vector2i(8, 8), Vector2i(5, 11), Vector2i(3, 12)]:
+		M.world._path_to(c)
+		await _wait(2.0)
+		await _fights()
+	await _shot("118_escort")
+	await _wait(2.0)
+	print("SMOKE 013 saved ", preload("res://scripts/story_vb.gd").saved())
+	G.p.flags["vb_k2_pes_cave"] = 4
+	M.world.star._check_clear()
+	await _wait(3.0)
+	print("SMOKE 013 f2 clear ", G.flag("vb_f2"))
+	# этажи 3–4: волны
+	G.set_flag("vb_f3")
+	M.show_world("star4", "up")
+	await _wait(4.0)
+	_close_overlays()
+	await _wait(4.0)
+	await _fights()
+	await _shot("119_waves")
+	G.p.flags["vb_wave"] = 2
+	M.world.star.wave_left = 0
+	for m in M.world.mobs.duplicate():
+		M.world.mobs.erase(m)
+	await _wait(1.0)
+	print("SMOKE 013 f4 clear ", G.flag("vb_f4"), " wave ", G.p.flags.get("vb_wave"))
+	await _wait(3.0)
+	# этаж 5: генератор
+	M.show_world("star5", "up")
+	await _wait(4.0)
+	_close_overlays()
+	M.open_dialogue("vb_generator")
+	await _wait(0.8)
+	await _shot("120_generator")
+	_close_overlays()
+	M._generator_node(1, false)
+	await _wait(0.8)
+	await _shot("121_gen_fail")
+	_close_overlays()
+	for gid in ["wires", "pressure", "fuses"]:
+		M.open_minigame(gid)
+		await _wait(0.9)
+		await _shot("122_mg_" + gid)
+		for k in 20:
+			if _dialogue() != null:
+				break
+			await _wait(0.5)
+		var d = _dialogue()
+		if d:
+			d._choose({"t": "x", "next": "end"})
+		await _wait(0.5)
+	await _wait(5.0)
+	_close_overlays()
+	print("SMOKE 013 gens ", G.flag("vb_gen1"), G.flag("vb_gen2"), G.flag("vb_gen3"), " f5 ", G.flag("vb_f5"))
+	await _wait(1.0)
+	await _shot("123_power")
+	M.open_dialogue("vb_hermo")
+	await _wait(0.8)
+	await _shot("124_hermo")
+	var hd = _dialogue()
+	if hd:
+		hd._choose({"t": "x", "fx": [["flag", "vb_deep"], ["vb", "goto", "star6", "up"]], "next": "end"})
+	await _wait(4.0)
+	_close_overlays()
+	print("SMOKE 013 deep map ", G.p.map)
+	await _shot("125_floor6")
+	G.p.flags["vb_k6_pes_cave"] = 3
+	G.p.flags["vb_k6_pustobreh"] = 2
+	M.world.star._check_clear()
+	await _wait(3.0)
+	_close_overlays()
+	G.set_flag("vb_f7")
+	M.show_world("star8", "up")
+	await _wait(4.0)
+	_close_overlays()
+	await _shot("126_boss")
+	M.world.star.on_kill({"vb": true, "enemy": "muezzin_cave", "id": "vb8_boss"})
+	await _wait(5.0)
+	_close_overlays()
+	M.show_world("star9", "up")
+	await _wait(3.0)
+	_close_overlays()
+	print("SMOKE 013 f8 ", G.flag("vb_f8"), " f9 ", G.flag("vb_f9"))
+	M.show_world("star10", "up")
+	await _wait(6.0)
+	_close_overlays()
+	await _shot("127_lab")
+	M.open_dialogue("vb_terminal")
+	await _wait(0.8)
+	await _shot("128_terminal")
+	_close_overlays()
+	M.open_dialogue("vb_door")
+	await _wait(0.8)
+	print("SMOKE 013 gun ", G.has("Импульсная пушка"))
+	_close_overlays()
+	M.show_world("star11", "in")
+	await _wait(1.0)
+	M.open_dialogue("vb_f11_enter")
+	await _wait(1.0)
+	await _shot("129_barbaris")
+	_close_overlays()
+	M.open_dialogue("vb_barb_join")
+	await _wait(0.8)
+	await _shot("130_barb_join")
+	var jd = _dialogue()
+	if jd:
+		jd._choose({"t": "x", "next": "vb_barb_join_2"})
+	await _wait(1.0)
+	_close_overlays()
+	M.show_world("star10", "door")
+	await _wait(4.0)
+	_close_overlays()
+	print("SMOKE 013 gun back ", G.flag("vb_gun_back"), " has gun ", G.has("Импульсная пушка"))
+	M.show_world("star5", "up")
+	await _wait(5.0)
+	_close_overlays()
+	print("SMOKE 013 quest ", G.p.quests.get("vb", ""), " farewell ", G.flag("vb_farewell"), " ach ", Ach.has("vb_done"), Ach.has("vb_berries"))
+	M.show_world("star3", "up")
+	await _wait(3.0)
+	_close_overlays()
+	await _shot("131_star_after")
+	# Барбарис в лесу и в напарниках
+	M.show_world("poi_forest", "enter")
+	await _wait(0.8)
+	M.open_dialogue("vb_barb_forest")
+	await _wait(0.8)
+	await _shot("132_barb_forest")
+	_close_overlays()
+	G.set_companion("barbaris")
+	await _wait(0.8)
+	M.show_world("caldera2", "start")
+	await _wait(1.0)
+	await _shot("133_barb_mate")
+	G.p.flags.erase("ask_barb_trader")
+	M.open_dialogue("trader_start")
+	await _wait(0.8)
+	await _shot("134_ask_barb")
+	_close_overlays()
+	M.open_shop(preload("res://scripts/story.gd").SHOPS.vb_ferro, "ОРУЖЕЙНАЯ ФЕРРО", "gunsmith")
+	await _wait(0.6)
+	await _shot("135_shop_scared")
+	_close_overlays()
+	M.start_combat("pes", M._battle_end.bind("", ""))
+	await _wait(1.0)
+	await _shot("136_barb_combat")
+	var cb = _overlay_of_type("Combat")
+	if cb:
+		cb._end("win")
+	await _wait(0.6)
+	_close_overlays()
+	G.set_companion("")
+	await _wait(0.8)
+	# домой с юга
+	G.p.flags["vb_ride"] = "north"
+	M.show_map()
+	await _wait(2.5)
+	await _shot("137_ride_north")
+	for k in 30:
+		if G.p.map == "waste":
+			break
+		await _wait(0.5)
+	print("SMOKE 013 home map ", G.p.map)
+	M.show_world("waste", "road")
+	await _wait(0.6)
+
+
+## Закрыть все бои, которые успели начаться (собаки добежали до Гения).
+func _fights() -> void:
+	for k in 4:
+		var cb = _overlay_of_type("Combat")
+		if cb == null:
+			return
+		cb._end("win")
+		await _wait(0.8)
+
+
 func _close_overlays() -> void:
 	for c in M.overlay.get_children():
 		c.queue_free()
@@ -1147,7 +1406,8 @@ func _check_story() -> void:
 				print("SMOKE BAD LINK ", id, " -> ", t)
 				bad += 1
 	var mp = preload("res://scripts/maps.gd").new()
-	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "caldera_danahome", "mini_bus", "mini_dogs", "mini_camp", "mini_bones", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2"]:
+	for m in ["caldera1", "caldera2", "caldera3", "caldera4", "caldera_ryhome", "caldera_danahome", "mini_bus", "mini_dogs", "mini_camp", "mini_bones", "waste", "poi_station", "poi_river", "poi_tower", "poi_den", "poi_ruins", "poi_forest", "raid1", "raid2",
+			"star_camp", "star1", "star2", "star3", "star4", "star5", "star6", "star7", "star8", "star9", "star10", "star11"]:
 		for o in mp.get_map(m).objs:
 			if o.get("action", "") != "" and not o.action.begins_with("go:") and not nodes.has(o.action):
 				print("SMOKE BAD ACTION ", o.action)

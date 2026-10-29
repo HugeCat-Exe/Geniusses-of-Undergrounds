@@ -346,9 +346,44 @@ func open_minigame(id: String) -> void:
 		"needle":
 			mg = preload("res://scripts/mg_needle.gd").new()
 			mg.done.connect(func(k: int): G.say(G.self_heal(k)))
+		"sutura":
+			# шьёт раненых для Доктора Сутуры: та же игла, но шов чужой
+			mg = preload("res://scripts/mg_needle.gd").new()
+			mg.done.connect(func(k: int):
+				if k >= 5:
+					G.add_xp(G.XP.minigame)
+					G.p.su += 25
+					G.rel_add("sutura", 2)
+					open_dialogue.call_deferred("vb_sutura_win")
+				else:
+					open_dialogue.call_deferred("vb_sutura_fail"))
+		"wires", "pressure", "fuses":
+			var idx: int = ["wires", "pressure", "fuses"].find(id) + 1
+			mg = load("res://scripts/mg_%s.gd" % id).new()
+			mg.done.connect(func(ok: bool): _generator_node(idx, ok))
 	if mg != null:
 		mg.theme = Pal.theme
 		overlay.add_child(mg)
+
+
+## Узел генератора «Южной Звезды» запущен или ударил током.
+func _generator_node(idx: int, ok: bool) -> void:
+	if ok:
+		G.set_flag("vb_gen%d" % idx)
+		G.add_xp(G.XP.minigame)
+		if idx >= 3:
+			open_dialogue.call_deferred("vb_gen_ok", func():
+				if world != null and world.star != null:
+					world.star.generator_done())
+		else:
+			open_dialogue.call_deferred("vb_gen_ok")
+		return
+	var dmg := G.hurt(randi_range(3, 6))
+	G.last_note = "Вас бьёт током: −%d ООЗ." % dmg
+	if G.p.hp <= 0:
+		G.p.hp = 1
+		G.last_note += " В глазах темнеет, но Вы удерживаетесь на ногах."
+	open_dialogue.call_deferred("vb_gen_fail")
 
 
 func has_overlay() -> bool:

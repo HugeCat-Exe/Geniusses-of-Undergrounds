@@ -160,6 +160,51 @@ const NPC_LOOKS := {
 		"portrait": {"sex": "М", "coat": 5, "collar": 8, "hair": 3, "beard": true, "old": true, "traits": ["Морщины"]}},
 	"raider": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
 		"portrait": {"sex": "М", "coat": 2, "collar": 9, "bald": true, "scar": true, "traits": ["Ножевые шрамы", "Зубы крысолюда"]}},
+	# «Южная Звезда» и лагерь «Перрон»
+	"nikki": {"person": {"coat": 5, "hair": 3, "skin": 5, "accent": 9, "long": true},
+		"portrait": {"sex": "Ж", "coat": 5, "collar": 9, "hair": 3, "traits": ["Веснушки на коже"]}},
+	"hinjs": {"person": {"coat": 3, "hat": true, "skin": 4, "accent": 6},
+		"portrait": {"sex": "М", "coat": 3, "collar": 6, "hair": 6, "old": true, "beard": true, "traits": ["Морщины"]}},
+	"sutura": {"person": {"coat": 5, "hair": 2, "skin": 5, "accent": 8, "long": true},
+		"portrait": {"sex": "Ж", "coat": 5, "collar": 8, "hair": 2, "traits": ["Морщины"]}},
+	"goz": {"person": {"coat": 5, "hair": 2, "skin": 5, "accent": 6},
+		"portrait": {"sex": "М", "coat": 5, "collar": 6, "hair": 2, "mask": true}},
+	"ladlow": {"person": {"coat": 4, "hair": 1, "skin": 5, "accent": 6},
+		"portrait": {"sex": "М", "coat": 4, "collar": 6, "hair": 1, "beard": true, "traits": ["Полнота"]}},
+	"tindal": {"person": {"coat": 2, "hair": 6, "skin": 4, "accent": 5},
+		"portrait": {"sex": "М", "coat": 2, "collar": 5, "hair": 6, "old": true, "glasses": true, "traits": ["Морщины"]}},
+	"ferro": {"person": {"coat": 1, "hair": 2, "skin": 5, "accent": 8, "race": "Крысолюд"},
+		"portrait": {"sex": "М", "race": "Крысолюд", "coat": 1, "collar": 8, "hair": 2, "glasses": true, "traits": ["Большие уши", "Ожоги"]}},
+	"dorma": {"person": {"coat": 4, "hair": 6, "skin": 5, "long": true, "accent": 3},
+		"portrait": {"sex": "Ж", "coat": 4, "collar": 3, "hair": 6, "old": true, "traits": ["Полнота", "Морщины"]}},
+	"scribl": {"person": {"coat": 2, "hair": 3, "skin": 5, "race": "Крысолюд"},
+		"portrait": {"sex": "М", "race": "Крысолюд", "coat": 2, "hair": 3, "glasses": true, "traits": ["Большие уши"]}},
+	"latch": {"person": {"coat": 1, "hair": 2, "skin": 4, "accent": 3},
+		"portrait": {"sex": "М", "coat": 1, "collar": 3, "hair": 2, "beard": true, "traits": ["Морщины"]}},
+	"evensong": {"person": {"coat": 6, "hair": 6, "skin": 6, "race": "Ангел"},
+		"portrait": {"sex": "М", "race": "Ангел", "coat": 6, "hair": 6}},
+	"berberis": {"person": {"coat": 3, "skin": 3, "race": "Флореанин", "long": true},
+		"portrait": {"sex": "Ж", "race": "Флореанин", "coat": 3, "hair": 4}},
+	"tauros": {"person": {"coat": 4, "hat": true, "skin": 5, "accent": 6},
+		"portrait": {"sex": "М", "coat": 4, "collar": 6, "helmet": true, "scar": true}},
+	"ursuz": {"person": {"coat": 4, "hat": true, "skin": 5, "accent": 9},
+		"portrait": {"sex": "М", "coat": 4, "collar": 9, "helmet": true}},
+	"ankvila": {"person": {"coat": 4, "hat": true, "skin": 5, "accent": 9},
+		"portrait": {"sex": "Ж", "coat": 4, "collar": 9, "helmet": true}},
+	"wounded": {"person": {"coat": 1, "hair": 2, "skin": 4, "accent": 8},
+		"portrait": {"sex": "М", "coat": 1, "collar": 8, "hair": 2, "scar": true}},
+	"pimm": {"person": {"coat": 2, "hair": 6, "skin": 4, "accent": 5},
+		"portrait": {"sex": "М", "coat": 2, "collar": 5, "hair": 6, "old": true, "traits": ["Морщины"]}},
+	"vella": {"person": {"coat": 4, "hair": 2, "skin": 5, "long": true, "race": "Крысолюд"},
+		"portrait": {"sex": "Ж", "race": "Крысолюд", "coat": 4, "hair": 2, "traits": ["Большие уши"]}},
+	"kort": {"person": {"coat": 4, "hat": true, "skin": 5, "accent": 9},
+		"portrait": {"sex": "М", "coat": 4, "collar": 9, "hair": 3, "traits": ["Веснушки на коже"]}},
+	"resident": {"person": {"coat": 3, "hair": 2, "skin": 5, "accent": 4},
+		"portrait": {"sex": "М", "coat": 3, "collar": 4, "hair": 2}},
+	"worker": {"person": {"coat": 2, "hat": true, "skin": 5, "accent": 9},
+		"portrait": {"sex": "М", "coat": 2, "collar": 9, "helmet": true, "beard": true}},
+	"barbaris": {"person": {"coat": 3},
+		"portrait": {"sex": "Ж", "coat": 3}},
 }
 
 
@@ -205,6 +250,8 @@ func _build(name: String) -> Dictionary:
 			return _poi_tower()
 		"poi_den":
 			return _poi_den()
+	if name.begins_with("star"):
+		return load("res://scripts/maps_star.gd").new().build(name)
 	return _caldera1()
 
 
@@ -975,6 +1022,11 @@ func _poi_forest() -> Dictionary:
 	objs.append(_mob("pes", _daily("forest_pes"), 10, 15, 5))
 	# Лесник сидит на пепельной прогалине и лечит голову от того, что в неё нашептала Запутанность.
 	objs.append(_npc("stranger", 8, 11, "Незнакомец в капюшоне", "stranger_start", 1))
+	# Барбарис после «Южной Звезды» живёт на второй прогалине, пока не идёт с Гением
+	if G.flag("vb_join") and G.p.companion != "barbaris":
+		var barb := _npc("barbaris", 19, 6, "Барбарис", "vb_barb_forest", 1)
+		barb.ntex = "barbaris"
+		objs.append(barb)
 	objs.append(_exit(27, 19))
 	_scatter(grid, objs, 902, 18, [Rect2i(24, 16, 6, 6)])
 	_ensure_paths(grid, objs, Vector2i(26, 18), [Vector2i(6, 5), Vector2i(15, 5), Vector2i(4, 13), Vector2i(23, 8), Vector2i(16, 10), Vector2i(27, 19), Vector2i(9, 12)])

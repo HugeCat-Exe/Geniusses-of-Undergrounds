@@ -18,12 +18,17 @@ var flash_ok := true
 var pause := 0.0
 var over := false
 var auto := OS.get_environment("GP_SMOKE") != ""
+var hard := false
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	band = clampf(8.0 + G.mod("ВСП") * 1.5, 5.0, 14.0)
+	if hard:
+		# Муэдзин Пещерных собак: кольцо уже, круг быстрее
+		band = maxf(4.0, band * 0.75)
+		speed *= 1.3
 	var title := Pal.label("СОПРОТИВЛЕНИЕ СОБАЧЬЕЙ МОЛИТВЕ", Pal.R3, 14, true)
 	title.position = Vector2(0, 40)
 	title.size = Vector2(640, 20)

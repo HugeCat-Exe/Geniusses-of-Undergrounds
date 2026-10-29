@@ -4,6 +4,7 @@ extends Control
 const Story := preload("res://scripts/story.gd")
 const Maps := preload("res://scripts/maps.gd")
 const Live := preload("res://scripts/live.gd")
+const StoryVB := preload("res://scripts/story_vb.gd")
 
 var on_close: Callable
 var nodes: Dictionary
@@ -82,7 +83,33 @@ func start(id: String) -> void:
 	nodes = Story.nodes()
 	nodes.merge(G.temp_nodes, true)
 	first_id = id
+	# с Барбарис рядом жители сперва спрашивают, что это за существо (каждый – один раз)
+	var who0: String = str(nodes.get(id, {}).get("who", ""))
+	if who0 == "" and nodes.get(id, {}).has("route"):
+		who0 = _route_who(id)
+	if G.p.get("companion", "") == "barbaris" and who0 != "" and not (who0 in NO_ASK) and not G.flag("ask_barb_" + who0):
+		G.set_flag("ask_barb_" + who0)
+		for k in ["vb_ask_barb", "vb_ask_barb_pack", "vb_ask_barb_friend"]:
+			nodes[k] = nodes[k].duplicate(true)
+			nodes[k].who = who0
+		nodes.vb_ask_barb_pack.choices[0].next = id
+		nodes.vb_ask_barb_friend.choices[0].next = id
+		# приветствие, «Осмотреть» и реплики черт появятся уже в самом разговоре
+		_show("vb_ask_barb")
+		return
 	_show(id)
+
+
+## Кого Барбарис не удивит: она сама, лесные, рыцари (их уже нет), безымянные.
+const NO_ASK := ["barbaris", "stranger", "berberis", "tauros", "ursuz", "ankvila", "raider", "wounded"]
+
+
+func _route_who(id: String) -> String:
+	for r in nodes[id].route:
+		var nid: String = r[r.size() - 1]
+		if r.size() == 1 or _cond(r[0]):
+			return str(nodes.get(nid, {}).get("who", ""))
+	return ""
 
 
 func _layout(has_portrait: bool) -> void:
@@ -124,7 +151,16 @@ func _show(id: String) -> void:
 		var who: Dictionary = Story.WHO[current_who]
 		name_label.text = who.name
 		rel_label.text = _rel_text(current_who) if who.get("rel", false) else ""
-		portrait.texture = Art.portrait_tex(Maps.NPC_LOOKS[current_who].portrait)
+		var pic := Art.who_portrait(current_who)
+		if pic.get_width() >= 100:
+			# картинка 112x112: растянута до ширины рамки
+			portrait.texture = pic
+			portrait.scale = Vector2(144.0 / 112.0, 144.0 / 112.0)
+			portrait.position = Vector2(16, 40)
+		else:
+			portrait.texture = pic
+			portrait.scale = Vector2(3, 3)
+			portrait.position = Vector2(16, 28)
 		_layout(true)
 	else:
 		name_label.text = ""
@@ -289,7 +325,7 @@ func _dynamic_choices(n: Dictionary) -> Array:
 	if n.get("hub", false) and current_who != "" and G.can_gift(current_who):
 		gift_back = current_id
 		var gl: Array = []
-		for it in G.sort_items(G.gifts_owned()):
+		for it in G.sort_items(G.gifts_owned(current_who)):
 			gl.append({"t": "Подарить: %s" % it, "fx": [["gift", current_who, it]], "next": "gift_result"})
 		gl.append({"t": "Передумать", "next": current_id})
 		nodes["gift_pick"] = {"who": current_who, "text": "[color=%s]Что подарить? Подарок можно сделать раз в день. Не всем нравится одно и то же: кому-то по душе полезные мелочи, кому-то украшения.[/color]" % Pal.hex(Pal.G3), "choices": gl}
@@ -542,6 +578,8 @@ func close() -> void:
 func _cond(c: String) -> bool:
 	if c.begins_with("!"):
 		return not _cond(c.substr(1))
+	if c.begins_with("vb:"):
+		return StoryVB.cond(c.substr(3))
 	if c.begins_with("su>="):
 		return G.p.su >= int(c.substr(4))
 	if c.begins_with("has:"):
@@ -698,10 +736,13 @@ func _heal_cost() -> int:
 
 
 func _subst(s: String) -> String:
+	if "{vb_" in s:
+		s = StoryVB.subst(s)
 	return s.replace("{callsign}", G.p.callsign).replace("{faction}", D.FACTIONS[G.p.faction].name) \
 		.replace("{heal_cost}", str(_heal_cost())).replace("{dogs}", str(int(G.p.flags.get("dogs", 0)))) \
 		.replace("{injury_result}", injury_result).replace("{cure_result}", cure_result).replace("{doc_heal}", str(_doc_heal())).replace("{doc_cost}", str(_doc_cost())) \
-		.replace("{day}", str(G.p.day)).replace("{hour}", G.clock()).replace("{loot}", G.last_note)
+		.replace("{day}", str(G.p.day)).replace("{hour}", G.clock()).replace("{loot}", G.last_note) \
+		.replace("{pa}", "а" if G.p.get("sex", "М") == "Ж" else "")
 
 
 func _fx(list: Array) -> void:
@@ -779,14 +820,17 @@ func _fx(list: Array) -> void:
 					if G.flag("job_done_" + u[0]):
 						stock.append(u[1])
 				# в Кальдере не продают оружие мощнее 35: лучшее – крафтом или в других Подземках
-				stock = stock.filter(func(it): return D.ITEMS[it].type != "weapon" or int(D.ITEMS[it].dmg) <= D.CALDERA_MAX_DMG)
+				if not str(f[1]).begins_with("vb_"):
+					stock = stock.filter(func(it): return D.ITEMS[it].type != "weapon" or int(D.ITEMS[it].dmg) <= D.CALDERA_MAX_DMG)
 				if f[1] == "library":
 					stock = G.lib_stock()
 				if f[1] == "wanderer":
 					stock = G.wander_left()
 				var st_title: String = {"trader": "ЛАВКА БАРТОЛОМЕЯ", "medic": "МЕДПУНКТ КОСТА", "guns": "ОРУЖЕЙНАЯ САВЫ КЛИНА",
-					"library": "КНИЖНЫЙ РАЗВАЛ ФЕЛИКСА", "taxi": "БАГАЖНИК ТАКСИ", "wanderer": "ТЕЛЕЖКА СТРАННИКА"}.get(f[1], "ЛАВКА")
-				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith", "library": "librarian", "taxi": "taxi", "wanderer": "wanderer"}.get(f[1], "")
+					"library": "КНИЖНЫЙ РАЗВАЛ ФЕЛИКСА", "taxi": "БАГАЖНИК ТАКСИ", "wanderer": "ТЕЛЕЖКА СТРАННИКА",
+					"vb_ladlow": "ПОЛЕВАЯ КУХНЯ ЛАДЛОУ", "vb_tindal": "ЛАВКА ТИНДАЛА", "vb_ferro": "ОРУЖЕЙНАЯ ФЕРРО"}.get(f[1], "ЛАВКА")
+				var owner: String = {"trader": "trader", "medic": "surgeon", "guns": "gunsmith", "library": "librarian", "taxi": "taxi", "wanderer": "wanderer",
+					"vb_ladlow": "ladlow", "vb_tindal": "tindal", "vb_ferro": "ferro"}.get(f[1], "")
 				after.append(func(): G.main().open_shop(stock, st_title, owner))
 			"fight":
 				after.append(func(): G.main().world.fight_current())
@@ -911,3 +955,5 @@ func _fx(list: Array) -> void:
 					G.take_job(G._make_job(D.SPECIAL_JOBS[f[1]], RandomNumberGenerator.new(), f[1]))
 			"explore_go":
 				after.append(func(): G.main().explore_now())
+			"vb":
+				StoryVB.fx(f, self)

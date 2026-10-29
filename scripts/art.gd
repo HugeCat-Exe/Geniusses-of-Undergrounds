@@ -609,6 +609,54 @@ func _prop(kind: String) -> ImageTexture:
 			cv.put(22, 11, 9)
 		"bus":
 			cv = _big_bus()
+		"turbine":
+			cv = _big_turbine()
+		"hermo":
+			cv = _big_hermo()
+		"generator":
+			cv = _big_generator()
+		"knight_t", "knight_u", "knight_a":
+			cv = _knight(kind)
+		"barbaris":
+			cv = _barb(0)
+		"barbaris_dead":
+			cv = _barb(0, true)
+		"palm":
+			cv = Canvas.new(26, 40)
+			cv.poly(PackedVector2Array([Vector2(7, 30), Vector2(19, 30), Vector2(17, 39), Vector2(9, 39)]), 7)
+			cv.line(7, 31, 19, 31, 9)
+			cv.line(13, 30, 12, 12, 2, 2)
+			for a in 6:
+				var ang := -PI + a * PI / 5.0
+				cv.line(12, 12, 12 + cos(ang) * 12, 12 + sin(ang) * 6 + 5, 3 if a % 2 == 0 else 4, 2)
+		"palm_down":
+			cv = Canvas.new(32, 20)
+			cv.poly(PackedVector2Array([Vector2(2, 10), Vector2(10, 8), Vector2(11, 16), Vector2(3, 17)]), 7)
+			cv.line(10, 12, 26, 10, 2, 2)
+			for a in 5:
+				cv.line(26, 10, 31 - a % 2, 3 + a * 3, 3, 1)
+			for k in 4:
+				cv.put(4 + k * 2, 18, 3)
+		"plate":
+			cv = Canvas.new(30, 18)
+			cv.ellipse(15, 9, 14, 6, 2)
+			cv.poly(PackedVector2Array([Vector2(4, 9), Vector2(15, 3), Vector2(26, 9), Vector2(15, 15)]), 4)
+			for k in 5:
+				cv.put(6 + k * 4, 9 + (k % 2), 9)
+				cv.put(7 + k * 4, 10 - (k % 2), 8)
+		"chain":
+			cv = Canvas.new(12, 44)
+			for k in 10:
+				cv.ellipse(6, 3 + k * 4, 2, 2.5, 3 if k % 2 == 0 else 4, false)
+			cv.line(2, 41, 10, 41, 5)
+			cv.line(6, 41, 6, 43, 5)
+		"glass":
+			cv = Canvas.new(32, 30)
+			cv.poly(PackedVector2Array([Vector2(1, 14), Vector2(16, 6), Vector2(16, 22), Vector2(1, 29)]), 4, false)
+			for k in 3:
+				cv.line(2 + k * 5, 15 - k * 2, 3 + k * 5, 26 - k * 2, 6)
+			cv.line(1, 14, 16, 6, 5)
+			cv.line(1, 29, 16, 22, 2)
 		"skeleton":
 			cv = _big_skeleton()
 		"taxi":
@@ -1072,6 +1120,148 @@ func _big_burrow() -> Canvas:
 # ---------------- Человечки на карте ----------------
 
 ## look: {hair, coat, skin, accent, race, hat}
+## Турбина 3×2: лежащий цилиндр, «спящий кит» Электростанции.
+func _big_turbine() -> Canvas:
+	var f := _foot(3, 2, 30)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 0.2, 0), _ip(o, 2.9, 0.2, 0), _ip(o, 2.9, 1.9, 0), _ip(o, 0.1, 1.9, 0)]), 1, false)
+	for i in 12:
+		var gx := 0.3 + i * 0.2
+		var c := _ip(o, gx, 1.05, 14)
+		cv.ellipse(c.x, c.y, 9, 14, 3 if i % 3 else 4)
+	var e := _ip(o, 2.75, 1.05, 14)
+	cv.ellipse(e.x, e.y, 9, 14, 2)
+	cv.ellipse(e.x, e.y, 5, 8, 1, false)
+	cv.ellipse(e.x, e.y, 2, 3, 9 if true else 1, false)
+	var a := _ip(o, 0.3, 1.05, 28)
+	var b := _ip(o, 2.7, 1.05, 28)
+	cv.line(a.x, a.y, b.x, b.y, 5)
+	return cv
+
+
+## Гермо-ворота 2×2: толстая стальная створка в бетонной раме, жёлтые полосы.
+func _big_hermo() -> Canvas:
+	var f := _foot(2, 2, 44)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	cv.poly(PackedVector2Array([_ip(o, 0, 0.3, 44), _ip(o, 2, 0.3, 44), _ip(o, 2, 0.3, 0), _ip(o, 0, 0.3, 0)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, 0.25, 0.32, 36), _ip(o, 1.75, 0.32, 36), _ip(o, 1.75, 0.32, 0), _ip(o, 0.25, 0.32, 0)]), 3)
+	var c := _ip(o, 1.0, 0.32, 18)
+	cv.ellipse(c.x, c.y, 9, 9, 4)
+	cv.ellipse(c.x, c.y, 5, 5, 2, false)
+	cv.line(c.x - 8, c.y, c.x + 8, c.y, 5)
+	for k in 6:
+		var p1 := _ip(o, 0.3 + k * 0.25, 0.32, 3)
+		cv.line(p1.x, p1.y, p1.x + 5, p1.y - 4, 8, 2)
+	cv.poly(PackedVector2Array([_ip(o, 0, 0.3, 44), _ip(o, 2, 0.3, 44), _ip(o, 2, 0.0, 44), _ip(o, 0, 0.0, 44)]), 4)
+	return cv
+
+
+## Главный генератор 2×2: шкаф с открытой панелью, кабели, красная лампа.
+func _big_generator() -> Canvas:
+	var f := _foot(2, 2, 34)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var z := 30.0
+	cv.poly(PackedVector2Array([_ip(o, 0.2, 1.8, z), _ip(o, 1.8, 1.8, z), _ip(o, 1.8, 1.8, 0), _ip(o, 0.2, 1.8, 0)]), 3)
+	cv.poly(PackedVector2Array([_ip(o, 1.8, 1.8, z), _ip(o, 1.8, 0.2, z), _ip(o, 1.8, 0.2, 0), _ip(o, 1.8, 1.8, 0)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, 0.2, 0.2, z), _ip(o, 1.8, 0.2, z), _ip(o, 1.8, 1.8, z), _ip(o, 0.2, 1.8, z)]), 4)
+	cv.poly(PackedVector2Array([_ip(o, 0.5, 1.8, 24), _ip(o, 1.5, 1.8, 24), _ip(o, 1.5, 1.8, 6), _ip(o, 0.5, 1.8, 6)]), 1, false)
+	for k in 4:
+		var p1 := _ip(o, 0.6 + k * 0.25, 1.8, 20)
+		cv.line(p1.x, p1.y, p1.x, p1.y + 10, [6, 8, 5, 9][k])
+	var l := _ip(o, 1.0, 1.0, z + 3)
+	cv.ellipse(l.x, l.y, 3, 2, 9)
+	return cv
+
+
+## Рыцарь Стальной Акколады: огромная силовая броня, шлем с фильтром, пушка на плече.
+func _knight(kind: String) -> Canvas:
+	var cv := Canvas.new(28, 46)
+	var big := kind == "knight_t"
+	var slim := kind == "knight_a"
+	for x in range(5, 23):
+		cv.put(x, 45, 0)
+	var lw := 5 if not slim else 4
+	cv.rect(7, 30, lw, 14, 3)
+	cv.rect(16, 30, lw, 14, 3)
+	cv.rect(6, 41, lw + 2, 3, 2, false)
+	cv.rect(15, 41, lw + 2, 3, 2, false)
+	var bw := 18 if not slim else 15
+	var bx := 14 - bw / 2
+	cv.rect(bx, 14, bw, 18, 4)
+	cv.line(bx + 2, 20, bx + bw - 3, 20, 6)
+	cv.line(14, 15, 14, 31, 3)
+	for k in 3:
+		cv.put(bx + 3 + k * 2, 24, 9 if kind == "knight_a" else 5)
+	cv.ellipse(bx, 15, 4, 3.5, 5)
+	cv.ellipse(bx + bw, 15, 4, 3.5, 5)
+	cv.rect(bx - 3, 17, 4, 12, 3)
+	cv.rect(bx + bw - 1, 17, 4, 12, 3)
+	cv.ellipse(14, 9, 5.5, 6, 4)
+	cv.rect(10, 8, 9, 3, 1, false)
+	cv.line(11, 9, 17, 9, 6 if kind != "knight_u" else 9)
+	cv.rect(12, 12, 5, 3, 2, false)
+	cv.put(14, 13, 5)
+	if big:
+		cv.rect(18, 4, 9, 4, 2)
+		cv.line(18, 6, 27, 6, 5)
+		cv.rect(24, 7, 3, 10, 2, false)
+	elif slim:
+		cv.line(bx + bw + 1, 26, bx + bw + 6, 12, 2, 2)
+	else:
+		cv.rect(0, 20, 6, 4, 2)
+		cv.line(0, 21, 5, 21, 5)
+	cv.outline(0)
+	return cv
+
+
+## Барбарис: длинная шея, четыре ноги, что-то среднее между собакой, коровой и трубой.
+func barb_tex(frame: int = 0) -> Texture2D:
+	return cached("barb_%d" % frame, func(): return to_tex(_barb(frame)))
+
+
+func _barb(frame: int, dead := false) -> Canvas:
+	var cv := Canvas.new(30, 36)
+	if dead:
+		cv = Canvas.new(36, 18)
+		cv.ellipse(14, 11, 11, 5, 2)
+		for k in 6:
+			cv.ellipse(24 + k * 2, 10 - k, 2.5, 2.5, 2 if k % 2 else 1)
+		cv.ellipse(35, 4, 3, 2.5, 2)
+		for k in 4:
+			cv.put(6 + k * 5, 15, 7)
+		cv.outline(0)
+		return cv
+	for x in range(5, 24):
+		cv.put(x, 35, 0)
+	var s1 := 1 if frame == 1 else 0
+	for lx in [7, 11]:
+		cv.line(lx, 26, lx - s1, 34, 3, 2)
+	for lx in [18, 22]:
+		cv.line(lx, 26, lx + s1, 34, 3, 2)
+	cv.ellipse(14, 23, 10, 6, 3)
+	cv.ellipse(10, 21, 4, 2.5, 4, false)
+	cv.line(4, 21, 1, 26, 2)
+	# шея-труба кольцами вверх и вправо
+	for k in 7:
+		var c := Vector2(21 + k * 0.8, 19 - k * 2.0)
+		cv.ellipse(c.x, c.y, 2.8, 2.2, 4 if k % 2 == 0 else 3)
+	cv.ellipse(27, 4, 4, 3, 4)
+	cv.poly(PackedVector2Array([Vector2(28, 3), Vector2(29, 2), Vector2(29, 7), Vector2(27, 7)]), 3)
+	cv.put(26, 3, 1)
+	cv.rect(20, 16, 5, 2, 2, false)
+	cv.put(22, 16, 6)
+	# ветка с алыми ягодами на шее
+	cv.line(19, 14, 15, 10, 3)
+	cv.put(15, 9, 9)
+	cv.put(17, 11, 8)
+	cv.put(14, 11, 9)
+	cv.outline(0)
+	return cv
+
+
 func person_tex(look: Dictionary, frame: int = 0) -> Texture2D:
 	var key := "person_%s_%d" % [str(look.hash()), frame]
 	return cached(key, func(): return _person(look, frame))
@@ -1140,6 +1330,45 @@ func _person(look: Dictionary, frame: int) -> ImageTexture:
 
 
 # ---------------- Портреты для сцен-новелл ----------------
+
+## Готовый портрет-картинка NPC (112x112 из «Картинки»), иначе null
+func npc_portrait(who: String) -> Texture2D:
+	for f in ["port_kalder_" + who, "port_" + who]:
+		var path := "res://art/portraits/%s.png" % f
+		if ResourceLoader.exists(path):
+			return load(path)
+	return null
+
+
+## Портрет NPC: картинка, если есть, иначе нарисованный кодом
+func who_portrait(who: String) -> Texture2D:
+	var t := npc_portrait(who)
+	if t != null:
+		return t
+	if who == "barbaris":
+		return cached("portrait_barbaris", _barb_portrait)
+	var looks: Dictionary = load("res://scripts/maps.gd").NPC_LOOKS
+	return portrait_tex(looks[who].portrait if looks.has(who) else {})
+
+
+func _barb_portrait() -> ImageTexture:
+	var cv := Canvas.new(48, 56)
+	cv.rect(0, 0, 48, 56, 1, false)
+	for k in 9:
+		cv.ellipse(8 + k * 5, 52 - k * 1.5, 7, 5, 3 if k % 2 == 0 else 4)
+	cv.ellipse(28, 22, 13, 11, 4)
+	cv.poly(PackedVector2Array([Vector2(34, 18), Vector2(47, 22), Vector2(46, 34), Vector2(34, 32)]), 3)
+	cv.ellipse(43, 28, 2, 2, 1, false)
+	cv.ellipse(25, 18, 3, 2.5, 0, false)
+	cv.put(25, 18, 6)
+	cv.rect(14, 36, 20, 4, 2, false)
+	cv.ellipse(24, 38, 2, 1.5, 6, false)
+	cv.line(18, 12, 10, 4, 3)
+	for b in [Vector2(10, 4), Vector2(12, 7), Vector2(8, 8), Vector2(15, 9)]:
+		cv.ellipse(b.x, b.y, 1.5, 1.5, 9, false)
+	cv.outline(0)
+	return to_tex(cv)
+
 
 ## Портрет 48x56. look: sex, race, hair, coat, skin, traits[], extra
 func portrait_tex(look: Dictionary) -> Texture2D:
@@ -1435,6 +1664,23 @@ func enemy_art(kind: String) -> Dictionary:
 				cv.put(59 + (i % 2), 56 + i, 6)
 				cv.put(3 + (i % 2), 60 + i / 2, 6)
 			parts = {"Голова": Rect2(35, 9, 19, 19), "Туловище": Rect2(13, 24, 31, 24), "Руки": Rect2(2, 30, 60, 34)}
+		"pustobreh":
+			# лысый запутанный крот размером с телёнка: бледная туша, длинные зубы
+			cv.ellipse(28, 38, 22, 15, 5)
+			cv.ellipse(48, 32, 11, 10, 5)
+			for i in 6:
+				cv.line(14 + i * 6, 30, 15 + i * 6, 34, 4)
+			for lx in [12, 22, 32, 40]:
+				cv.line(lx, 48, lx - 4, 60, 4, 4)
+				for c in 3:
+					cv.put(lx - 6 + c * 2, 61, 6)
+			cv.line(55, 30, 63, 31, 0)
+			for i in 4:
+				cv.line(55 + i * 2, 33, 54 + i * 2, 44, 6)
+				cv.line(56 + i * 2, 29, 57 + i * 2, 24, 6)
+			cv.ellipse(46, 27, 1.5, 1, 0, false)
+			parts = {"Голова": Rect2(37, 22, 22, 20), "Туловище": Rect2(8, 26, 38, 24),
+				"Зубы": Rect2(52, 22, 12, 24), "Лапы": Rect2(6, 46, 40, 18)}
 		"plant":
 			cv.line(32, 63, 32, 34, 3, 3)
 			for i in 6:

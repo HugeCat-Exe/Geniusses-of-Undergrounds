@@ -124,6 +124,7 @@ var cam_override = null   # клетка, куда смотрит камера �
 var emotes := {}          # кто -> [значок, сколько ещё висит]
 var dark := false         # подвал (ярусы 5–6): всегда ночь, свет только у ламп
 var lamp_pos: Array = []
+var star = null           # «Южная Звезда»: рыцари, волны, эскорт (star.gd)
 const GLOWS := ["lamp", "neon", "terminal", "jobscreen", "autodoc", "bar", "lift"]
 
 var hud: Control
@@ -177,7 +178,10 @@ func setup(map_name: String, spawn: String) -> void:
 		ob.pos = Vector2i(o.x, o.y)
 		ob.kind = str(o.get("tex", ""))
 		ob.ph = float(absi(hash(str(o.get("id", o.title)) + str(o.x))) % 1000) / 159.0
-		if ob.type == "npc":
+		if ob.type == "npc" and o.has("ntex"):
+			# рыцари и Барбарис: свой большой спрайт вместо человечка
+			ob.tex = Art.prop_tex(o.ntex)
+		elif ob.type == "npc":
 			ob.tex = Art.person_tex(ob.look)
 		else:
 			ob.tex = Art.prop_tex(o.tex)
@@ -204,6 +208,10 @@ func setup(map_name: String, spawn: String) -> void:
 		_sched_tick(0.0)
 	mate_pos = pf + Vector2(-1, 0)
 	esc_pos = pf + Vector2(0, -1)
+	if map.has("star_floor"):
+		star = preload("res://scripts/star.gd").new()
+		add_child(star)
+		star.setup(self)
 
 
 ## Вещи для подработок «найти» лежат не в одном месте, а в случайном углу локации
@@ -464,10 +472,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _target_at(t: Vector2i):
 	if has_mate() and Vector2i(mate_pos.round()) == t:
-		var dn: bool = G.p.companion == "patrol"
-		return {"type": "mate", "pos": t, "title": "Дана" if dn else "Рыжая", "reach": 1, "action": "dana_start" if dn else "ry_start"}
+		var mt: Array = {"patrol": ["Дана", "dana_start"], "ryzhaya": ["Рыжая", "ry_start"], "barbaris": ["Барбарис", "vb_barb_talk"]}[G.p.companion]
+		return {"type": "mate", "pos": t, "title": mt[0], "reach": 1, "action": mt[1]}
 	for m in mobs:
-		if m.pos == t:
+		if m.pos == t and not m.get("calm", false):
 			return m
 	if obj_at.has(t):
 		var o: Dictionary = obj_at[t]
@@ -509,7 +517,7 @@ func has_escort() -> bool:
 
 
 func has_mate() -> bool:
-	return G.p.get("companion", "") in ["ryzhaya", "patrol"]
+	return G.p.get("companion", "") in ["ryzhaya", "patrol", "barbaris"]
 
 
 func _cheb(a: Vector2i, b: Vector2i) -> int:
@@ -688,7 +696,7 @@ func _key_dir() -> Vector2i:
 func _on_step() -> void:
 	G.step(waste)
 	for m in mobs:
-		if m.stun <= 0.0 and _cheb(m.pos, ppos) <= 1:
+		if m.stun <= 0.0 and not m.get("calm", false) and _cheb(m.pos, ppos) <= 1:
 			path.clear()
 			start_encounter(m)
 			return
@@ -697,6 +705,18 @@ func _on_step() -> void:
 func _mobs_think() -> void:
 	for m in mobs:
 		if m.stun > 0.0:
+			continue
+		if m.get("calm", false):
+			# собаки лаборатории: бродят кругами и не нападают, им не велят
+			if randf() < 0.45:
+				var dv := Vector2i(randi_range(-1, 1), randi_range(-1, 1))
+				var nc: Vector2i = m.pos + dv
+				var busy := nc == ppos
+				for o in mobs:
+					if o != m and o.pos == nc:
+						busy = true
+				if walkable(nc) and not busy and _cheb(nc, m.home) <= 5:
+					m.pos = nc
 			continue
 		var d := _cheb(m.pos, ppos)
 		if d <= 1:
@@ -771,10 +791,13 @@ func _on_combat_end(result: String) -> void:
 	match result:
 		"win":
 			if m != null:
-				G.p.killed.append(m.id)
+				if not m.get("vb", false):
+					G.p.killed.append(m.id)
 				mobs.erase(m)
 				_add_body(m)
 				_after_win(m)
+				if star != null:
+					star.on_kill(m)
 		"fled":
 			if m != null:
 				m.stun = 6.0
@@ -1027,9 +1050,13 @@ func _draw() -> void:
 		var oflip := false
 		if o.type == "npc":
 			var wk: float = o.get("walk", 0.0)
-			if wk > 0.0:
+			if wk > 0.0 and not o.has("ntex"):
 				tex = Art.person_tex(o.look, _walk_frame(wk))
+			elif wk > 0.0 and o.get("ntex", "") == "barbaris":
+				tex = Art.barb_tex(_walk_frame(wk))
 			off = Vector2(-8, 4 - 28 + (_breath(o.get("ph", 0.0)) if wk <= 0.0 else (-1.0 if _walk_frame(wk) == 1 else 0.0)))
+			if o.has("ntex"):
+				off = Vector2(-tex.get_width() / 2.0, 6 - tex.get_height() + _breath(o.get("ph", 0.0)))
 			# жители поворачиваются к Гению, когда он рядом (в катсцене – куда скажет сценарий)
 			if o.has("face"):
 				oflip = o.face
@@ -1037,7 +1064,7 @@ func _draw() -> void:
 				oflip = (p.x - p.y) > (pf.x - pf.y) + 0.3
 		if o.type == "npc":
 			var cp: Vector2 = o.get("cpos", Vector2(p))
-			items.append([cp.x + cp.y, cp.x, tex, iso(cp) + off, 1.0, cp, oflip, 6.0])
+			items.append([cp.x + cp.y, cp.x, tex, iso(cp) + off, 1.0, cp, oflip, 9.0 if o.has("ntex") else 6.0])
 		else:
 			items.append([p.x + p.y, p.x, tex, iso(Vector2(p)) + off, 1.0, Vector2(p), oflip])
 	for m in mobs:
@@ -1049,9 +1076,13 @@ func _draw() -> void:
 		var hop := -sin(dd * PI) * 2.0 if dd > 0.01 else _breath(float(absi(hash(m.id)) % 100) / 16.0)
 		items.append([m.fpos.x + m.fpos.y + 0.1, m.fpos.x, tex, iso(m.fpos) + Vector2(-tex.get_width() / 2.0, 4 - tex.get_height() + hop), 1.0, m.fpos, false, 8.0 if m.enemy == "muezzin" else 6.0])
 	if has_mate():
-		var mtex := Art.person_tex(Maps.NPC_LOOKS[G.p.companion].person, _walk_frame(mate_walk))
 		var mb := (-1.0 if _walk_frame(mate_walk) == 1 else 0.0) if mate_walk > 0.0 else _breath(1.7)
-		items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, mtex, iso(mate_pos) + Vector2(-8, 4 - 28 + mb), 1.0, mate_pos, mate_flip, 6.0])
+		if G.p.companion == "barbaris":
+			var btex := Art.barb_tex(_walk_frame(mate_walk) if mate_walk > 0.0 else 0)
+			items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, btex, iso(mate_pos) + Vector2(-15, 6 - 36 + mb), 1.0, mate_pos, mate_flip, 8.0])
+		else:
+			var mtex := Art.person_tex(Maps.NPC_LOOKS[G.p.companion].person, _walk_frame(mate_walk))
+			items.append([mate_pos.x + mate_pos.y + 0.04, mate_pos.x, mtex, iso(mate_pos) + Vector2(-8, 4 - 28 + mb), 1.0, mate_pos, mate_flip, 6.0])
 	if has_escort():
 		var etex := Art.person_tex(Maps.NPC_LOOKS.stray.person, _walk_frame(esc_walk))
 		var eb := (-1.0 if _walk_frame(esc_walk) == 1 else 0.0) if esc_walk > 0.0 else _breath(3.1)
@@ -1381,6 +1412,12 @@ func _mob_tex(m: Dictionary) -> Texture2D:
 			return Art.cached("mob_pes", func(): return _small_dog())
 		"muezzin":
 			return Art.cached("mob_muezzin", func(): return _big_dog())
+		"muezzin_cave":
+			return Art.cached("mob_muezzin_cave", func(): return _big_dog(true))
+		"pes_cave":
+			return Art.cached("mob_pes_cave", func(): return _small_dog(true))
+		"pustobreh":
+			return Art.cached("mob_pustobreh", func(): return _small_pustobreh())
 		"padal":
 			return Art.person_tex(Maps.NPC_LOOKS.raider.person, frame)
 		"slepysh":
@@ -1393,12 +1430,17 @@ func _mob_tex(m: Dictionary) -> Texture2D:
 			return Art.cached("mob_iskaz", func(): return _small_warped())
 
 
-func _small_dog() -> Texture2D:
+func _small_dog(cave := false) -> Texture2D:
 	var cv := ArtLib.Canvas.new(22, 16)
-	cv.ellipse(10, 9, 7, 3.5, 3)
-	cv.ellipse(17, 6, 3.5, 3, 3)
+	cv.ellipse(10, 9, 7, 3.5, 2 if cave else 3)
+	cv.ellipse(17, 6, 3.5, 3, 2 if cave else 3)
 	cv.put(20, 7, 8)
 	cv.put(19, 7, 8)
+	if cave:
+		# слепая, рёбра под кожей, в черепе огонёк чипа Института
+		cv.put(16, 4, 6)
+		for k in 3:
+			cv.put(7 + k * 2, 8, 4)
 	for lx in [5, 8, 12, 15]:
 		cv.line(lx, 11, lx, 15, 2)
 	cv.line(3, 8, 0, 5, 2)
@@ -1406,7 +1448,19 @@ func _small_dog() -> Texture2D:
 	return Art.to_tex(cv)
 
 
-func _big_dog() -> Texture2D:
+func _small_pustobreh() -> Texture2D:
+	var cv := ArtLib.Canvas.new(28, 18)
+	cv.ellipse(12, 10, 10, 6, 5)
+	cv.ellipse(22, 8, 5, 4, 5)
+	for lx in [5, 10, 15, 19]:
+		cv.line(lx, 14, lx - 1, 17, 4)
+	for k in 3:
+		cv.line(25 + k, 9, 25 + k, 13, 6)
+	cv.outline(0)
+	return Art.to_tex(cv)
+
+
+func _big_dog(cave := false) -> Texture2D:
 	var cv := ArtLib.Canvas.new(40, 30)
 	cv.ellipse(17, 17, 13, 7, 2)
 	cv.ellipse(13, 11, 7, 5, 3)
@@ -1418,6 +1472,9 @@ func _big_dog() -> Texture2D:
 	cv.line(4, 15, 0, 9, 2)
 	cv.put(35, 11, 6)
 	cv.put(35, 18, 6)
+	if cave:
+		cv.rect(24, 15, 6, 3, 1, false)
+		cv.put(27, 16, 6)
 	cv.outline(0)
 	return Art.to_tex(cv)
 
@@ -1501,7 +1558,7 @@ func _build_hud() -> void:
 	pb.size = Vector2(98, 18)
 	hud.add_child(pb)
 
-	if waste and not map.get("mini", false):
+	if waste and not map.get("mini", false) and not map.get("no_explore", false):
 		var eb := Pal.button("ИЗУЧАТЬ ПУСТОШЬ", _explore, 9)
 		eb.position = Vector2(484, 44)
 		eb.size = Vector2(150, 18)

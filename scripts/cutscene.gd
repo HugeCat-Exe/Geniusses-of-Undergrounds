@@ -11,6 +11,7 @@ extends CanvasLayer
 ##   ["fade_out", с] / ["fade_in", с]
 ##   ["dialogue", "узел"]        обычный диалог с выбором из story.gd; сцена ждёт, пока он закроется
 ##   ["rel", кто, n] ["su", n] ["item", "предмет"] ["flag", "имя"]
+##   ["call", Callable]          выполнить код (флаги квеста, награды)
 
 signal finished
 
@@ -159,6 +160,8 @@ func _step(st: Array) -> void:
 			G.add_item(str(st[1]))
 		"flag":
 			G.set_flag(str(st[1]))
+		"call":
+			st[1].call()
 
 
 func _say(who: String, text: String) -> void:
@@ -176,8 +179,9 @@ func _say(who: String, text: String) -> void:
 			portrait.texture = Art.portrait_tex(G.look())
 			name_l.text = G.p.callsign
 		else:
-			portrait.texture = Art.portrait_tex(Maps.NPC_LOOKS[who].portrait)
+			portrait.texture = Art.who_portrait(who)
 			name_l.text = Story.WHO.get(who, {}).get("name", who)
+	text = text.replace("{callsign}", G.p.callsign).replace("{pa}", "а" if G.p.get("sex", "М") == "Ж" else "")
 	text_l.text = text
 	text_l.visible_ratio = 0.0
 	advance = false

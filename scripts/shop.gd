@@ -30,7 +30,9 @@ func _ready() -> void:
 	title.position = Vector2(44, 22)
 	add_child(title)
 	money = Pal.label("", Pal.G5, 11, true)
-	money.position = Vector2(420, 24)
+	money.position = Vector2(300, 24)
+	money.size = Vector2(306, 14)
+	money.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(money)
 	limited = G.shop_who == "librarian"
 	var tabs: Array = [] if limited else G.item_tabs(_stock_now())
@@ -116,6 +118,8 @@ func _fill() -> void:
 	var rk := G.rel_price_k(G.shop_who)
 	if rk != 1.0:
 		money.text += "  ·  отношение: %+d%%" % roundi((rk - 1.0) * 100)
+	if G.barb_k() > 1.0:
+		money.text += "\n[Напуганы Вашим напарником] +20%"
 	for c in buy_box.get_children() + (sell_box.get_children() if sell_box else []):
 		c.queue_free()
 	if limited:

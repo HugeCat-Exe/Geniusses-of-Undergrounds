@@ -7,7 +7,7 @@ signal changed
 signal level_up(level: int)
 signal xp_gained(n: int)
 
-const VERSION := "0.12"
+const VERSION := "0.13"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3
@@ -373,7 +373,13 @@ func price(base: int, item: String = "") -> int:
 		k += 0.05
 	if trait_has("Страшный человек"):
 		k -= 0.10
+	k *= barb_k()
 	return maxi(1, roundi(base * k))
+
+
+## С Барбарис за спиной продавцы нервничают и просят больше: «[Напуганы Вашим напарником]».
+func barb_k() -> float:
+	return 1.2 if shop_who != "" and shop_who != "barbaris" and p.get("companion", "") == "barbaris" else 1.0
 
 
 func trait_has(tr: String) -> bool:
@@ -718,6 +724,12 @@ func wander_here(day: int = -1) -> bool:
 	return d >= 2 and absi(hash(str(p.seed) + "wand" + str(d))) % 4 == 0
 
 
+## После «Венка» Гаспар заезжает и к воротам «Южной Звезды» – в другие дни, чем в Кальдеру.
+func wander_star(day: int = -1) -> bool:
+	var d := int(p.day) if day < 0 else day
+	return p.quests.get("vb", "") == "done" and absi(hash(str(p.seed) + "wand" + str(d))) % 4 == 2
+
+
 var _wst_day := -1
 var _wst: Dictionary = {}
 
@@ -766,19 +778,27 @@ func wander_take(it: String) -> void:
 
 # ---------- Подарки ----------
 
-func gifts_owned() -> Array:
+func gifts_owned(who: String = "") -> Array:
 	var res: Array = []
 	for it in p.inv:
-		if D.ITEMS[it].type == "gift" and int(p.inv[it]) > 0:
+		var info: Dictionary = D.ITEMS[it]
+		if int(p.inv[it]) <= 0:
+			continue
+		# Барбарис ест всё, что пахнет едой, и с интересом рассматривает подарки
+		if info.type == "gift" or (who == "barbaris" and (info.type == "food" or info.get("alcohol", false))):
 			res.append(it)
 	return res
 
 
 func can_gift(who: String) -> bool:
-	return D.GIFT_PREFS.has(who) and not flag("gift_%s_%d" % [who, int(p.day)]) and not gifts_owned().is_empty()
+	return D.GIFT_PREFS.has(who) and not flag("gift_%s_%d" % [who, int(p.day)]) and not gifts_owned(who).is_empty()
 
 
 func gift_points(who: String, item: String) -> int:
+	if who == "barbaris":
+		if D.ITEMS[item].get("alcohol", false):
+			return -2
+		return 6 if D.ITEMS[item].type == "food" else 1
 	var tags: Array = D.GIFTS[item].tags
 	var pr: Dictionary = D.GIFT_PREFS.get(who, {})
 	for t in tags:
@@ -798,6 +818,9 @@ const GIFT_LINES := {
 		-2: "Дана поднимает бровь.\n\n– И куда я это надену? На дубинку? Ладно... спасибо, наверное."},
 	"ryzhaya": {6: "Рыжая ахает, тут же примеряет «{item}» и смотрится в мутное стекло бутылки.\n\n– Ну всё, теперь я самая красивая в «Клыке». Даже не спорь.",
 		-2: "Рыжая крутит «{item}» и хмыкает.\n\n– Практично. Я таких полный карман натаскала. Но раз ты принёс{pa}... оставлю."},
+	"barbaris": {6: "Барбарис осторожно берёт «{item}» губами и долго жуёт.\n\n– Вкусно. Ещё?",
+		1: "Барбарис обнюхивает «{item}» со всех сторон.\n\n– Странное. Оставлю. Буду смотреть.",
+		-2: "Барбарис отдёргивает морду.\n\n– Пахнет как камера. Как люди в белом. Не надо."},
 }
 const GIFT_GENERIC := {
 	6: "{name} долго смотрит на «{item}», потом бережно прячет подарок за пазуху.\n\n– Вот уж угадал{pa}. Спасибо. Честно, спасибо.",
@@ -948,7 +971,7 @@ func rel_tier(who: String) -> Dictionary:
 # ---------- Уровни Гения ----------
 
 ## Опыт за дела. Обычные враги – понемногу, мини-боссы – много.
-const XP_KILL := {"muezzin": 60, "slepets": 20, "plant": 15, "rider": 20, "iskaz": 20}
+const XP_KILL := {"muezzin": 60, "slepets": 20, "plant": 15, "rider": 20, "iskaz": 20, "muezzin_cave": 90, "pustobreh": 20}
 const XP := {"kill": 10, "cache": 8, "job": 30, "special": 60, "friend": 50, "minigame": 15}
 
 
@@ -1071,6 +1094,7 @@ func tracker_lines() -> Array:
 			"spice": t2 += " · травы %d/3" % spice_herbs()
 			"med": t2 += " – ящик у каравана"
 		res.append(t2)
+	res.append_array(preload("res://scripts/story_vb.gd").tracker())
 	return res
 
 
