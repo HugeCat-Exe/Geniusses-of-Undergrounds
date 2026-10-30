@@ -27,6 +27,11 @@ var last := -1
 var phrase_t := 0.0
 var erasing := false
 const PHRASE_EVERY := 40.0
+var art: TextureRect
+var art_normal: Texture2D
+var ouch := false          # Женевьеву ткнули в глаз: прищур и обиженная реплика на минуту
+const OUCH := "Ай! Это неприятно, дурень!"
+const OUCH_EYE := Rect2(52, 26, 40, 24)   # глаз на портрете 224×224 (клетки 26..46, 13..25 картинки 112×112)
 
 ## Реплики Женевьевы на главном экране: каждый запуск – новая, как сплэш в Майнкрафте.
 const PHRASES := [
@@ -124,8 +129,10 @@ func _ready() -> void:
 	frame.position = Vector2(6, 0)
 	frame.size = Vector2(228, 228)
 	gen_box.add_child(frame)
-	var art := TextureRect.new()
-	art.texture = preload("res://scripts/genevieve.gd").texture()
+	art = TextureRect.new()
+	art_normal = preload("res://scripts/genevieve.gd").texture()
+	art.texture = art_normal
+	art.gui_input.connect(_on_art_input)
 	art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	art.position = Vector2(8, 2)
 	art.size = Vector2(224, 224)
@@ -223,11 +230,32 @@ func _process(delta: float) -> void:
 	var n := mini(phrase.length(), int(phrase_t / 0.035))
 	typed = n
 	phrase_label.text = phrase.substr(0, n) + (blink if n == phrase.length() else "_")
-	if phrase_t > PHRASE_EVERY:
+	if phrase_t > (60.0 if ouch else PHRASE_EVERY):
 		erasing = true
 
 
+func _on_art_input(ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and OUCH_EYE.has_point(ev.position):
+		_poke_eye()
+
+
+func _poke_eye() -> void:
+	ouch = true
+	art.texture = preload("res://art/title/title_genevieve_closed.png")
+	await get_tree().create_timer(0.5).timeout
+	if not is_inside_tree() or not ouch:
+		return
+	art.texture = preload("res://art/title/title_genevieve_squint.png")
+	phrase = "«%s»" % OUCH
+	phrase_t = 0.0
+	typed = 0
+	erasing = false
+
+
 func _next_phrase() -> void:
+	if ouch:
+		ouch = false
+		art.texture = art_normal
 	if deck.is_empty():
 		deck = range(PHRASES.size())
 		deck.shuffle()

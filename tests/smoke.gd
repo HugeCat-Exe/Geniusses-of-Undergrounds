@@ -14,6 +14,18 @@ func run(main: Node) -> void:
 	out = OS.get_environment("GP_SHOTS")
 	await _wait(1.6)
 	await _shot("01_title")
+	# пасхалка: глаз Женевьевы
+	var tt = M.current
+	tt._on_art_input(_click(Vector2(70, 38)))
+	await _wait(0.25)
+	await _shot("01b_title_eye_closed")
+	await _wait(1.6)
+	await _shot("01c_title_squint")
+	print("SMOKE title ouch ", tt.ouch, " phrase ", tt.phrase)
+	if OS.get_environment("GP_ONLY") == "title":
+		print("SMOKE DONE")
+		get_tree().quit()
+		return
 	M.show_creator()
 	await _wait(0.3)
 	var cr = M.current
@@ -1380,6 +1392,14 @@ func _fights() -> void:
 			return
 		cb._end("win")
 		await _wait(0.8)
+
+
+func _click(pos: Vector2) -> InputEventMouseButton:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = pos
+	return ev
 
 
 func _close_overlays() -> void:
