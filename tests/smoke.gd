@@ -1501,7 +1501,7 @@ func _smoke_014() -> void:
 	sp.queue_free()
 	await _wait(0.2)
 	# портреты новых жителей
-	for who in ["bartender", "beggar", "gunsmith", "ian", "kid", "librarian", "miron", "mistel", "smoker", "zoya", "stranger", "stray"]:
+	for who in ["bartender", "beggar", "gunsmith", "ian", "kid", "librarian", "miron", "mistel", "smoker", "zoya", "stranger", "stray", "pip", "tauros", "ursuz", "ankvila"]:
 		var t: Texture2D = Art.who_portrait(who)
 		print("SMOKE 014 portrait ", who, " ", t.get_width() if t != null else -1)
 	M.show_world("caldera2", "")

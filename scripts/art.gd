@@ -1333,7 +1333,7 @@ func _person(look: Dictionary, frame: int) -> ImageTexture:
 
 ## Готовый портрет-картинка NPC (112x112 из «Картинки»), иначе null
 func npc_portrait(who: String) -> Texture2D:
-	for f in ["port_kalder_" + who, "port_" + who]:
+	for f in ["port_kalder_" + who, "port_zvezda_" + who, "port_" + who]:
 		var path := "res://art/portraits/%s.png" % f
 		if ResourceLoader.exists(path):
 			return load(path)
