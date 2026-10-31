@@ -21,7 +21,7 @@ func _ready() -> void:
 	var title := Pal.label("УРОВЕНЬ %d · НОВЫЙ ОСНОВНОЙ НАВЫК" % int(G.p.level), Pal.G5, 12, true)
 	title.position = Vector2(46, 32)
 	add_child(title)
-	var sub := Pal.label("Выберите навык: он станет основным и получит +%d. Если выбрать уже основной навык, бонус удвоится." % G.main_bonus(), Pal.G3, 8)
+	var sub := Pal.label("Выберите навык: он станет основным и получит ещё +%d к бонусу. Можно выбрать уже основной навык: бонус основного навыка удвоится." % G.main_bonus(), Pal.G3, 8)
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.position = Vector2(46, 50)
 	sub.size = Vector2(548, 20)
@@ -55,8 +55,10 @@ func _ready() -> void:
 func _describe(sk: Array) -> void:
 	var t := G.main_times(sk[0])
 	var now := "сейчас основной ×%d" % t if t > 0 else "сейчас не основной"
-	info.text = "[b]%s[/b] (%s): %s\n[color=%s]%s; после выбора бонус основного навыка: +%d.[/color]" % [
-		sk[0], sk[1], sk[2], Pal.hex(Pal.G3), now, G.main_bonus() * (t + 1)]
+	var was := G.skill_bonus(sk[0])
+	var will := was + G.main_bonus()
+	info.text = "[b]%s[/b] (%s): %s\n[color=%s]%s. Бонус навыка: было %+d, станет [b]%+d[/b].[/color]" % [
+		sk[0], sk[1], sk[2], Pal.hex(Pal.G3), now, was, will]
 
 
 func _choose(sk: Array) -> void:

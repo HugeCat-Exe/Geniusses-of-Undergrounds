@@ -472,7 +472,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _target_at(t: Vector2i):
 	if has_mate() and Vector2i(mate_pos.round()) == t:
-		var mt: Array = {"patrol": ["Дана", "dana_start"], "ryzhaya": ["Рыжая", "ry_start"], "barbaris": ["Барбарис", "vb_barb_talk"]}[G.p.companion]
+		var mt: Array = {"patrol": ["Дана", "dn_start"], "ryzhaya": ["Рыжая", "ry_start"], "barbaris": ["Барбарис", "vb_barb_talk"]}[G.p.companion]
 		return {"type": "mate", "pos": t, "title": mt[0], "reach": 1, "action": mt[1]}
 	for m in mobs:
 		if m.pos == t and not m.get("calm", false):
@@ -1169,7 +1169,7 @@ func _draw_loot_marks() -> void:
 
 const Sched := preload("res://scripts/sched.gd")
 const SCHED_TALK := {"kid": "res_kid", "smoker": "stairs_smoker", "ian": "stairs_ian", "beggar": "res_beggar",
-	"patrol": "dana_start", "zoya": "zoya_start", "pip": "pip_start", "miron": "miron_start"}
+	"patrol": "dn_start", "zoya": "zoya_start", "pip": "pip_start", "miron": "miron_start"}
 var sched_paths: Dictionary = {}
 
 

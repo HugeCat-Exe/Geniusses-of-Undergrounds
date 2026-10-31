@@ -69,6 +69,12 @@ func run(main: Node) -> void:
 	await _shot("06_intro")
 	_close_overlays()
 	await _wait(0.8)
+	if OS.get_environment("GP_ONLY") == "014":
+		await _smoke_014()
+		_check_story()
+		print("SMOKE DONE")
+		get_tree().quit()
+		return
 	if OS.get_environment("GP_ONLY") == "013":
 		await _smoke_013()
 		_check_story()
@@ -529,6 +535,7 @@ func run(main: Node) -> void:
 	await _smoke_011()
 	await _smoke_012()
 	await _smoke_013()
+	await _smoke_014()
 	M.world.ppos = Vector2i(23, 16)
 	M.world.pf = Vector2(23, 16)
 	M.show_map()
@@ -717,7 +724,7 @@ func _smoke_091() -> void:
 	G.p.rel["patrol"] = 30
 	M.show_world("caldera2", "")
 	await _wait(0.6)
-	M.open_dialogue("dana_start")
+	M.open_dialogue("dn_start")
 	await _wait(0.8)
 	await _shot("50_dana")
 	_close_overlays()
@@ -909,7 +916,7 @@ func _smoke_011() -> void:
 	await _wait(0.8)
 	await _shot("80_floor1_booth")
 	G.p.rel["patrol"] = 30
-	M.open_dialogue("dana_door")
+	M.open_dialogue("dn_door")
 	await _wait(0.6)
 	var dl = _dialogue()
 	print("SMOKE 011 dana door open ", dl != null)
@@ -1385,6 +1392,128 @@ func _smoke_013() -> void:
 
 
 ## Закрыть все бои, которые успели начаться (собаки добежали до Гения).
+## Проверки версии 0.14: сцены Даны, урон, выбор навыка, приветствия.
+func _smoke_014() -> void:
+	print("SMOKE 014 pes bite ", D.ENEMIES.pes.attacks[0].dmg)
+	var dl
+	G.p.rel["patrol"] = 0
+	for k in ["dn_met", "dn_test_done", "dn_named", "dn_tag_given", "dn_tag_done", "dana_errands"]:
+		G.p.flags.erase(k)
+	G.set_companion("")
+	M.show_world("caldera2", "")
+	await _wait(0.6)
+	M.open_dialogue("dn_start")
+	await _wait(1.0)
+	dl = _dialogue()
+	print("SMOKE 014 dana first ", dl.current_id if dl else "none", " met ", G.flag("dn_met"))
+	await _shot("140_dana_first")
+	_close_overlays()
+	await _wait(0.2)
+	# первая просьба: падальщики
+	M.open_dialogue("dn_start")
+	await _wait(0.6)
+	dl = _dialogue()
+	var labels: Array = []
+	for b in dl.choices.get_children():
+		labels.append(b.text)
+	print("SMOKE 014 dana menu ", dl.current_id, " ", labels)
+	_close_overlays()
+	M.open_dialogue("dn_job0_offer")
+	await _wait(0.4)
+	_choose_first()
+	await _wait(0.4)
+	var j = G.job_by_id("pt_0")
+	print("SMOKE 014 job0 ", j != null)
+	if j != null:
+		j.state = "done"
+		G.turn_in("pt_0")
+	print("SMOKE 014 errands ", G.p.flags.get("dana_errands", 0), " rel ", G.rel_points("patrol"))
+	# жетон сержанта: тайник у вышки
+	M.open_dialogue("dn_tag_ask")
+	await _wait(0.4)
+	_choose_first()
+	await _wait(0.4)
+	_close_overlays()
+	var tj = G.job_by_id("pt_tag")
+	print("SMOKE 014 tag job ", tj != null, " spot ", tj.get("spot", false) if tj else false)
+	M.show_world("poi_tower", "")
+	await _wait(0.8)
+	var spot = null
+	for o in M.world.objs:
+		if str(o.get("action", "")) == "jobspot:pt_tag":
+			spot = o
+	print("SMOKE 014 tag spot on tower ", spot != null)
+	await _shot("141_tower_tag")
+	if tj != null:
+		G.job_found("pt_tag")
+		G.turn_in("pt_tag")
+	M.show_world("caldera2", "")
+	await _wait(0.6)
+	M.open_dialogue("thanks_patrol")
+	await _wait(0.8)
+	dl = _dialogue()
+	print("SMOKE 014 tag thanks ", dl.current_id if dl else "none", " has tag ", G.has("Жетон сержанта"))
+	await _shot("142_dana_tag_thanks")
+	_close_overlays()
+	# разговор начистоту
+	G.p.flags["dana_errands"] = 2
+	G.p.rel["patrol"] = 30
+	M.open_dialogue("dn_test_1")
+	await _wait(0.6)
+	for i in 3:
+		_choose_first()
+		await _wait(0.5)
+	dl = _dialogue()
+	print("SMOKE 014 test end ", dl.current_id if dl else "none", " done ", G.flag("dn_test_done"))
+	await _shot("143_dana_test_pass")
+	_close_overlays()
+	M.open_dialogue("dn_start")
+	await _wait(0.6)
+	dl = _dialogue()
+	print("SMOKE 014 dana close menu ", dl.current_id if dl else "none")
+	_close_overlays()
+	M.open_dialogue("dn_join")
+	await _wait(0.6)
+	_close_overlays()
+	await _wait(0.4)
+	print("SMOKE 014 dana companion ", G.p.companion)
+	M.open_dialogue("dn_start")
+	await _wait(0.6)
+	dl = _dialogue()
+	print("SMOKE 014 dana comp ", dl.current_id if dl else "none")
+	_close_overlays()
+	G.set_companion("")
+	await _wait(0.4)
+	# приветствия по ступеням: у всех свои
+	var miss: Array = []
+	for who in ["trader", "cook", "surgeon", "ryzhaya", "old", "beggar", "gunsmith", "mistel", "patrol", "bartender", "zoya", "miron", "stranger", "librarian", "taxi"]:
+		for idx in [-2, -1, 0, 1, 2, 3]:
+			if not preload("res://scripts/story.gd").GREET.get(who, {}).has(idx):
+				miss.append("%s %d" % [who, idx])
+	print("SMOKE 014 greet missing ", miss)
+	# окно выбора навыка
+	var sp = load("res://scripts/skillpick.gd").new()
+	M.overlay.add_child(sp)
+	await _wait(0.4)
+	sp._choose(D.SKILLS[0])
+	print("SMOKE 014 skillpick ", sp.info.text.get_slice("\n", 1))
+	await _shot("144_skillpick")
+	sp.queue_free()
+	await _wait(0.2)
+	# портреты новых жителей
+	for who in ["bartender", "beggar", "gunsmith", "ian", "kid", "librarian", "miron", "mistel", "smoker", "zoya", "stranger", "stray"]:
+		var t: Texture2D = Art.who_portrait(who)
+		print("SMOKE 014 portrait ", who, " ", t.get_width() if t != null else -1)
+	M.show_world("caldera2", "")
+	await _wait(0.5)
+	G.p.flags.erase("look_trader")
+	M.open_dialogue("trader_start")
+	await _wait(1.0)
+	await _shot("145_trader_look")
+	_close_overlays()
+	await _wait(0.3)
+
+
 func _fights() -> void:
 	for k in 4:
 		var cb = _overlay_of_type("Combat")

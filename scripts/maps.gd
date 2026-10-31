@@ -295,7 +295,7 @@ func _caldera1() -> Dictionary:
 		objs.append(_prop("shack", x, 1, "Лачуга из листового железа"))
 	objs.append(_npc("beggar", 11, 2, "Нищий Тимоха", "res_beggar", 1))
 	# будка патрульной Даны: пускает к себе только своих, как Рыжая
-	objs.append(_big("danabooth", 15, 1, 2, 2, "Будка патрульной Даны", "dana_door"))
+	objs.append(_big("danabooth", 15, 1, 2, 2, "Будка патрульной Даны", "dn_door"))
 	objs.append(_npc("kid", 13, 3, "Девочка Ласка", "res_kid", 1))
 	objs.append(_prop("lift", 17, 1, "Грузовой лифт", "lift"))
 	objs.append(_prop("stairs_down", 1, 5, "Лестница вниз, на ярус 2", "go:caldera2:down1"))
@@ -335,7 +335,7 @@ func _caldera2() -> Dictionary:
 	objs.append(_prop("lift", 19, 1, "Грузовой лифт", "lift"))
 	objs.append(_prop("jobscreen", 6, 4, "Экран заданий Института", "board"))
 	if G.p.get("companion", "") != "patrol":
-		objs.append(_npc("patrol", 16, 7, "Патрульная Дана", "dana_start", 1))
+		objs.append(_npc("patrol", 16, 7, "Патрульная Дана", "dn_start", 1))
 	objs.append(_prop("crate", 15, 5, "Ящики"))
 	objs.append(_prop("barrel", 18, 5, "Бочка"))
 	objs.append(_prop("cable", 14, 4, "Провода"))
@@ -428,8 +428,8 @@ func _dana_home() -> Dictionary:
 	var objs: Array = []
 	objs.append(_prop("door", 1, 4, "Дверь на ярус 1", "go:caldera1:danabooth"))
 	objs.append(_prop("bed", 1, 1, "Узкая койка, заправленная по-армейски"))
-	objs.append(_prop("shelf", 3, 1, "Шкафчик с формой", "dana_locker"))
-	objs.append(_prop("table", 5, 1, "Стол с рацией", "dana_radio"))
+	objs.append(_prop("shelf", 3, 1, "Шкафчик с формой", "dn_locker"))
+	objs.append(_prop("table", 5, 1, "Стол с рацией", "dn_radio"))
 	objs.append(_prop("crate", 6, 3, "Ящик с запасными фонарями"))
 	_lamps(objs, [Vector2i(4, 3)])
 	var grid := _grid(DANA_HOME)

@@ -104,10 +104,18 @@ func start(id: String) -> void:
 const NO_ASK := ["barbaris", "stranger", "berberis", "tauros", "ursuz", "ankvila", "raider", "wounded"]
 
 
+## Ветка маршрута: все условия до последнего элемента (узла) должны выполняться.
+func _route_ok(r: Array) -> bool:
+	for i in r.size() - 1:
+		if not _cond(r[i]):
+			return false
+	return true
+
+
 func _route_who(id: String) -> String:
 	for r in nodes[id].route:
 		var nid: String = r[r.size() - 1]
-		if r.size() == 1 or _cond(r[0]):
+		if _route_ok(r):
 			return str(nodes.get(nid, {}).get("who", ""))
 	return ""
 
@@ -136,7 +144,7 @@ func _show(id: String) -> void:
 	var n: Dictionary = nodes[id]
 	if n.has("route"):
 		for r in n.route:
-			if r.size() == 1 or _cond(r[0]):
+			if _route_ok(r):
 				_show(r[r.size() - 1])
 				return
 	_fx(n.get("fx", []))
@@ -240,21 +248,23 @@ const NIGHT_MOOD := {
 	"surgeon": "Кост не спит: под глазами тени, на халате свежие пятна. Ночью к нему приходят с самым страшным.",
 	"cook": "Грета домывает котёл. Ночью она мягче: остатки похлёбки всё равно пропадут.",
 	"bartender": "Ночью в «Клыке» людно и душно. Гарри отвечает через плечо, разливая сразу на троих.",
-	"ryzhaya": "Ночью Рыжая другая: тише, медленнее, и смотрит на Вас дольше обычного.",
+	"ryzhaya": "Ночью, глядя на Рыжую, Вы испытываете иные чувства. Она движется чуть быстрее, чем Вы успеваете заметить. То ли это Ваша усталость, то ли навыки ночного хищника.",
 	"old": "Ефим не спит. Говорит, что ночью Подземка слышна лучше.",
 	"mistel": "Ода выглядывает из-за двери в накинутом пальто. Видно, что Вы её разбудили.",
-	"patrol": "Дана в ночном обходе: дубинка в руке, фонарь на плече, взгляд по углам.",
+	"patrol": "Дана в ночном обходе: дубинка в руке, фонарь на плече, взгляд по углам. Ночью она говорит тише и чуть медленнее.",
 	"miron": "Мирон сидит у жаровни с кружкой. Ночью он вспоминает молодость охотнее.",
 	"pip": "Пип ночью не прячется: шныряет у жаровни и шепчет, кто куда пошёл.",
 	"librarian": "Феликс читает при огарке и откладывает книгу неохотно.",
 	"taxi": "Артир дремлет за рулём и просыпается, только когда Вы стучите по крыше.",
 	"wanderer": "Торговец громко зевает.\n\n– А, Гений, заходи, товары на любой вкус и цвет.",
 	"stranger": "Лесник наслаждается ночной прохладой и влажностью леса. Ветка под Вашими ногами ломается, и он приоткрывает глаза.",
+	"kid": "Девочка-крысолюд трёт глаза и иногда зевает.",
 }
 ## Днём – своё настроение (у кого есть).
 const DAY_MOOD := {
 	"wanderer": "– Смотри, кого принесло! Гений! Заходи, покупай, Су не жалей!",
 	"stranger": "Лесник собирает грибы, приподнимая листья тросточкой. Вы прерываете его поиски.",
+	"patrol": "Дана стоит у перил прямо, как на смотре, и следит за шахтой.",
 }
 
 ## Как жители относятся к Гению из-за его фракции (D.FACTIONS[...].rel).
@@ -613,11 +623,22 @@ func _cond(c: String) -> bool:
 			return G.p.hp < G.max_hp() and G.p.su >= _doc_cost()
 		"companion":
 			return G.p.get("companion", "") == "ryzhaya"
-		"dana_job_ok":
+		"dn_job_active":
 			for j in G.p.jobs:
 				if j.giver == "patrol":
-					return false
-			return int(G.p.day) >= int(G.p.flags.get("dana_job_day", -99)) + 2
+					return true
+			return false
+		"dn_round":
+			return not G.flag("dn_round_done") and int(G.p.flags.get("dn_round_day", -1)) != G.p.day
+		"dn_tag_day":
+			if G.flag("dn_tag_given") or int(G.p.flags.get("dana_errands", 0)) < 1 or _cond("dn_job_active"):
+				return false
+			return hash(str(G.p.seed) + "dntag" + str(G.p.day)) % 2 == 0
+		"dn_test_ready":
+			return int(G.p.flags.get("dana_errands", 0)) >= 2 and not G.flag("dn_test_done") \
+				and int(G.p.flags.get("dn_test_day", -1)) != G.p.day
+		"dn_home_chat":
+			return G.p.map == "caldera_danahome" and not G.flag("dn_home_chat")
 		"ry_job_active":
 			for j in G.p.jobs:
 				if j.giver == "ryzhaya":
@@ -652,6 +673,10 @@ func _cond(c: String) -> bool:
 		return G.p.map == "caldera_ryhome" and not G.flag("ry_home_chat")
 	if c.begins_with("floor:"):
 		return G.p.map == "caldera" + c.substr(6)
+	if c.begins_with("dn_errands>="):
+		return int(G.p.flags.get("dana_errands", 0)) >= int(c.substr(12))
+	if c.begins_with("dn_errands="):
+		return int(G.p.flags.get("dana_errands", 0)) == int(c.substr(11))
 	if c.begins_with("errands>="):
 		return int(G.p.flags.get("ry_errands", 0)) >= int(c.substr(9))
 	if c.begins_with("errands="):
@@ -863,9 +888,9 @@ func _fx(list: Array) -> void:
 			"take_offer":
 				G.take_job(f[1])
 			"dana_job":
-				G.p.flags["dana_job_day"] = int(G.p.day)
+				var dtpl: Dictionary = D.DANA_TAG if f[1] == "tag" else D.DANA_JOBS[int(f[1])]
 				var rngd := RandomNumberGenerator.new()
-				G.take_job(G._make_job(D.DANA_JOBS[int(f[1])], rngd, "dana_%d_%d" % [int(f[1]), G.p.day]))
+				G.take_job(G._make_job(dtpl, rngd, "pt_%s" % str(f[1])))
 			"ry_job":
 				var tpl: Dictionary = D.RY_EARRING if f[1] == "earring" else D.RY_JOBS[int(f[1])]
 				var rng := RandomNumberGenerator.new()
