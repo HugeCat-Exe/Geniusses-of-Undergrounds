@@ -15,8 +15,8 @@ const SPEC := {
 	7: {"pes_cave": 4, "pustobreh": 3},
 }
 const WAVES := 3
-const WAVE_SIZE := 4
-const MAX_ALIVE := 3
+const WAVE_SIZE := 5
+const MAX_ALIVE := 4
 const KNIGHTS := ["tauros", "ursuz", "ankvila"]
 
 ## Заставки при первом входе: описание этажа и реплики рыцарей (сценарий, разделы 5, 7, 8).
@@ -54,7 +54,11 @@ const WAVE_LINES := [["ankvila", "– Одна есть! Урсуз, сколь�
 var w: Node2D
 var n := 0
 var spawned := {}        # сколько врагов каждого вида уже вылезло на этом заходе
-var spawn_t := 2.0
+var spawn_t := 0.7
+var life_t := 4.0        # реплики жителей и рабочих
+var sparks: Array = []   # искры сварки: [точка, скорость, сколько ещё видно]
+var spark_t := 0.0
+var farewell_on := false
 var shot_t := 3.0
 var bark_t := 5.0
 var tracers: Array = []  # [от, до, сколько ещё видно]
@@ -117,12 +121,9 @@ func _on_enter() -> void:
 		return
 	if _q() != "active":
 		return
-	# возврат пушки у щели и прощание на пятом
-	if n == 10 and G.flag("vb_f11") and not G.flag("vb_gun_back") and _knights().size() > 0:
-		_play([["dialogue", "vb_return_gun"]])
-		return
-	if n == 5 and (G.flag("vb_gun_back") or G.flag("vb_button") or (G.flag("vb_f11") and not G.has("Импульсная пушка"))) and not G.flag("vb_farewell"):
-		_play([["dialogue", "vb_farewell"], ["fade_out", 0.7], ["call", _knights_leave], ["fade_in", 0.7]])
+	# после лаборатории: рыцари ждут Гения там, где он появился, и прощаются прямо здесь
+	if _after_lab():
+		_farewell.call_deferred()
 		return
 	if not G.flag("vb_tauros") or G.flag("vb_e%d" % n):
 		return
@@ -143,6 +144,52 @@ func _on_enter() -> void:
 func _knights_leave() -> void:
 	for o in _knights():
 		w.remove_cut_actor(o)
+
+
+## Лаборатория пройдена (или чипы уничтожены), а прощания ещё не было.
+func _after_lab() -> bool:
+	return _q() == "active" and n >= 1 and n <= 10 and (G.flag("vb_f11") or G.flag("vb_button")) and not G.flag("vb_farewell")
+
+
+## Возврат пушки (если она ещё у Гения) и прощание на том этаже, где стоят рыцари.
+## Потом рыцари идут к лифту и уезжают наверх.
+func _farewell() -> void:
+	if farewell_on or busy or _knights().is_empty():
+		return
+	farewell_on = true
+	var steps: Array = []
+	if G.has("Импульсная пушка") and not G.flag("vb_gun_back"):
+		steps.append(["dialogue", "vb_return_gun"])
+	steps.append(["dialogue", "vb_farewell"])
+	steps.append(["call", _knights_walk_off])
+	steps.append(["wait", 2.4])
+	steps.append(["fade_out", 0.6])
+	steps.append(["call", _knights_leave])
+	steps.append(["fade_in", 0.6])
+	_play(steps)
+
+
+func _knights_walk_off() -> void:
+	var lift = _lift()
+	if lift == null:
+		return
+	var i := 0
+	for o in _knights():
+		var goal: Vector2i = lift.pos
+		for d in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 0), Vector2i(0, 2), Vector2i(2, 1)].slice(i):
+			var c: Vector2i = lift.pos + d
+			if w.walkable(c) and not w.obj_at.has(c):
+				goal = c
+				break
+		i += 1
+		w.cut_walk(o.id, goal)
+
+
+func _lift():
+	for o in w.objs:
+		if str(o.get("action", "")) == "vb_lift":
+			return o
+	return null
 
 
 func _camp_enter() -> void:
@@ -170,9 +217,15 @@ func _process(delta: float) -> void:
 		b.t -= delta
 	barks = barks.filter(func(b): return b.t > 0.0)
 	queue_redraw()
+	_sparks_tick(delta)
+	_wander_tick(delta)
 	if w.blocked() or w.cut_active or busy or w.enc_wait > 0.0:
 		return
+	if _after_lab() and not farewell_on:
+		_farewell()
+		return
 	_follow_tick(delta)
+	_life_barks(delta)
 	# третий узел генератора запущен: свет дают, даже если диалог закрыли раньше времени
 	if n == 5 and G.flag("vb_gen3") and not G.flag("vb_f5") and _q() == "active":
 		_clear_floor(true)
@@ -221,7 +274,7 @@ func _spawn_tick(delta: float) -> void:
 	spawn_t -= delta
 	if spawn_t > 0.0:
 		return
-	spawn_t = randf_range(2.5, 4.5)
+	spawn_t = randf_range(0.9, 1.7)
 	if _alive() >= MAX_ALIVE or w.map.burrows.is_empty():
 		return
 	if n == 5:
@@ -236,9 +289,14 @@ func _spawn_tick(delta: float) -> void:
 			left.append(e)
 	if left.is_empty():
 		return
-	var e: String = left.pick_random()
-	if _spawn(e):
-		spawned[e] = int(spawned.get(e, 0)) + 1
+	# из пробоин лезут по двое, если на этаже тихо
+	for k in (2 if _alive() <= 1 else 1):
+		left = left.filter(func(x): return _kills(x) + int(spawned.get(x, 0)) < int(spec[x]))
+		if left.is_empty() or _alive() >= MAX_ALIVE:
+			return
+		var e: String = left.pick_random()
+		if _spawn(e):
+			spawned[e] = int(spawned.get(e, 0)) + 1
 
 
 func _wave_tick(delta: float) -> void:
@@ -250,7 +308,7 @@ func _wave_tick(delta: float) -> void:
 	if wave_left > 0:
 		spawn_t -= delta
 		if spawn_t <= 0.0:
-			spawn_t = 1.6
+			spawn_t = 0.8
 			if _spawn("pes_cave"):
 				wave_left -= 1
 		return
@@ -265,7 +323,7 @@ func _wave_tick(delta: float) -> void:
 	var k := wave - 1
 	_bark_who(WAVE_LINES[k % WAVE_LINES.size()][0], WAVE_LINES[k % WAVE_LINES.size()][1])
 	G.say("Волна %d из %d отбита. Следующая на подходе." % [wave, WAVES])
-	wave_pause = 4.0
+	wave_pause = 2.5
 
 
 func _spawn(e: String) -> bool:
@@ -382,7 +440,8 @@ func _clear_floor(scene: bool) -> void:
 		if m.get("vb", false) and not m.get("calm", false):
 			w.mobs.erase(m)
 	if n == 5:
-		G.say("«Южная Звезда»: подача энергии восстановлена. Этажи 1–5 открыты для жителей.")
+		G.p.flags["vb_f5_day"] = int(G.p.day)
+		G.say("«Южная Звезда»: подача энергии восстановлена. Этажи 1–5 открыты для жителей, начинается ремонт.")
 	G.changed.emit()
 	# карта пересобирается после заставки: пробоины становятся заплатами, загорается свет
 	if scene and CLEAR.has(n):
@@ -463,6 +522,103 @@ func _follow_tick(delta: float) -> void:
 				_check_clear()
 
 
+# ---------------- жизнь на отбитых этажах ----------------
+
+const LIFE_BARKS := {
+	"worker": ["– Подай ключ на семнадцать!", "– Держи балку, держи!", "– Варю шов, не смотри на огонь.", "– Ещё одна плита, и обед.",
+		"– Кто опять унёс мою кувалду?", "– Тут трубу менять целиком.", "– Осторожно, сверху капает.", "– Проводку тянем к третьему."],
+	"resident": ["– Свет! Настоящий свет!", "– Мама, смотри, лифт едет!", "– Я свою дверь сразу узнал, представляете?", "– Шторы бы повесить...",
+		"– Тут был мой ларёк. Будет снова.", "– Спасибо рыцарям. И Вам, Гений.", "– Пахнет краской. Хороший запах.", "– Соседи вернулись, слышите?"],
+}
+
+
+func _life_barks(delta: float) -> void:
+	life_t -= delta
+	if life_t > 0.0:
+		return
+	life_t = randf_range(3.0, 6.0)
+	var near: Array = []
+	for o in w.objs:
+		if o.type == "npc" and LIFE_BARKS.has(o.get("id", "")) and w._cheb(o.pos, w.ppos) <= 8:
+			near.append(o)
+	if not near.is_empty():
+		var o: Dictionary = near.pick_random()
+		_bark(o, LIFE_BARKS[o.id].pick_random())
+
+
+## Жители и рабочие ходят по этажу недалеко от своего места: делают вид, что заняты.
+func _wander_tick(delta: float) -> void:
+	for o in w.objs:
+		if not o.get("wander", false) or followers.has(o):
+			continue
+		if not o.has("home"):
+			o["home"] = o.pos
+			o["wt"] = randf_range(1.0, 5.0)
+		if o.has("wpath"):
+			var path: Array = o.wpath
+			if path.is_empty():
+				o.erase("wpath")
+				o.erase("cpos")
+				o["walk"] = 0.0
+				if not w.obj_at.has(o.pos):
+					w.obj_at[o.pos] = o
+				continue
+			var c := Vector2(path[0])
+			var cp: Vector2 = o.get("cpos", Vector2(o.pos))
+			var d := c - cp
+			if absf(d.x - d.y) > 0.01:
+				o["face"] = (d.x - d.y) < 0
+			cp = cp.move_toward(c, delta * 2.2)
+			o["cpos"] = cp
+			o["walk"] = float(o.get("walk", 0.0)) + delta
+			if cp.distance_to(c) < 0.01:
+				path.pop_front()
+				var cell := Vector2i(c)
+				if w.obj_at.get(o.pos) == o:
+					w.obj_at.erase(o.pos)
+				o.pos = cell
+				if not w.obj_at.has(cell):
+					w.obj_at[cell] = o
+			continue
+		o.wt = float(o.wt) - delta
+		if o.wt > 0.0 or w.blocked() or w.cut_active:
+			continue
+		o.wt = randf_range(3.0, 7.0)
+		if o.get("weld", false) and randf() < 0.7:
+			continue
+		var home: Vector2i = o.home
+		var t: Vector2i = home + Vector2i(randi_range(-3, 3), randi_range(-2, 2))
+		if not w.in_bounds(t) or not w.walkable(t) or w.obj_at.has(t) or t == w.ppos or _mob_at(t):
+			continue
+		if o.get("block", false):
+			w.astar.set_point_solid(o.pos, false)
+			o.block = false
+		var ids: Array = w.astar.get_id_path(o.pos, t)
+		if ids.size() < 2 or ids.size() > 8:
+			continue
+		ids.pop_front()
+		o["wpath"] = ids
+
+
+## Сварка: у рабочих с горелкой сыплются искры и вспыхивает свет.
+func _sparks_tick(delta: float) -> void:
+	for sp in sparks:
+		sp[0] += sp[1] * delta
+		sp[1].y += 90.0 * delta
+		sp[2] -= delta
+	sparks = sparks.filter(func(sp): return sp[2] > 0.0)
+	spark_t -= delta
+	if spark_t > 0.0:
+		return
+	spark_t = randf_range(0.08, 0.2)
+	for o in w.objs:
+		if o.get("weld", false) and not o.has("wpath") and randf() < 0.5:
+			var cp: Vector2 = o.get("cpos", Vector2(o.pos))
+			var base: Vector2 = w.iso(cp) + Vector2(10 if not o.get("face", false) else -10, -14)
+			for k in randi_range(2, 4):
+				sparks.append([base, Vector2(randf_range(-40, 40), randf_range(-60, -10)), randf_range(0.25, 0.5)])
+
+
 # ---------------- реплики над головой ----------------
 
 func _bark(o: Dictionary, text: String) -> void:
@@ -479,6 +635,9 @@ func _bark_who(id: String, text: String) -> void:
 
 
 func _draw() -> void:
+	for sp in sparks:
+		var a: float = clampf(sp[2] / 0.3, 0.0, 1.0)
+		draw_rect(Rect2(sp[0], Vector2(1.5, 1.5)), Color(Pal.G5 if randf() < 0.6 else Pal.R3, a))
 	for t in tracers:
 		var a: float = clampf(t[2] / 0.18, 0.0, 1.0)
 		draw_line(t[0], t[1], Color(Pal.G5, a), 2.0)

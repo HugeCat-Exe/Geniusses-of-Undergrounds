@@ -607,6 +607,66 @@ func _prop(kind: String) -> ImageTexture:
 			cv.line(30, 2, 30, 39, 2)
 			cv.put(10, 11, 8)
 			cv.put(22, 11, 9)
+		"rubble":
+			# куча бетонных обломков с арматурой
+			cv = Canvas.new(30, 22)
+			cv.ellipse(15, 16, 14, 5, 2)
+			cv.poly(PackedVector2Array([Vector2(3, 16), Vector2(9, 7), Vector2(16, 10), Vector2(14, 18)]), 3)
+			cv.poly(PackedVector2Array([Vector2(13, 12), Vector2(20, 4), Vector2(27, 11), Vector2(22, 18)]), 4)
+			cv.poly(PackedVector2Array([Vector2(8, 18), Vector2(12, 13), Vector2(19, 15), Vector2(16, 20)]), 2)
+			cv.line(18, 6, 23, 0, 5)
+			cv.line(10, 9, 6, 2, 5)
+			cv.put(23, 0, 6)
+			cv.put(6, 2, 6)
+		"debris":
+			# мелкий мусор на полу, через него можно пройти
+			cv = Canvas.new(28, 12)
+			for k in 7:
+				cv.ellipse(3 + k * 3.7, 6 + (k * 5) % 5 - 1, 2.2, 1.4, [2, 3, 4, 2, 3, 1, 4][k])
+			cv.line(5, 9, 13, 7, 3)
+			cv.line(16, 4, 24, 6, 5)
+		"puddle":
+			cv = Canvas.new(30, 12)
+			cv.ellipse(15, 6, 14, 5, 1, false)
+			cv.ellipse(13, 6, 9, 3, 2, false)
+			cv.put(9, 5, 4)
+			cv.put(18, 6, 4)
+		"pillar":
+			# сломанная колонна: обрубок с торчащей арматурой и обломок рядом
+			cv = Canvas.new(26, 40)
+			cv.rect(6, 14, 12, 24, 3)
+			cv.rect(6, 14, 4, 24, 4)
+			cv.poly(PackedVector2Array([Vector2(6, 14), Vector2(10, 9), Vector2(15, 12), Vector2(18, 8), Vector2(18, 14)]), 3)
+			cv.line(9, 10, 7, 1, 5)
+			cv.line(15, 9, 17, 2, 5)
+			cv.ellipse(21, 35, 4, 3, 2)
+			cv.outline(0)
+		"scaffold":
+			# строительные леса: стойки, доски, ведро с краской
+			cv = Canvas.new(28, 50)
+			for x in [3, 24]:
+				cv.line(x, 4, x, 49, 4)
+			for y in [12, 26, 40]:
+				cv.rect(2, y, 24, 3, 3)
+				cv.line(3, y + 3, 24, y + 12 if y < 40 else y + 3, 2)
+			cv.rect(18, 36, 5, 4, 5)
+			cv.put(20, 36, 9)
+		"welder":
+			# сварочный пост: тележка с баллонами и шлангом
+			cv = Canvas.new(24, 30)
+			cv.rect(3, 18, 18, 8, 2)
+			cv.ellipse(7, 28, 2, 2, 1, false)
+			cv.ellipse(18, 28, 2, 2, 1, false)
+			cv.rect(5, 4, 5, 15, 4)
+			cv.rect(12, 6, 5, 13, 8)
+			cv.ellipse(7, 4, 2.5, 1.5, 5, false)
+			cv.ellipse(14, 6, 2.5, 1.5, 9, false)
+			cv.line(16, 8, 22, 14, 3)
+			cv.line(22, 14, 21, 22, 3)
+		"slab":
+			cv = _big_slab()
+		"beam":
+			cv = _big_beam()
 		"bus":
 			cv = _big_bus()
 		"turbine":
@@ -991,6 +1051,44 @@ func _big_tower() -> Canvas:
 
 
 ## Огромное дерево Запутанного леса: 2×2 клетки, ствол как труба, корни наружу, крона уходит вверх.
+## Рухнувшая плита перекрытия 2×2: косо лежит на полу, из края торчит арматура.
+func _big_slab() -> Canvas:
+	var f := _foot(2, 2, 26)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 0.3, 0), _ip(o, 1.9, 0.1, 18), _ip(o, 1.9, 1.7, 22), _ip(o, 0.1, 1.9, 2)]), 3)
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 1.9, 2), _ip(o, 1.9, 1.7, 22), _ip(o, 1.9, 1.7, 15), _ip(o, 0.1, 1.9, 0)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, 1.9, 0.1, 18), _ip(o, 1.9, 1.7, 22), _ip(o, 1.9, 1.7, 15), _ip(o, 1.9, 0.1, 11)]), 1)
+	for k in 4:
+		var a := _ip(o, 1.9, 0.3 + k * 0.4, 19 + k)
+		cv.line(a.x, a.y, a.x + 5, a.y - 6, 5)
+		cv.put(int(a.x) + 5, int(a.y) - 6, 6)
+	for k in 3:
+		var c := _ip(o, 0.5 + k * 0.5, 0.6 + k * 0.4, 8 + k * 6)
+		cv.line(c.x - 6, c.y, c.x + 4, c.y + 3, 2)
+	var r := _ip(o, 0.3, 1.6, 0)
+	cv.ellipse(r.x, r.y, 5, 3, 2)
+	cv.ellipse(r.x + 8, r.y + 3, 3, 2, 3)
+	return cv
+
+
+## Упавшая двутавровая балка 3×1 поперёк зала.
+func _big_beam() -> Canvas:
+	var f := _foot(3, 1, 16)
+	var cv: Canvas = f.cv
+	var o: Vector2 = f.o
+	var z := 9.0
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 0.3, z), _ip(o, 2.9, 0.3, z), _ip(o, 2.9, 0.7, z), _ip(o, 0.1, 0.7, z)]), 4)
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 0.7, z), _ip(o, 2.9, 0.7, z), _ip(o, 2.9, 0.7, 0), _ip(o, 0.1, 0.7, 0)]), 2)
+	cv.poly(PackedVector2Array([_ip(o, 0.1, 0.45, z - 1), _ip(o, 2.9, 0.45, z - 1), _ip(o, 2.9, 0.55, 1), _ip(o, 0.1, 0.55, 1)]), 3)
+	for k in 5:
+		var a := _ip(o, 0.4 + k * 0.55, 0.3, z)
+		cv.put(int(a.x), int(a.y), 6)
+	var e := _ip(o, 2.9, 0.5, z)
+	cv.line(e.x, e.y, e.x + 4, e.y - 5, 5)
+	return cv
+
+
 func _big_tree() -> Canvas:
 	var f := _foot(2, 2, 120)
 	var cv: Canvas = f.cv

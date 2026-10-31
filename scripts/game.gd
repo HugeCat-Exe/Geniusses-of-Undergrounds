@@ -7,7 +7,7 @@ signal changed
 signal level_up(level: int)
 signal xp_gained(n: int)
 
-const VERSION := "0.14.1"
+const VERSION := "0.14.2"
 const SLOTS := 3
 ## Ячейка автосохранения: идёт после ручных.
 const AUTO := 3

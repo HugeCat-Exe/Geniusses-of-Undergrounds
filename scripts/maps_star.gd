@@ -32,8 +32,8 @@ func _knight(id: String, x: int, y: int) -> Dictionary:
 	return o
 
 
-## Рыцари стоят там, где держат линию: в лагере до первого разговора, потом на неотбитом этаже,
-## после генератора ещё и у гермо-двери на пятом. После прощания их нет нигде.
+## Рыцари идут вместе с Гением: в лагере до первого разговора, потом на любом этаже, куда он спустился.
+## После прощания их нет нигде.
 func _knights_here(where: String) -> bool:
 	if G.flag("vb_farewell") or _q() != "active":
 		return false
@@ -42,13 +42,19 @@ func _knights_here(where: String) -> bool:
 	if not G.flag("vb_tauros"):
 		return false
 	var n := int(where.substr(4))
-	if G.flag("vb_f11") or G.flag("vb_button"):
-		# после лаборатории рыцари ждут Гения на десятом, а потом на пятом
-		return n == 5 or (n == 10 and not G.flag("vb_gun_back") and not G.flag("vb_button"))
-	var f := StoryVB.frontier()
-	if n == f:
-		return true
-	return n == 5 and f > 5
+	return n >= 1 and n <= 10
+
+
+## Ремонт этажа после отбития: 25% в день отбития, потом +25% в день, через три дня всё готово.
+## Этажи 1–5 чинят после генератора, 6–10 после задания.
+static func repair_pct(n: int) -> int:
+	var key := "vb_f5_day" if n <= 5 else "vb_done_day"
+	var started: bool = G.flag("vb_f5") if n <= 5 else G.p.quests.get("vb", "") == "done"
+	if not started:
+		return -1
+	if not G.p.flags.has(key):
+		G.p.flags[key] = int(G.p.day)
+	return clampi(25 + (int(G.p.day) - int(G.p.flags[key])) * 25, 25, 100)
 
 
 # ---------------- Лагерь «Перрон» ----------------
@@ -325,11 +331,20 @@ func _floor_map(n: int) -> Dictionary:
 		for i in 3:
 			objs.append(_knight(ids[i], kn[i].x, kn[i].y))
 	# жители возвращаются на 1–5 после генератора, на 6–10 после задания работают ремонтники
-	if (n <= 5 and lit5) or (n >= 6 and n <= 10 and done):
+	var pct := repair_pct(n)
+	var reserved: Array = [lift, up] + kn + res + burrows
+	if spawns.has("door"):
+		reserved.append(spawns.door)
+	if pct >= 0:
 		var who := "resident" if n <= 5 else "worker"
 		var spots: Array = res if not res.is_empty() else [Vector2i(10, 5), Vector2i(16, 9)]
 		for p in spots:
-			objs.append(_snpc(who, p.x, p.y, "vb_" + who))
+			var o := _snpc(who, p.x, p.y, "vb_" + who)
+			o.wander = true
+			objs.append(o)
+	_ruins(grid, objs, n, reserved, up, pct)
+	if pct >= 0:
+		_repair_life(grid, objs, n, reserved, up, pct)
 	# лампы: аварийные до генератора, обычные после
 	var lamps := [Vector2i(6, 3), Vector2i(grid[0].size() - 5, 3), Vector2i(4, grid.size() - 4), Vector2i(grid[0].size() / 2, grid.size() / 2 + 2)]
 	for p in lamps:
@@ -343,8 +358,141 @@ func _floor_map(n: int) -> Dictionary:
 	spawns["up"] = up
 	_ensure_paths(grid, objs, up, [Vector2i(lift.x + 1, lift.y)])
 	var title: String = "Южная Звезда · Этаж %d" % n
+	if pct >= 0 and pct < 100:
+		title += " · ремонт %d%%" % pct
 	return {"name": title, "floor": grid, "objs": objs, "waste": false, "depth": 1, "dark": dark, "star_floor": n,
 		"burrows": burrows, "spawns": spawns, "light": 4.0 if dark else 10.0}
+
+
+## Обломки на этаже: рухнувшие плиты, балки, колонны и мусор. Важное стоит у дальних стен,
+## проходы к лифту, людям и всему, на что можно нажать, остаются свободными.
+## Во время ремонта обломки разбирают: чем выше процент, тем их меньше.
+func _ruins(grid: Array, objs: Array, n: int, reserved: Array, from: Vector2i, pct: int) -> void:
+	var kinds := [["slab", 2, 2, "Рухнувшая плита перекрытия"], ["beam", 3, 1, "Упавшая балка"],
+		["pillar", 1, 1, "Сломанная колонна"], ["rubble", 1, 1, "Груда бетонных обломков"], ["pillar", 1, 1, "Сломанная колонна"],
+		["rubble", 1, 1, "Груда бетонных обломков"], ["rubble", 1, 1, "Груда бетонных обломков"],
+		["debris", 1, 1, "Мусор и осколки"], ["debris", 1, 1, "Мусор и осколки"], ["puddle", 1, 1, "Лужа из пробитой трубы"],
+		["debris", 1, 1, "Мусор и осколки"], ["puddle", 1, 1, "Лужа из пробитой трубы"]]
+	if n == 10:
+		kinds = kinds.slice(2)
+	if n == 5:
+		kinds.remove_at(1)
+	var keep := kinds.size()
+	if pct >= 0:
+		keep = int(round(kinds.size() * (100 - pct) / 75.0))
+	_place(grid, objs, 3100 + n, kinds.slice(0, keep), reserved, from, false)
+
+
+## Ремонт: леса, сварочные посты, рабочие с горелками и жители, которых с каждым днём больше.
+func _repair_life(grid: Array, objs: Array, n: int, reserved: Array, from: Vector2i, pct: int) -> void:
+	var items: Array = []
+	if pct < 100:
+		items.append(["scaffold", 1, 1, "Строительные леса"])
+		items.append(["welder", 1, 1, "Сварочный пост"])
+		if n >= 6 or pct < 50:
+			items.append(["scaffold", 1, 1, "Строительные леса"])
+	var placed := _place(grid, objs, 3300 + n, items, reserved, from, true)
+	# у каждого сварочного поста работает человек с горелкой
+	for o in placed:
+		if o.tex == "welder":
+			var c := _free_near(grid, objs, Vector2i(o.x, o.y), reserved)
+			if c.x >= 0:
+				var wk := _snpc("worker", c.x, c.y, "vb_worker")
+				wk.weld = true
+				objs.append(wk)
+	# жителей становится больше по мере ремонта
+	if n <= 5:
+		var extra := 1 + pct / 25
+		if n == 2:
+			extra -= 1
+		var ppl: Array = []
+		for i in extra:
+			ppl.append(["resident", 1, 1, ""])
+		_place(grid, objs, 3500 + n, ppl, reserved, from, true, true)
+	elif pct < 100:
+		_place(grid, objs, 3500 + n, [["worker", 1, 1, ""]], reserved, from, true, true)
+
+
+## Расставить предметы (или людей) на свободные клетки. Возвращает поставленные.
+func _place(grid: Array, objs: Array, seed: int, items: Array, reserved: Array, from: Vector2i, near_ok: bool, people := false) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var h := grid.size()
+	var w: int = grid[0].size()
+	var res: Array = []
+	var goals := _goals(grid, objs, from, reserved)
+	for it in items:
+		var tw: int = it[1]
+		var th: int = it[2]
+		for attempt in 40:
+			# дальняя половина зала (верх и левый край) в приоритете
+			var far := attempt < 25
+			var x := rng.randi_range(2, (w - 3 - tw) if not far else maxi(2, w * 2 / 3 - tw))
+			var y := rng.randi_range(1, (h - 3 - th) if not far else maxi(1, h / 2))
+			if not _cells_free(grid, objs, x, y, tw, th, reserved, 1 if near_ok else 2):
+				continue
+			var o: Dictionary
+			if people:
+				o = _snpc(it[0], x, y, "vb_" + it[0])
+				o.wander = true
+			elif tw > 1 or th > 1:
+				o = _big(it[0], x, y, tw, th, it[3])
+			else:
+				o = _prop(it[0], x, y, it[3], "", not (it[0] in ["debris", "puddle"]))
+			objs.append(o)
+			if o.block and not _all_reachable(grid, objs, from, goals):
+				objs.erase(o)
+				continue
+			res.append(o)
+			break
+	return res
+
+
+func _cells_free(grid: Array, objs: Array, x: int, y: int, tw: int, th: int, reserved: Array, gap: int) -> bool:
+	for dy in th:
+		for dx in tw:
+			var c := Vector2i(x + dx, y + dy)
+			if c.y >= grid.size() - 1 or c.x >= grid[0].size() - 1 or grid[c.y][c.x] == "#":
+				return false
+			for r in reserved:
+				if absi(r.x - c.x) <= gap and absi(r.y - c.y) <= gap:
+					return false
+			for o in objs:
+				for t in _cells(o):
+					if absi(t.x - c.x) <= 1 and absi(t.y - c.y) <= 1:
+						return false
+	return true
+
+
+func _free_near(grid: Array, objs: Array, c: Vector2i, reserved: Array) -> Vector2i:
+	for d in [Vector2i(1, 1), Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 1), Vector2i(1, -1)]:
+		var t: Vector2i = c + d
+		if t.x < 1 or t.y < 1 or t.y >= grid.size() - 1 or t.x >= grid[0].size() - 1 or grid[t.y][t.x] == "#":
+			continue
+		var busy := false
+		for o in objs:
+			if t in _cells(o):
+				busy = true
+		if not busy and not (t in reserved):
+			return t
+	return Vector2i(-1, -1)
+
+
+## Что должно оставаться достижимым: лифт, люди, рыцари, предметы с действием, выходы из пробоин
+## (только то, до чего можно дойти и без обломков).
+func _goals(grid: Array, objs: Array, from: Vector2i, reserved: Array) -> Array:
+	var goals: Array = reserved.duplicate()
+	for o in objs:
+		if o.type == "npc" or (o.type == "prop" and str(o.get("action", "")) != ""):
+			goals.append(Vector2i(o.x, o.y))
+	return goals.filter(func(g): return _reachable(grid, objs, from, g))
+
+
+func _all_reachable(grid: Array, objs: Array, from: Vector2i, goals: Array) -> bool:
+	for g in goals:
+		if not _reachable(grid, objs, from, g):
+			return false
+	return true
 
 
 ## Одиннадцатый этаж: комната, которой не должно быть под землёй.
